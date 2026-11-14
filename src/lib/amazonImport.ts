@@ -298,6 +298,21 @@ export async function scrapeAmazonProduct(
    ─────────────────────────────────────────────────────────────────────────── */
 
 /**
+ * Texto de un campo crudo que puede venir como CADENA o como OBJETO con `name` de tipo cadena (p. ej. `seller: { name: 'Amazon', … }`,
+ * como lo devuelve el actor de Apify). Un objeto NUNCA se convierte con `String()` (daba «[object Object]» en el comercio de la ficha).
+ * Sin texto utilizable devuelve cadena vacía, para que el llamador use su alternativa o su valor por defecto.
+ */
+function rawText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const name = (value as Record<string, unknown>).name;
+    if (typeof name === 'string') return name.trim();
+  }
+  return '';
+}
+
+/**
  * Mapea los datos crudos de ScraperAPI al formato plano interno.
  * Intenta varios nombres de campo porque ScraperAPI puede devolver variantes
  * (price / original_price / list_price, reviews / review_count, etc.).
@@ -311,7 +326,7 @@ export function normalizeScrapedAmazonData(
     String(raw.title || '').trim() ||
     String(raw.name || '').trim() ||
     `Producto Amazon ${asin}`;
-  const merchant = String(raw.merchant || raw.seller || 'Amazon').trim();
+  const merchant = rawText(raw.merchant) || rawText(raw.seller) || 'Amazon';
 
   // ── Precio: soporta número directo, objeto { value }, string o variantes ──
   // Lector ÚNICO y robusto (el mismo del importador JSON): «1.329,00 €», «€1,329.00», «1.329 €», 689.99… Antes se hacía
@@ -414,10 +429,10 @@ export function normalizeScrapedAmazonData(
   }
 
   const brand =
-    String(raw.brand || '').trim() ||
-    String(raw.marca || '').trim() ||
+    rawText(raw.brand) ||
+    rawText(raw.marca) ||
     undefined;
-  const fulfillmentProvider = String(raw.sold_by || '').trim() || undefined;
+  const fulfillmentProvider = rawText(raw.sold_by) || undefined;
 
   // ── Bestseller ranks → estimar ventas mensuales (sales30d) ──
   let sales30dEstimate: number | undefined;
