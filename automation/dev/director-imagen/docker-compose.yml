@@ -1,0 +1,39 @@
+# Director 00 · L0 de solo lectura · FASE SINTÉTICA. PREPARADO, NO EJECUTADO (17/11/2026). Nunca se levanta con `up`: solo `docker compose run --rm director <comando>` (perfil `cli`).
+#   docker compose -f docker-compose.yml run --rm director preguntar "dame el último informe de calidad"
+#   docker compose -f docker-compose.yml run --rm director informe 04 --comparar
+# D-2 (provisional): CLI privada, sin puerto publicado y sin proceso persistente. D-4 (provisional): en esta fase NO hay red (`network_mode: none`): lee fixtures sintéticos incluidos en la imagen.
+# D3: los informes críticos los lee el propietario cuando pregunta; no hay canal de avisos automático. D6: proveedor simulado; sin claves ni gasto.
+name: tai-director
+
+x-etiqueta: &etiqueta
+  com.treidilor.componente: director-00
+
+services:
+  director:
+    image: treidilor-director:${TAI_DIRECTOR_VERSION:?versión del TAR verificado, p. ej. 1.0.0-f1}
+    profiles: ["cli"]
+    restart: "no"
+    labels: *etiqueta
+    network_mode: none                      # FASE 1 (sintética): sin red alguna. Ver la sección «FASE 2» abajo
+    read_only: true
+    user: node
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    cpus: 0.5
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment:
+      TAI_DIRECTOR_DIR: /var/lib/tai-director
+    volumes:
+      - tai_director_ledger:/var/lib/tai-director   # único volumen escribible: el ledger (cadena de eventos); copia con `ledger copia <dir>`
+
+volumes:
+  tai_director_ledger:
+    name: tai_director_ledger
+    labels: *etiqueta
+
+# ───── FASE 2 (NO activar sin decisión D-4 y sin E3): conexión con el lector de producción ─────
+# Diseño provisional, sin implementar: una red dedicada `tai-director-red` en la que solo estén el Director y n8n (n8n se UNE a ella además de a la suya; PostgreSQL y el runner NO). El Director llamaría a
+#   http://practice_project_n8n_n8n:5678/webhook/tai-lector-prod-04  (y -12)   con la credencial exclusiva del lector (por nombre, como variable de entorno/secreto, nunca en el repositorio).
+# Requiere comprobar que EasyPanel permite unir su servicio a una red adicional; si no, la alternativa (red `easypanel` compartida) exige aceptación EXPRESA del propietario (ver AISLAMIENTO-WEBHOOKS-LECTOR.md §B, D-4).

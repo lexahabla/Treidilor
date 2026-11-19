@@ -1,0 +1,7 @@
+# Los paquetes son binarios: ninguna conversión de saltos de línea (el SHA-256 debe coincidir byte a byte).
+* -text
+*.sh text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+Dockerfile text eol=lf
+VERSION text eol=lf

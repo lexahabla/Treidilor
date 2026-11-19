@@ -1,0 +1,8 @@
+# Nunca versionar secretos ni estado local
+*.token
+*.env
+.env*
+secretos/
+*.pem
+*.key
+*.log

@@ -1,0 +1,34 @@
+# Director 00 · MODO LECTOR REAL (solo lectura de los agentes 04 y 12). PREPARADO, NO EJECUTADO (17/11/2026). Se usa SOLO cuando el canario E3 esté validado y el lector de producción importado (inactivo → publicado con el bloqueo vigente).
+# Se combina con el compose base (el servicio `director` hereda todo lo suyo: solo lectura, sin capacidades, sin puertos, un único volumen escribible):
+#   TAI_DIRECTOR_VERSION=1.0.0-f1 docker compose -f docker-compose.yml -f docker-compose.real.yml run --rm director-real informe 04 --lector real
+#   TAI_DIRECTOR_VERSION=1.0.0-f1 docker compose -f docker-compose.yml -f docker-compose.real.yml run --rm director-real informe 12 --comparar --lector real
+# Antes: crear el archivo de la credencial EXCLUSIVA del lector (fuera del repositorio, modo 600) y exportar sus rutas/nombres:
+#   TAI_LECTOR_TOKEN_ARCHIVO=/root/tai-secretos/lector-prod.token   (contiene solo el valor de la credencial Header Auth «Treidilor — Lector puente PRODUCCIÓN (solo lectura)»)
+#   TAI_LECTOR_RED=<nombre de la red de Docker en la que está n8n>   TAI_LECTOR_HOST=<nombre DNS interno del servicio n8n, sin puntos>
+# Doble candado del propio Director: la selección EXPLÍCITA `--lector real` en cada orden + TAI_DIRECTOR_LECTOR_REAL=si (puesto aquí). Sin ellos no hay ninguna conexión. Destino validado por el código: host interno + lista explícita + ruta /webhook.
+name: tai-director
+
+services:
+  director-real:
+    extends:
+      file: docker-compose.yml
+      service: director
+    profiles: ["real"]
+    network_mode: !reset null              # el modo real SÍ necesita red, pero SOLO la de n8n (nunca la pública ni el host)
+    networks: [tai-lector]
+    environment:
+      TAI_DIRECTOR_DIR: /var/lib/tai-director
+      TAI_DIRECTOR_LECTOR_REAL: "si"
+      TAI_LECTOR_PROD_URL: "http://${TAI_LECTOR_HOST:?nombre interno del servicio n8n}:5678/webhook"
+      TAI_LECTOR_PROD_HOSTS: "${TAI_LECTOR_HOST}"
+      TAI_LECTOR_PROD_TOKEN_FILE: /run/secrets/lector_prod_token
+    secrets: [lector_prod_token]
+
+networks:
+  tai-lector:
+    external: true
+    name: "${TAI_LECTOR_RED:?nombre de la red de Docker de n8n}"
+
+secrets:
+  lector_prod_token:
+    file: "${TAI_LECTOR_TOKEN_ARCHIVO:?ruta del archivo con la credencial}"
