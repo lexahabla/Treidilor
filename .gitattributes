@@ -4,3 +4,11 @@
 *.sh text eol=lf
 Dockerfile text eol=lf
 *.toml text eol=lf
+
+# Archivos cuyo SHA-256 se fija en los procedimientos (E2): siempre con LF, sin conversión.
+automation/dev/prueba-traefik/config-candidata/*.yaml text eol=lf
+automation/dev/prueba-traefik/e2/*.sh text eol=lf
+# Fin de linea LF en el repositorio Y en el arbol de trabajo para lo que se empaqueta, se ejecuta en Linux o se compara por hash (3E.8.16):
+# el SHA-256 de un paquete y el resultado de las pruebas no pueden depender de core.autocrlf del equipo que clona.
+automation/** text=auto eol=lf
+scripts/** text=auto eol=lf

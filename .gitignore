@@ -111,3 +111,6 @@ INFORMES/N8N TOKEN/
 # Entorno de la prueba aislada de Data Tables (claves de pruebas): nunca al repositorio
 .env.prueba-dt
 automation/dev/prueba-data-tables/.env
+
+# Informes de trabajo (pueden incluir datos de infraestructura): nunca al repositorio
+INFORMES/
