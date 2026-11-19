@@ -1,0 +1,25 @@
+# Fase TLS (17/11/2026): igual que traefik.e0b.yaml (insecure=true como el VPS, registro JSON con X-Prueba-Id) y SIN cambiar nada más. Con routers que declaran `tls`, el entrypoint «https» habla TLS REAL:
+# Traefik presenta su certificado por defecto autogenerado (no hay ningún certificado en el repositorio ni en el volumen) y el cliente de la prueba no lo valida (solo es una prueba local sobre 127.0.0.1).
+entryPoints:
+  http:
+    address: ":80"
+    forwardedHeaders:
+      insecure: true
+  https:
+    address: ":443"
+    forwardedHeaders:
+      insecure: true
+providers:
+  file:
+    directory: /data/config
+    watch: true
+log:
+  level: DEBUG
+accessLog:
+  format: json
+  fields:
+    defaultMode: keep
+    headers:
+      defaultMode: drop
+      names:
+        X-Prueba-Id: keep

@@ -1,0 +1,25 @@
+# SIMULA lo que EasyPanel genera, versión TLS (17/11/2026): el router https de n8n lleva `tls: {}` (lo que declara un router HTTPS real) y el router http redirige a https con una prioridad
+# MENOR que la del bloqueo (por longitud de regla, sin prioridad explícita). Representativo, NO copia del VPS: la prueba lo reescribe para simular una regeneración. Los nombres empiezan por `n8n-`
+# porque los evaluadores de la matriz exigen que lo no bloqueado pase por un router `n8n-*`.
+http:
+  routers:
+    n8n-http:
+      rule: "Host(`n8n.prueba.local`) && PathPrefix(`/`)"
+      entryPoints: [http]
+      middlewares: [redirigir-a-https]
+      service: noop@internal
+    n8n-https:
+      rule: "Host(`n8n.prueba.local`) && PathPrefix(`/`)"
+      entryPoints: [https]
+      service: n8n
+      tls: {}
+  middlewares:
+    redirigir-a-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+  services:
+    n8n:
+      loadBalancer:
+        servers:
+          - url: "http://n8n-interno:5678/"

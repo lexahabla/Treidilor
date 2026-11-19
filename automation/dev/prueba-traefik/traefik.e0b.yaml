@@ -1,0 +1,25 @@
+# E0b (16/11/2026): MISMA configuración estática que traefik.yaml, cambiando SOLO lo que el VPS tiene distinto: forwardedHeaders.insecure=true en los dos entrypoints (hallazgo del bloque 8).
+# Registro de acceso JSON (para poder atribuir cada celda con X-Prueba-Id y RouterName). La regla de bloqueo NO se toca.
+entryPoints:
+  http:
+    address: ":80"
+    forwardedHeaders:
+      insecure: true
+  https:
+    address: ":443"
+    forwardedHeaders:
+      insecure: true
+providers:
+  file:
+    directory: /data/config
+    watch: true
+log:
+  level: DEBUG
+accessLog:
+  format: json
+  fields:
+    defaultMode: keep
+    headers:
+      defaultMode: drop
+      names:
+        X-Prueba-Id: keep

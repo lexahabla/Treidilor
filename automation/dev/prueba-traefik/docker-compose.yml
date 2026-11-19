@@ -1,0 +1,161 @@
+# PRUEBA LOCAL del bloqueo de webhooks con Traefik 3.6.7 (la versión de producción). NO EJECUTADA: requiere autorización expresa y descargar UNA imagen (traefik:v3.6.7).
+# Lanzador: scripts/automation/prueba-traefik.mjs (nunca `docker compose up` a mano). Nombre de proyecto propio (`tai-prueba-tf`): no toca ningún otro entorno ni volumen.
+#
+# Réplica del VPS: Traefik con `providers.file.directory=/data/config` + `watch=true` y n8n 2.38.6 con PostgreSQL 17 y N8N_PROXY_HOPS=1. El «cliente interno» hace de Director.
+# Seguridad de la prueba: red `aislada` INTERNA (sin Internet); el único puerto publicado es 127.0.0.1:18080/18081 (Traefik) para simular «Internet»; secretos ficticios aleatorios fuera del repo.
+# Las imágenes n8nio/n8n:2.38.6, postgres:17 y node:22-bookworm-slim YA están descargadas (no se vuelven a bajar: `--pull never`).
+name: tai-prueba-tf
+
+x-etiqueta: &etiqueta
+  com.treidilor.prueba: traefik-aislamiento
+
+services:
+  db:
+    image: postgres:17
+    container_name: tai-tf-db
+    restart: "no"
+    networks: [aislada]
+    labels: *etiqueta
+    environment:
+      POSTGRES_USER: n8n_prueba
+      POSTGRES_PASSWORD: ${PRUEBA_TF_PG_PASSWORD:?aleatoria, SOLO de pruebas}
+      POSTGRES_DB: n8n_prueba
+    volumes:
+      - tai_tf_pg:/var/lib/postgresql/data
+    mem_limit: 512m
+    cpus: 1
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n_prueba -d n8n_prueba"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  n8n:
+    image: n8nio/n8n:2.38.6
+    container_name: tai-tf-n8n
+    restart: "no"
+    networks:
+      aislada:
+        aliases: [n8n-interno]
+    labels: *etiqueta
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      N8N_HOST: n8n.prueba.local
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      N8N_PROXY_HOPS: "1"                  # como producción
+      WEBHOOK_URL: http://n8n.prueba.local/
+      N8N_ENCRYPTION_KEY: ${PRUEBA_TF_ENCRYPTION_KEY:?aleatoria, SOLO de pruebas}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: db
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: n8n_prueba
+      DB_POSTGRESDB_USER: n8n_prueba
+      DB_POSTGRESDB_PASSWORD: ${PRUEBA_TF_PG_PASSWORD:?aleatoria, SOLO de pruebas}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_HIRING_BANNER_ENABLED: "false"
+      N8N_COMMUNITY_PACKAGES_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+      N8N_SECURE_COOKIE: "false"
+      NODES_EXCLUDE: '["n8n-nodes-base.executeCommand","n8n-nodes-base.ssh","n8n-nodes-base.readWriteFile","n8n-nodes-base.httpRequest"]'
+      GENERIC_TIMEZONE: Europe/Madrid
+      TZ: Europe/Madrid
+    volumes:
+      - tai_tf_n8n:/home/node/.n8n
+    mem_limit: 1g
+    cpus: 1.5
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  traefik:
+    image: traefik:v3.6.7
+    container_name: tai-tf-traefik
+    restart: "no"
+    labels: *etiqueta
+    networks: [aislada, exterior]
+    ports:
+      - "127.0.0.1:18080:80"                # entrypoint «http»
+      - "127.0.0.1:18081:443"               # entrypoint «https» (sin TLS en la prueba: sólo importa el nombre y el comportamiento de las reglas)
+    volumes:
+      - ${PRUEBA_TF_TRAEFIK_CFG:-./traefik.yaml}:/etc/traefik/traefik.yaml:ro   # E0b: ./traefik.e0b.yaml (insecure=true) o ./traefik.e0b-clf.yaml (registro CLF)
+      - tai_tf_config:/data/config:ro        # VOLUMEN gestionado dentro de Linux: los eventos de archivos creados desde Windows NO llegan por un bind mount. Solo escribe `config-escritor`
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 192m
+    cpus: 0.5
+    depends_on: [n8n, config-escritor]
+
+  config-escritor:                          # único que escribe en el volumen de configuración dinámica (stdin → archivo temporal → mv: evento atómico dentro de Linux)
+    image: node:22-bookworm-slim
+    container_name: tai-tf-cfg
+    restart: "no"
+    labels: *etiqueta
+    networks: [aislada]
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    cpus: 0.1
+    volumes:
+      - tai_tf_config:/cfg
+    command: ["sleep", "3600"]
+
+  eco:                                      # SOLO E0b: devuelve las cabeceras que RECIBE (lo que Traefik reenvía con insecure=true). Imagen local, sin Internet, sin puertos publicados
+    image: node:22-bookworm-slim
+    container_name: tai-tf-eco
+    restart: "no"
+    labels: *etiqueta
+    networks: [aislada]
+    read_only: true
+    user: node
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 96m
+    cpus: 0.25
+    command: ["node", "-e", 'require("http").createServer((q,s)=>{const h=q.headers;s.setHeader("content-type","application/json");s.end(JSON.stringify({remote:q.socket.remoteAddress,xff:h["x-forwarded-for"]??null,xri:h["x-real-ip"]??null,fwd:h["forwarded"]??null,proto:h["x-forwarded-proto"]??null,host:h["x-forwarded-host"]??null,port:h["x-forwarded-port"]??null,server:h["x-forwarded-server"]??null}))}).listen(8080)']
+
+  cliente-interno:                           # hace de Director: llega a n8n por la red interna, sin pasar por Traefik
+    image: node:22-bookworm-slim
+    container_name: tai-tf-cliente
+    restart: "no"
+    labels: *etiqueta
+    networks: [aislada]
+    read_only: true
+    user: node
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    cpus: 0.25
+    command: ["sleep", "3600"]
+
+networks:
+  aislada:
+    name: tai-tf-aislada
+    internal: true
+    labels: *etiqueta
+  exterior:
+    name: tai-tf-exterior
+    driver: bridge                           # sólo para publicar 127.0.0.1:18080/18081
+    labels: *etiqueta
+
+volumes:
+  tai_tf_config:
+    name: tai_tf_config
+    labels: *etiqueta
+  tai_tf_pg:
+    name: tai_tf_pg
+    labels: *etiqueta
+  tai_tf_n8n:
+    name: tai_tf_n8n
+    labels: *etiqueta

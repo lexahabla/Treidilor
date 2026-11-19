@@ -1,0 +1,20 @@
+# SIMULA lo que EasyPanel genera (routers por servicio). El nombre de archivo y el contenido son representativos, no copia del VPS. La prueba lo REESCRIBE para simular una regeneración.
+http:
+  routers:
+    n8n-http:
+      rule: "Host(`n8n.prueba.local`) && PathPrefix(`/`)"
+      entryPoints: [http]
+      service: n8n
+    n8n-https:
+      rule: "Host(`n8n.prueba.local`) && PathPrefix(`/`)"
+      entryPoints: [https]
+      service: n8n
+    web-http:
+      rule: "Host(`web.prueba.local`) && PathPrefix(`/`)"
+      entryPoints: [http]
+      service: n8n
+  services:
+    n8n:
+      loadBalancer:
+        servers:
+          - url: "http://n8n-interno:5678/"

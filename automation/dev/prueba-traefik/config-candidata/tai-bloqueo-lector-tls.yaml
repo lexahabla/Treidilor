@@ -1,0 +1,23 @@
+# CANDIDATO CORREGIDO de E2 (17/11/2026). Archivo NUEVO y SEPARADO de custom.yaml (que se conserva intacto: 517 bytes, SHA-256 2f9c5b1b…af39).
+# Causa: un router SIN `tls` solo atiende conexiones NO TLS; en el VPS el tráfico https llega por TLS (el router de n8n lleva `tls`), así que el router original nunca podía casar con él.
+# Cambio: UN router por entrypoint con la MISMA regla, prioridad, middleware y servicio validados; el de https declara `tls: {}`. Sin `certResolver`: no pide certificados (el handshake elige el
+# certificado por SNI entre los ya existentes). Nombre del archivo NO empieza por «custom»: el procedimiento de E2 comprueba que ninguno de los dos archivos de bloqueo exista antes de instalar.
+http:
+  routers:
+    tai-bloquear-lector-prod-http:
+      rule: "PathRegexp(`(?i)^(?:/|%2f|%5c)+webhook.*tai-lector-prod-`)"
+      entryPoints: [http]
+      priority: 10000000
+      middlewares: [tai-denegar-todo]
+      service: noop@internal
+    tai-bloquear-lector-prod-https:
+      rule: "PathRegexp(`(?i)^(?:/|%2f|%5c)+webhook.*tai-lector-prod-`)"
+      entryPoints: [https]
+      priority: 10000000
+      middlewares: [tai-denegar-todo]
+      service: noop@internal
+      tls: {}
+  middlewares:
+    tai-denegar-todo:
+      ipAllowList:
+        sourceRange: ["192.0.2.1/32"]

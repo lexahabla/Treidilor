@@ -1,0 +1,21 @@
+# Configuración ESTÁTICA de la prueba: reproduce lo confirmado en el VPS (proveedor de archivos por directorio con watch). Los nombres de los entrypoints (http/https) y el no confiar en
+# cabeceras X-Forwarded-* externas son SUPUESTOS que el VPS debe confirmar (bloque 7 original, líneas de entryPoints/forwardedHeaders).
+entryPoints:
+  http:
+    address: ":80"
+  https:
+    address: ":443"
+providers:
+  file:
+    directory: /data/config
+    watch: true
+log:
+  level: DEBUG
+accessLog:
+  format: json
+  fields:
+    defaultMode: keep
+    headers:
+      defaultMode: drop
+      names:
+        X-Prueba-Id: keep

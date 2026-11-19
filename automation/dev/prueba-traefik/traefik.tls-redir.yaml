@@ -1,0 +1,32 @@
+# Fase TLS, variante «redirección en el ENTRYPOINT» (17/11/2026): igual que traefik.tls.yaml más la redirección permanente http → https configurada en la configuración ESTÁTICA.
+# Esa redirección se ejecuta ANTES de enrutar: ningún router del entrypoint http llega a verla. Sirve para documentar la consecuencia (el router http del bloqueo no se alcanza; la petición redirigida
+# llega a https y allí la bloquea el router con TLS). No se sabe cuál de las dos redirecciones usa EasyPanel: el procedimiento del VPS lo consulta en solo lectura.
+entryPoints:
+  http:
+    address: ":80"
+    forwardedHeaders:
+      insecure: true
+    http:
+      redirections:
+        entryPoint:
+          to: https
+          scheme: https
+          permanent: true
+  https:
+    address: ":443"
+    forwardedHeaders:
+      insecure: true
+providers:
+  file:
+    directory: /data/config
+    watch: true
+log:
+  level: DEBUG
+accessLog:
+  format: json
+  fields:
+    defaultMode: keep
+    headers:
+      defaultMode: drop
+      names:
+        X-Prueba-Id: keep

@@ -1,0 +1,18 @@
+# E0b (16/11/2026), fase CLF: igual que traefik.e0b.yaml (insecure=true) pero con el registro de acceso en formato CLF, como el VPS (TRAEFIK_ACCESSLOG=true sin formato = common). El CLF NO lleva cabeceras.
+entryPoints:
+  http:
+    address: ":80"
+    forwardedHeaders:
+      insecure: true
+  https:
+    address: ":443"
+    forwardedHeaders:
+      insecure: true
+providers:
+  file:
+    directory: /data/config
+    watch: true
+log:
+  level: DEBUG
+accessLog:
+  format: common

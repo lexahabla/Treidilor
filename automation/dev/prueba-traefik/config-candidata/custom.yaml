@@ -1,0 +1,13 @@
+# REGLA CANDIDATA de bloqueo (la misma de automation/docs/AISLAMIENTO-WEBHOOKS-LECTOR.md §B). Archivo PROPIO: en producción iría en /etc/easypanel/traefik/config/custom.yaml.
+http:
+  routers:
+    tai-bloquear-lector-prod:
+      rule: "PathRegexp(`(?i)^(?:/|%2f|%5c)+webhook.*tai-lector-prod-`)"
+      entryPoints: [http, https]
+      priority: 10000000
+      middlewares: [tai-denegar-todo]
+      service: noop@internal
+  middlewares:
+    tai-denegar-todo:
+      ipAllowList:
+        sourceRange: ["192.0.2.1/32"]
