@@ -185,3 +185,10 @@ test('PRIMER ELEMENTO · el verificador de firma exige que el TAR empiece por MA
   const ent = leerTar(tarDirector()); const raro = montar([...ent.slice(1), ent[0]]); const f = JSON.stringify({ esquema: 'treidilor-firma-paquete/1', entorno: 'PRUEBAS', tipo: 'director', sha256Tar: sha256Hex(raro), sha256Manifiesto: sha256Hex(ent[0].contenido), claveId: 'x', firma: 'x' });
   assert.match(verificarFirmaPaquete({ tar: raro, firma: f, publicaPem: claves.publica }).errores.join(), /no empieza por MANIFIESTO\.json/);
 });
+
+test('MENSAJE DE FIRMA · la orden `firmar` dice PRUEBAS o PRODUCCIÓN según el entorno del documento firmado (el formato de firma no cambia)', () => {
+  const d = tmp(); const par = generarParClaves(); const priv = path.join(d, 'k.pem'); fs.writeFileSync(priv, par.privada, { mode: 0o600 }); const tar = path.join(d, 'p.tar'); fs.writeFileSync(tar, tarDirector());
+  const firmar = (extra, n) => spawnSync(process.execPath, [path.join(WEB, 'scripts', 'automation', 'firmar-paquete.mjs'), 'firmar', tar, '--tipo', 'director', '--clave-privada', priv, '--salida', path.join(d, n), ...extra], { encoding: 'utf8' });
+  const p = firmar([], 'a.json'); assert.equal(p.status, 0, p.stderr); assert.match(p.stdout, /^Firma de PRUEBAS escrita/); assert.equal(JSON.parse(fs.readFileSync(path.join(d, 'a.json'), 'utf8')).entorno, 'PRUEBAS');
+  const q = firmar(['--entorno', 'PRODUCCION'], 'b.json'); assert.equal(q.status, 0, q.stderr); assert.match(q.stdout, /^Firma de PRODUCCIÓN escrita/); assert.doesNotMatch(q.stdout, /PRUEBAS/); assert.equal(JSON.parse(fs.readFileSync(path.join(d, 'b.json'), 'utf8')).entorno, 'PRODUCCION');
+});

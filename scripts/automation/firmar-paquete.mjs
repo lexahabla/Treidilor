@@ -45,10 +45,10 @@ function main(argv) {
     console.log(`Clave de PRUEBAS generada. claveId: ${claveIdDe(k.publica)} (la privada no se muestra)`); return 0;
   }
   if (orden === 'firmar') {
-    const tarF = r[0]; const tipo = opc('tipo'); const kp = opc('clave-privada'); const salida = opc('salida'); if (!tarF || !tipo || !kp || !salida) { console.error('Uso: firmar <paquete.tar> --tipo director|cli --clave-privada <pem> --salida <firma.json>'); return 2; }
+    const tarF = r[0]; const tipo = opc('tipo'); const kp = opc('clave-privada'); const salida = opc('salida'); if (!tarF || !tipo || !kp || !salida) { console.error('Uso: firmar <paquete.tar> --tipo director|cli --clave-privada <pem> --salida <firma.json> [--entorno PRUEBAS|PRODUCCION]'); return 2; }
     if (!rutaPrivadaPermitida(kp)) { console.error('La clave privada está en una ubicación no permitida (repositorio, paquetes\\ o informes\\).'); return 2; }
     const doc = firmarPaquete({ tar: fs.readFileSync(tarF), artefacto: path.basename(tarF), tipo, privadaPem: fs.readFileSync(kp, 'utf8'), entorno: opc('entorno') ?? 'PRUEBAS' }); fs.writeFileSync(salida, `${JSON.stringify(doc, null, 1)}\n`, { flag: 'wx' });
-    console.log(`Firma de PRUEBAS escrita (${doc.tipo} ${doc.version}, claveId ${doc.claveId}, SHA-256 ${doc.sha256Tar})`); return 0;
+    console.log(`Firma de ${doc.entorno === 'PRODUCCION' ? 'PRODUCCIÓN' : 'PRUEBAS'} escrita (${doc.tipo} ${doc.version}, claveId ${doc.claveId}, SHA-256 ${doc.sha256Tar})`); return 0;
   }
   console.error('Uso: firmar-paquete.mjs generar-claves | firmar'); return 2;
 }

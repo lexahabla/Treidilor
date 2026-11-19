@@ -52,3 +52,10 @@ Quitar **una sola** de estas guardas no abre ninguna brecha (por eso las mutacio
 | Reversión: confianza | código de salida + marcador `CONFIANZA_OK` | igual que en la instalación (dos capas, sin la tercera porque no se registra) | f36 (reversión con política inválida) |
 | Copia privada de la política | `cp` encadenado con `&&` + el propio verificador exige los cuatro archivos | un fallo de copia deja una carpeta incompleta que el verificador rechaza | f36 «POLÍTICA INVÁLIDA O AUSENTE» |
 **Rama no ejercitable sin daemon:** la rama `TAI_NODE_BIN` de `revertir.sh` solo corre tras las comprobaciones de imagen, que necesitan el daemon Docker: queda pendiente de un host Linux real.
+
+## Regla de construcción (obligatoria)
+Los artefactos **Director 1.1.0** y **CLI de integridad 0.1.0** se construyen **solo desde clones limpios de commits identificados**, con las reglas LF de `.gitattributes` aplicadas (`automation/** text=auto eol=lf`, `scripts/** text=auto eol=lf`; en el prototipo, `* text=auto eol=lf`):
+1. `git clone --no-hardlinks <repositorio> <temporal>` y `git checkout <commit>`; `git status --short` debe estar vacío. Anotar el commit del repositorio web **y** el del prototipo del CLI (commit inicial `5282ee0`).
+2. Construir desde el clon: `empaquetar-director.mjs empaquetar --version 1.1.0` y `empaquetar-cli-integridad.mjs empaquetar --version 0.1.0 --prototipo <clon del prototipo>`. **Nunca** desde la carpeta de trabajo: puede conservar CRLF de un checkout anterior y daría otro SHA-256 (comprobado: 299 archivos CRLF dan `4c9d5a73…` en vez de `94844a1a…`).
+3. Repetir con `core.autocrlf` verdadero y falso: los SHA-256 deben coincidir. Referencias sin firmar actuales: Director `94844a1a93a62e6fbab0ecba704208496b7acb619b9b8910ad42bd1cc6801fa5`, CLI `ce5866bf7c131defbde20ba380df94b745c17ef3a31a91b7c298dc23aa11f027` (solo cambian si cambia el contenido distribuido; la corrección del mensaje de `firmar-paquete` no los altera: ese archivo no entra en ningún TAR).
+4. Registrar commits y SHA-256 junto a la firma; no sobrescribir candidatos históricos.
