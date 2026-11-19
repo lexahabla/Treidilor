@@ -1,0 +1,13 @@
+# PLANTILLA (no instalada). Despierta al colector cada 15 min aunque no haya peticiones: asi ancla la integridad del registro del gate
+# (ver ancla.py) con una ventana acotada. El servicio es de tipo oneshot: nunca hay dos instancias a la vez.
+[Unit]
+Description=Anclaje periodico del registro de auditoria (Treidilor AI)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Unit=tai-collector.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

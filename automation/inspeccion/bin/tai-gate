@@ -1,0 +1,17 @@
+#!/usr/bin/python3 -I
+# -*- coding: utf-8 -*-
+# Orden forzada de la clave SSH restringida. `-I`: ignora variables PYTHON* y el directorio del usuario.
+# Garantía: cualquier fallo (incluida una instalación dañada) termina con el texto genérico `error interno` y el código 8,
+# sin traceback ni rutas hacia el cliente SSH (el error estándar se descarta).
+import os
+import sys
+
+try:
+    os.dup2(os.open(os.devnull, os.O_WRONLY), 2)
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
+    from tai_inspect.gate import main
+except BaseException:
+    os.write(1, b"error interno\n")
+    os._exit(8)
+
+main()

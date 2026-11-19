@@ -1,0 +1,10 @@
+#!/usr/bin/python3 -I
+# -*- coding: utf-8 -*-
+# Colector de diagnósticos (lo arranca systemd cuando hay peticiones). Solo comprobaciones de la lista cerrada.
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
+from tai_inspect.collector import main  # noqa: E402
+
+main()

@@ -1,0 +1,395 @@
+D=/root/tai-etapa2
+U=$(umask); umask 077
+cat > $D/f7-vps.sh.nuevo <<'TAI_F7_EOF'
+#!/bin/sh
+# f7-vps.sh - Activacion y cierre automatizados de F7 (acceso SSH restringido tai-inspect). Consola web de Hostinger, como root.
+#
+#   sh $D/f7-vps.sh consola-b    (UNA vez, ANTES de la ventana, en una SEGUNDA consola independiente que se deja abierta)
+#   sh $D/f7-vps.sh preparar     (solo lectura: comprueba todo lo previo; no toca nada)
+#   sh $D/f7-vps.sh activar      (coloca y valida el archivo de sshd, arma la reversion de 10 min, la verifica y recarga SSH)
+#   sh $D/f7-vps.sh cerrar '<linea F7R1 que imprime el script de Windows>'
+#                                (comprueba TODAS las condiciones; solo si todas se cumplen cancela el temporizador; si no, revierte)
+#   sh $D/f7-vps.sh revertir     (reversion manual segura: el temporizador solo se detiene si revertir.sh termino con rc=0)
+#   sh $D/f7-vps.sh estado       (solo lectura)
+#
+# No modifica la configuracion de sshd salvo colocar/retirar SU archivo (00-tai-inspect.conf), no toca tai-gate ni los colectores,
+# no despliega nada y nunca re-arma el temporizador: hay UNA activacion, con UN temporizador de 10 minutos.
+umask 077
+if [ "$TAI_F7_PRUEBAS" = 1 ]; then
+  # SOLO para las pruebas locales con programas simulados (en el servidor la variable no existe y estas rutas son fijas)
+  D=$TAI_D; DROPIN=$TAI_DROPIN; AUDIT=$TAI_AUDIT; CUOTA=$TAI_CUOTA; PROC=$TAI_PROC; MI_PPID=$TAI_PPID
+  PLANTILLA=$TAI_PLANTILLA; HASH_DROPIN=$TAI_HASH_DROPIN; HASH_REVERTIR=$TAI_HASH_REVERTIR; ROOT_FP=$TAI_ROOT_FP; ROOT_AK=$TAI_ROOT_AK
+else
+  D=/root/tai-etapa2
+  DROPIN=/etc/ssh/sshd_config.d/00-tai-inspect.conf
+  AUDIT=/var/log/tai-inspect/gate-audit.log
+  CUOTA=/var/lib/tai-inspect/state/cuota.json
+  PROC=/proc
+  MI_PPID=$PPID
+  PLANTILLA=/opt/tai-inspect/deploy/sshd_config.d/00-tai-inspect.conf
+  HASH_DROPIN=2cdadc4498abdd5268ee58e2aafe2c8dce1d05b7d65d0310e9cb4d94aa29d133
+  HASH_REVERTIR=192264110ba3d7d2184df0713e098209e35172463e784881bd4a542746ed012e
+  ROOT_FP='SHA256:zzEk73jAM3o9yO0f7uBlYhu2gZhxRWbpTrL0RzKIlfE'     # unica huella autorizada para root (clave del propietario)
+  ROOT_AK=/root/.ssh/authorized_keys
+fi
+ESTADO=$D/f7-estado
+HIST=$D/f7-historial
+CONSOLAB=$D/f7-consola-b
+REGISTRO=$D/f7-registro.log
+MARGEN_CIERRE=90      # s minimos que deben quedar al EMPEZAR a evaluar para poder autorizar la cancelacion
+MARGEN_FINAL=20       # s minimos justo antes de parar el temporizador (evita competir con el disparo)
+MAX_CONTROLES=45      # s maximos que pueden tardar los controles completos; si tardan mas, no se cancela
+MIN_OK=20
+WIN_PS='.\automation\scripts\F7-Validacion-Windows.ps1'; [ -n "${TAI_F7_WIN_PS:-}" ] && WIN_PS=$TAI_F7_WIN_PS   # ruta RELATIVA a la raiz del repositorio (portable); TAI_F7_WIN_PS la sustituye
+
+inv() { { echo "## sshd efectivo de root"; sshd -T -C user=root,host=localhost,addr=127.0.0.1 | sort; echo "## sshd global"; sshd -T | sort; echo "## huellas (no contenido)"; sha256sum "$ROOT_AK" /etc/ssh/sshd_config; echo "## docker (nombre y replicas)"; docker service ls --format '{{.Name}}|{{.Replicas}}'; echo "## puertos a la escucha"; ss -H -tuln | awk '{print $1, $5}' | sort; echo "## servicios"; systemctl is-active ssh docker; } > "$1" 2>&1; }
+# authorized_keys puede ser reescrito por el proveedor (p. ej. al abrir una consola): su IDENTIDAD se comprueba por HUELLA y las opciones/permisos
+# (clave_root_ok), no por el hash del archivo. El resto de invariantes se comparan ESTRICTAMENTE; solo se excluye la linea del hash de ese archivo.
+HASH_AK='^[0-9a-f]{64} [ *].*authorized_keys$'
+inv_igual() {
+  [ "$(grep -Ec "$HASH_AK" "$1" 2>/dev/null)" = 1 ] && [ "$(grep -Ec "$HASH_AK" "$2" 2>/dev/null)" = 1 ] || return 1
+  A_INV=$(grep -Ev "$HASH_AK" "$1"); B_INV=$(grep -Ev "$HASH_AK" "$2"); [ "$A_INV" = "$B_INV" ]
+}
+clave_root_ok() {
+  [ -f "$ROOT_AK" ] || { echo "no existe $ROOT_AK"; return 1; }
+  [ "$(stat -c '%U:%G %a' "$ROOT_AK" 2>/dev/null)" = "root:root 600" ] || { echo "propietario o permisos de authorized_keys distintos de root:root 600"; return 1; }
+  [ "$(grep -cEv '^[[:space:]]*(#|$)' "$ROOT_AK" 2>/dev/null)" = 1 ] || { echo "authorized_keys no tiene exactamente una clave"; return 1; }
+  if grep -Ev '^[[:space:]]*(#|$)' "$ROOT_AK" 2>/dev/null | grep -qv '^ssh-ed25519 '; then echo "la linea de authorized_keys tiene opciones o no es ED25519"; return 1; fi
+  FPL_AK=$(ssh-keygen -lf "$ROOT_AK" 2>/dev/null) || { echo "ssh-keygen no puede leer authorized_keys"; return 1; }
+  [ "$(printf '%s' "$FPL_AK" | awk '{print $2}')" = "$ROOT_FP" ] || { echo "la huella de authorized_keys no es la del propietario"; return 1; }
+  return 0
+}
+rev_sistema() { s=$(systemctl show tai-reversion.timer -p ActiveEnterTimestamp --value 2>/dev/null); [ -n "$s" ] || return 1; e=$(date -d "$s" +%s 2>/dev/null) || return 1; echo $((e + 600)); }
+rev_fijar() { SIS=$(rev_sistema); PRO=$(( $1 + 600 )); if [ -n "$SIS" ] && [ $((SIS - PRO)) -ge -5 ] && [ $((SIS - PRO)) -le 10 ]; then if [ "$SIS" -lt "$PRO" ]; then echo "$SIS" > $D/rev_vence.epoch; else echo "$PRO" > $D/rev_vence.epoch; fi; echo VENCIMIENTO_VERIFICADO; echo "VENCE_UTC=$(date -u -d @$(cat $D/rev_vence.epoch) +%Y-%m-%dT%H:%M:%SZ)"; else rm -f $D/rev_vence.epoch; echo "VENCIMIENTO_NO_VERIFICABLE_PARAR (calculada=$PRO systemd=${SIS:-vacio})"; fi; }
+rev_restan() { s=$(rev_sistema) || { echo NO_VERIFICABLE; return 0; }; p=$(( $(cat $D/rev_vence.epoch 2>/dev/null || echo 0) - $(date +%s) )); s=$(( s - $(date +%s) )); if [ "$s" -lt "$p" ]; then echo "$s"; else echo "$p"; fi; }
+
+ahora() { date +%s; }
+reg() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >> "$REGISTRO" 2>/dev/null; }
+salir() { echo "$1"; exit "${2:-1}"; }
+solo_root() { [ "$TAI_F7_PRUEBAS" = 1 ] || [ "$(id -u)" = 0 ] || salir "F7_FALLA: ejecutar como root en la consola de Hostinger" 1; }
+aleatorio_hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
+proc_inicio() { sed 's/^.*) //' "$PROC/$1/stat" 2>/dev/null | awk '{print $20}'; }
+campo() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
+valida() { printf '%s' "$2" | grep -Eq "$1"; }
+FALLOS=""
+falla() { FALLOS="$FALLOS
+   - $1"; }
+
+# ---- consola B (acceso administrativo independiente) ----
+consola_b_viva() {
+  bp=$(campo "$CONSOLAB" B_PID); bs=$(campo "$CONSOLAB" B_START)
+  [ -n "$bp" ] && [ -n "$bs" ] || return 1
+  [ "$(proc_inicio "$bp")" = "$bs" ]
+}
+
+# ---- reversion segura: UNICA via (junto con la puerta) que detiene el temporizador ----
+archivar() {
+  [ -f "$ESTADO" ] || return 0
+  id=$(campo "$ESTADO" E_ID); mkdir -p "$HIST"
+  sed -e '/^E_CLAVE=/d' -e "s/^E_ESTADO=.*/E_ESTADO=$1/" "$ESTADO" > "$HIST/${id:-sin-id}.$1" 2>/dev/null
+  rm -f "$ESTADO"
+}
+revertir_seguro() {
+  reg "REVERTIR motivo=$1"
+  echo "F7_REVERSION_SEGURA: $1"
+  sh "$D/revertir.sh"; rc=$?
+  echo "REVERSION_RC=$rc"
+  if [ "$rc" -eq 0 ]; then
+    if systemctl is-active --quiet tai-reversion.timer; then systemctl stop tai-reversion.timer; fi
+    echo "temporizador detenido (la reversion termino bien)"
+    inv $D/invariantes-despues.txt
+    inv_igual $D/invariantes-base.txt $D/invariantes-despues.txt && echo INVARIANTES_IGUALES || echo "INVARIANTES_DISTINTOS (revisar con diff $D/invariantes-base.txt $D/invariantes-despues.txt)"
+    [ ! -e "$DROPIN" ] && echo "archivo de sshd retirado" || echo "AVISO: el archivo de sshd sigue presente"
+    archivar REVERTIDA
+    echo "F7_REVERTIDO: para repetir, nueva activacion desde 'preparar' (nada de esta activacion sirve para cerrar otra)"
+  else
+    if [ -f "$ESTADO" ]; then sed -i -e 's/^E_ESTADO=.*/E_ESTADO=REVERSION_FALLIDA/' -e '/^E_CLAVE=/d' "$ESTADO"; fi
+    echo "REVERSION_FALLO rc=$rc: NO se detiene el temporizador (proteccion automatica conservada). COMUNICAR este mensaje y la salida anterior"
+  fi
+  return "$rc"
+}
+
+# ---- comprobaciones locales V13-V15 (las mismas del plan, automatizadas) ----
+comprobar_v13() {
+  r=$(su -s /bin/sh tai-inspect -c 'for p in /opt/tai-inspect /var/lib/tai-inspect/reports /var/lib/tai-inspect/staging /var/lib/tai-inspect/collector-state /var/lib/tai-inspect/home /etc/ssh/authorized_keys.tai-inspect /etc/ssh/sshd_config.d; do [ -w "$p" ] && echo ESCRIBIBLE:$p; done; for p in /var/lib/tai-inspect/staging /var/lib/tai-inspect/collector-state /var/lib/tai-inspect/requests; do [ -r "$p" ] && echo LEGIBLE:$p; done' 2>&1)
+  [ -z "$r" ] || falla "V13 (permisos de tai-inspect): $(echo "$r" | tr '\n' ' ')"
+}
+comprobar_v14() {
+  if command -v sudo > /dev/null 2>&1; then
+    s=$(LC_ALL=C sudo -l -U tai-inspect 2>&1)
+    case "$s" in *"is not allowed to run sudo"*) ;; *) falla "V14 (sudo): salida de 'sudo -l -U tai-inspect' no reconocida o con permisos: $(echo "$s" | head -2 | tr '\n' ' ')" ;; esac
+  fi
+  g=$(id -G tai-inspect 2>&1)
+  case "$g" in ""|*[!0-9\ ]*) falla "V14 (grupos): no se pudo leer id -G tai-inspect: $g" ;; *) [ "$(echo $g | wc -w)" -eq 1 ] || falla "V14 (grupos): tai-inspect pertenece a mas de un grupo ($g)" ;; esac
+}
+comprobar_v15() {
+  python3 - "$AUDIT" <<'PY' || falla "V15 (auditoria): los ultimos registros del gate no tienen seq correlativo o no se pueden leer"
+import json, sys
+try:
+    lineas = open(sys.argv[1], "rb").read().decode("utf-8", "replace").splitlines()[-12:]
+    seqs = [json.loads(l)["seq"] for l in lineas if l.strip()]
+    ok = len(seqs) >= 2 and all(b == a + 1 for a, b in zip(seqs, seqs[1:]))
+except Exception:
+    ok = False
+sys.exit(0 if ok else 1)
+PY
+  n=$(journalctl -t tai-gate -n 4 --no-pager 2>/dev/null | grep -c gate_)
+  [ "${n:-0}" -ge 1 ] || falla "V15 (journald): sin registros recientes de tai-gate"
+}
+# Corroboracion INDEPENDIENTE desde el registro del gate (lo que el servidor vio desde el arranque de esta activacion)
+# Vigilancia de accesos de root DURANTE esta activacion: solo se admite la clave del propietario; cualquier otra huella u otro metodo bloquea el cierre.
+comprobar_accesos_root() {
+  ISO=$(date -u -d @"$1" +%Y-%m-%dT%H:%M:%S 2>/dev/null)
+  valida '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$' "$ISO" || { falla "ACCESOS_ROOT: no se puede calcular el instante de la activacion"; return; }
+  JR=$(journalctl -u ssh -o short-iso --no-pager 2>/dev/null) || { falla "ACCESOS_ROOT: no se puede leer el registro de sshd"; return; }
+  XR=$(printf '%s
+' "$JR" | awk -v t="$ISO" -v fpx="$ROOT_FP" '$1 >= t && /Accepted [a-z-]+ for root / { if ($0 ~ /Accepted publickey for root / && index($0, fpx) > 0) next; print $1 " " $0 }' | head -5)
+  [ -z "$XR" ] || falla "ACCESOS_ROOT: desde la activacion hubo accesos de root con una clave DESCONOCIDA o por otro metodo: $(printf '%s' "$XR" | cut -c1-220 | tr '
+' ';')"
+}
+comprobar_auditoria() {
+  python3 - "$AUDIT" "$1" <<'PY' || falla "AUDITORIA: el registro del gate no corrobora las peticiones V1-V8 de ESTA activacion (o la secuencia tiene huecos)"
+import json, sys, time
+t0 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(sys.argv[2])))
+try:
+    reg = [json.loads(l) for l in open(sys.argv[1], "rb").read().decode("utf-8", "replace").splitlines()[-4000:] if l.strip()]
+    reg = [r for r in reg if str(r.get("ts", "")) >= t0]
+    seqs = [r["seq"] for r in reg]
+    cont = all(b == a + 1 for a, b in zip(seqs, seqs[1:]))
+    cuenta = {}
+    for r in reg:
+        if r.get("evento") == "gate_resultado" and r.get("resultado") == "ok":
+            cuenta[r.get("check")] = cuenta.get(r.get("check"), 0) + 1
+    need = {"host-recursos": 2, "host-red": 1, "host-servicios": 1, "host-tiempo": 1, "host-actualizaciones": 1}
+    ok = cont and all(cuenta.get(k, 0) >= v for k, v in need.items())
+except Exception:
+    ok = False
+sys.exit(0 if ok else 1)
+PY
+}
+cuota_info() {
+  python3 -c 'import json,sys,time
+try:
+    d = json.load(open(sys.argv[1]))
+    a = d.get("last", {}).get("host-actualizaciones")
+    print(int(time.time() - a) if a is not None else 99999, int(d.get("count", 0)))
+except Exception:
+    print("ERR 0")' "$CUOTA"
+}
+hmac_ok() { printf '%s\n%s\n%s\n' "$1" "$2" "$3" | python3 -c 'import hmac,hashlib,sys; k,m,h=sys.stdin.read().split("\n")[:3]; sys.exit(0 if hmac.compare_digest(hmac.new(k.encode(),m.encode(),hashlib.sha256).hexdigest(),h) else 1)'; }
+tai_efectivo_ok() {
+  sshd -T -C user=tai-inspect,host=localhost,addr=127.0.0.1 | grep -E '^(forcecommand|authorizedkeysfile|passwordauthentication|pubkeyauthentication|kbdinteractiveauthentication|authenticationmethods|permittty|allowtcpforwarding|allowagentforwarding|x11forwarding|disableforwarding|maxsessions|permitopen|authorizedkeyscommand|permituserrc) ' | sort | diff - $D/tai-esperado.txt > /dev/null
+}
+
+# ---- los formatos REALES que el cierre necesita leer (si no coinciden, se descubre ANTES de armar nada) ----
+formatos_reales() {
+  x=$(systemctl show ssh.service -p ActiveEnterTimestamp --value 2>/dev/null)
+  { [ -n "$x" ] && date -d "$x" +%s > /dev/null 2>&1; } || falla "formato de ActiveEnterTimestamp de systemd no reconocido ('$x'): el vencimiento no seria verificable"
+  x=$(systemctl show ssh.service -p ActiveEnterTimestampMonotonic --value 2>/dev/null)
+  valida '^[0-9]+$' "$x" || falla "formato de ActiveEnterTimestampMonotonic no reconocido ('$x'): no se puede identificar la instancia del temporizador"
+  python3 - "$AUDIT" <<'PY' || falla "el registro del gate ($AUDIT) no tiene el formato esperado (JSON por linea con seq entero, ts ISO-8601 UTC y evento) o esta vacio"
+import json, re, sys
+try:
+    ls = [l for l in open(sys.argv[1], "rb").read().decode("utf-8", "replace").splitlines()[-12:] if l.strip()]
+    rs = [json.loads(l) for l in ls]
+    ok = len(rs) >= 2 and all(isinstance(r.get("seq"), int) and re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", str(r.get("ts", ""))) and r.get("evento") for r in rs)
+except Exception:
+    ok = False
+sys.exit(0 if ok else 1)
+PY
+}
+
+# ---- condiciones previas (comunes a preparar y activar) ----
+previos() {
+  [ -d "$D" ] || falla "no existe $D"
+  [ "$(sha256sum "$D/revertir.sh" 2>/dev/null | cut -d' ' -f1)" = "$HASH_REVERTIR" ] || falla "revertir.sh no tiene la huella ensayada ($HASH_REVERTIR)"
+  [ -s "$D/invariantes-base.txt" ] || falla "falta $D/invariantes-base.txt"
+  if [ -s "$D/invariantes-base.txt" ]; then
+    inv "$D/invariantes-previo.txt"
+    inv_igual "$D/invariantes-base.txt" "$D/invariantes-previo.txt" || falla "los invariantes (salvo el hash de authorized_keys, que se comprueba por huella) ya difieren de la referencia ANTES de empezar (diff $D/invariantes-base.txt $D/invariantes-previo.txt)"
+  fi
+  if m=$(clave_root_ok); then :; else falla "CLAVE_ROOT: $m"
+  fi
+  for f in r-root.txt r-glob.txt tai-esperado.txt; do [ -f "$D/$f" ] || falla "falta $D/$f"; done
+  [ ! -e "$DROPIN" ] || falla "$DROPIN ya esta colocado (una activacion nueva parte sin el archivo)"
+  [ "$(sha256sum "$PLANTILLA" 2>/dev/null | cut -d' ' -f1)" = "$HASH_DROPIN" ] || falla "la plantilla instalada no tiene la huella aprobada"
+  [ "$(systemctl is-active tai-reversion.timer 2>/dev/null)" != active ] || falla "tai-reversion.timer ya esta activo"
+  case "$(systemctl is-active tai-reversion.service 2>/dev/null)" in active|activating) falla "tai-reversion.service esta en marcha" ;; esac
+  if [ -f "$ESTADO" ]; then falla "hay una activacion anterior sin resolver ($(campo "$ESTADO" E_ESTADO)); usar: sh $D/f7-vps.sh revertir"; fi
+  [ "$(systemctl is-active ssh 2>/dev/null)" = active ] || falla "ssh no esta activo"
+  sshd -t > /dev/null 2>&1 || falla "sshd -t falla antes de empezar"
+  command -v python3 > /dev/null 2>&1 || falla "falta python3"
+  formatos_reales
+  consola_b_viva || falla "la CONSOLA B no esta registrada o ya no esta abierta (abrir una segunda consola de Hostinger y ejecutar alli: sh $D/f7-vps.sh consola-b)"
+  set -- $(cuota_info)
+  if ! valida '^[0-9]+$' "$1" || ! valida '^[0-9]+$' "$2"; then falla "no se puede leer el limitador ($CUOTA)"; else
+    [ "$1" -ge 300 ] || falla "host-actualizaciones se acepto hace $1 s: esperar $((300 - $1)) s mas (si no, V8 quedaria pendiente)"
+    [ "$2" -le 30 ] || falla "ya hay $2 peticiones aceptadas hoy (UTC): el cupo diario es 60 y esta serie usa unas 25"
+  fi
+}
+
+cmd_consola_b() {
+  solo_root
+  [ -d "$D" ] || salir "F7_FALLA: no existe $D" 1
+  s=$(proc_inicio "$MI_PPID")
+  [ -n "$s" ] || salir "F7_FALLA: no se puede identificar esta consola" 1
+  printf 'B_PID=%s\nB_START=%s\nB_REG=%s\n' "$MI_PPID" "$s" "$(ahora)" > "$CONSOLAB.tmp" && mv "$CONSOLAB.tmp" "$CONSOLAB"
+  echo "CONSOLA_B_REGISTRADA pid=$MI_PPID. Dejar ESTA pestana abierta hasta el cierre y NO ejecutar 'activar' aqui."
+}
+
+cmd_preparar() {
+  solo_root
+  FALLOS=""; previos
+  if [ -z "$FALLOS" ]; then echo "F7_PREPARADO: todo lo previo esta en orden. Siguiente: en la consola A, sh $D/f7-vps.sh activar"; return 0; fi
+  echo "F7_PREPARACION_FALLA:$FALLOS"; return 1
+}
+
+cmd_activar() {
+  solo_root
+  FALLOS=""; previos
+  [ "$MI_PPID" != "$(campo "$CONSOLAB" B_PID)" ] || falla "esta es la consola B: ejecutar 'activar' en OTRA consola (la A)"
+  if [ -n "$FALLOS" ]; then echo "F7_ACTIVACION_RECHAZADA (no se ha modificado nada):$FALLOS"; return 1; fi
+  reg "ACTIVAR inicio"
+  # Paso 1: colocar y validar con el arbol real
+  install -o root -g root -m 0644 "$PLANTILLA" "$DROPIN"; echo "colocado rc=$?"
+  ok7=1
+  sshd -t > $D/sshd-t-final.txt 2>&1; rc=$?; echo "sshd -t rc=$rc"; { [ $rc -eq 0 ] && [ ! -s $D/sshd-t-final.txt ]; } || ok7=0
+  sshd -T -C user=root,host=localhost,addr=127.0.0.1 | sort | diff - $D/r-root.txt > /dev/null && echo ROOT_IDENTICO || ok7=0
+  sshd -T | sort | diff - $D/r-glob.txt > /dev/null && echo GLOBAL_IDENTICO || ok7=0
+  tai_efectivo_ok && echo TAI_EFECTIVO_OK || ok7=0
+  [ "$(sha256sum "$DROPIN" | cut -d' ' -f1)" = "$HASH_DROPIN" ] || ok7=0
+  if [ $ok7 -ne 1 ]; then
+    echo "F7_FALLA: se retira el archivo recien colocado y NO se recarga"
+    cmp -s "$PLANTILLA" "$DROPIN" && rm -f "$DROPIN"
+    reg "ACTIVAR fallo en validacion"; return 1
+  fi
+  echo F7_VALIDADO
+  # Paso 2: armar UNA sola reversion, comprobar precision y fijar el vencimiento real
+  ID="$(date -u +%Y%m%dT%H%M%SZ)-$(aleatorio_hex 8)"; CLAVE=$(aleatorio_hex 16)
+  T0=$(ahora)
+  systemd-run --unit=tai-reversion --on-active=10min --timer-property=AccuracySec=1s --description="reversion automatica del acceso tai-inspect" /bin/sh $D/revertir.sh; arm=$?
+  echo "reversion armada rc=$arm"
+  if [ "$arm" -ne 0 ]; then revertir_seguro "el armado fallo (nada se ha recargado)"; return 1; fi
+  if systemctl show tai-reversion.timer -p AccuracyUSec --value | grep -Eqx '1s|1000ms|1000000'; then echo REVERSION_PRECISA; else echo REVERSION_IMPRECISA_PARAR; revertir_seguro "temporizador impreciso"; return 1; fi
+  vf=$(rev_fijar $T0); echo "$vf"
+  case "$vf" in *VENCIMIENTO_VERIFICADO*) ;; *) revertir_seguro "vencimiento no verificable"; return 1 ;; esac
+  VENCE_UTC=$(date -u -d @$(cat $D/rev_vence.epoch) +%Y-%m-%dT%H:%M:%SZ)
+  MONO=$(systemctl show tai-reversion.timer -p ActiveEnterTimestampMonotonic --value 2>/dev/null)
+  [ -n "$MONO" ] || { revertir_seguro "no se puede identificar la instancia del temporizador"; return 1; }
+  # Estado de ESTA activacion (se destruye al cerrar o revertir; un resultado de otra activacion no coincide con id, clave ni temporizador)
+  { echo E_ESTADO=ACTIVA; echo E_ID=$ID; echo E_CLAVE=$CLAVE; echo E_T0=$T0; echo E_VENCE_UTC=$VENCE_UTC; echo E_TIMER_MONO=$MONO
+    echo E_A_PID=$MI_PPID; echo E_B_PID=$(campo "$CONSOLAB" B_PID); echo E_B_REG=$(campo "$CONSOLAB" B_REG); } > "$ESTADO.tmp" && mv "$ESTADO.tmp" "$ESTADO"
+  # Paso 3: recargar (nunca restart)
+  systemctl is-active ssh; systemctl reload ssh; rl=$?; echo "reload rc=$rl"
+  if [ "$rl" -ne 0 ]; then revertir_seguro "la recarga de ssh fallo"; return 1; fi
+  reg "ACTIVAR ok id=$ID vence=$VENCE_UTC"
+  rev_estado_linea
+  echo "F7_ACTIVADO id=$ID vence_utc=$VENCE_UTC"
+  echo "== AHORA, en Windows PowerShell 5.1, desde la raiz del repositorio (una sola linea; deja ssh-add cargado): =="
+  printf '%s
+' "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"$WIN_PS\" -VenceUtc '$VENCE_UTC' -IdActivacion '$ID' -SecretoActivacion '$CLAVE'"
+  echo "(opcional: anadir -AliasAdmin '<alias SSH de tu administrador por clave>' para automatizar tambien el acceso administrativo por SSH)"
+  echo "== El script de Windows imprimira al final la orden 'sh $D/f7-vps.sh cerrar ...': pegarla AQUI (o en la consola B). =="
+}
+rev_estado_linea() { echo "timer=$(systemctl show tai-reversion.timer -p ActiveState --value 2>/dev/null) subestado=$(systemctl show tai-reversion.timer -p SubState --value 2>/dev/null) restan_s=$(rev_restan) ahora_utc=$(date -u +%T)"; }
+
+cmd_cerrar() {
+  solo_root
+  LINEA="$*"
+  [ -f "$ESTADO" ] || salir "F7_NO_HAY_ACTIVACION: no hay ninguna activacion en curso (un resultado de otra activacion no puede cerrar nada). Si queda proteccion o archivo: sh $D/f7-vps.sh revertir" 1
+  E_ESTADO=; E_ID=; E_CLAVE=; E_T0=; E_VENCE_UTC=; E_TIMER_MONO=; E_A_PID=; E_B_PID=; E_B_REG=
+  . "$ESTADO"
+  [ "$E_ESTADO" = ACTIVA ] || salir "F7_ESTADO_$E_ESTADO: no se puede cerrar; usar: sh $D/f7-vps.sh revertir" 1
+  # --- Lectura de la linea (un error de FORMATO no cancela ni revierte: se puede repetir mientras quede margen) ---
+  p_id=; p_ver=; p_ok=; p_ko=; p_pend=; p_ab=; p_fu=; p_vence=; p_adm=; p_hm=; cab=0; raro=0
+  set -f
+  for t in $LINEA; do
+    case "$t" in
+      F7R1) cab=1 ;; id=*) p_id=${t#id=} ;; veredicto=*) p_ver=${t#veredicto=} ;; ok=*) p_ok=${t#ok=} ;; ko=*) p_ko=${t#ko=} ;; pend=*) p_pend=${t#pend=} ;;
+      abortado=*) p_ab=${t#abortado=} ;; fuera=*) p_fu=${t#fuera=} ;; vence=*) p_vence=${t#vence=} ;; admin=*) p_adm=${t#admin=} ;; hmac=*) p_hm=${t#hmac=} ;; ps=*) ;; *) raro=1 ;;
+    esac
+  done
+  set +f
+  fmt=1
+  [ "$cab" = 1 ] && [ "$raro" = 0 ] || fmt=0
+  valida '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$' "$p_id" || fmt=0
+  case "$p_ver" in AUTOMATICAS_OK|V_FALLA|V_INCOMPLETO) ;; *) fmt=0 ;; esac
+  for n in "$p_ok" "$p_ko" "$p_pend"; do valida '^[0-9]{1,3}$' "$n" || fmt=0; done
+  case "$p_ab$p_fu" in 00|01|10|11) ;; *) fmt=0 ;; esac
+  valida '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$p_vence" || fmt=0
+  case "$p_adm" in SSH_OK|NO_PROBADO|FALLA) ;; *) fmt=0 ;; esac
+  valida '^[0-9a-f]{64}$' "$p_hm" || fmt=0
+  if [ "$fmt" -ne 1 ]; then
+    echo "F7_ENTRADA_INVALIDA: la linea no tiene el formato F7R1 (copiarla ENTERA desde Windows). No se cancela ni se revierte; quedan $(rev_restan) s."
+    return 3
+  fi
+  # --- Condiciones: TODAS obligatorias; cualquier fallo => no se cancela y se revierte con seguridad ---
+  FALLOS=""; T_INI=$(ahora)
+  [ "$p_id" = "$E_ID" ] || falla "el id del resultado ($p_id) no es el de esta activacion ($E_ID)"
+  hmac_ok "$E_CLAVE" "F7R1|$p_id|$p_ver|$p_ok|$p_ko|$p_pend|$p_ab|$p_fu|$p_vence|$p_adm" "$p_hm" || falla "la firma HMAC del resultado no corresponde a la clave de ESTA activacion"
+  [ "$p_ver" = AUTOMATICAS_OK ] || falla "veredicto de Windows = $p_ver (se exige AUTOMATICAS_OK)"
+  [ "$p_ko" -eq 0 ] && [ "$p_pend" -eq 0 ] && [ "$p_ab" = 0 ] && [ "$p_fu" = 0 ] || falla "Windows informa fallos=$p_ko pendientes=$p_pend abortado=$p_ab fuera_de_margen=$p_fu"
+  [ "$p_ok" -ge "$MIN_OK" ] || falla "solo $p_ok pruebas correctas (se exigen al menos $MIN_OK)"
+  [ "$p_adm" != FALLA ] || falla "el acceso administrativo por SSH probado desde Windows FALLO"
+  [ "$p_vence" = "$E_VENCE_UTC" ] || falla "el vencimiento del resultado ($p_vence) no es el de esta activacion ($E_VENCE_UTC)"
+  [ "$(systemctl show tai-reversion.timer -p ActiveState --value 2>/dev/null)" = active ] && [ "$(systemctl show tai-reversion.timer -p SubState --value 2>/dev/null)" = waiting ] || falla "el temporizador no esta active/waiting (puede haber vencido y revertido ya)"
+  [ "$(systemctl show tai-reversion.timer -p ActiveEnterTimestampMonotonic --value 2>/dev/null)" = "$E_TIMER_MONO" ] || falla "el temporizador actual no es el que armo ESTA activacion"
+  case "$(systemctl is-active tai-reversion.service 2>/dev/null)" in active|activating) falla "tai-reversion.service esta en marcha (la reversion se esta ejecutando)" ;; esac
+  R=$(rev_restan)
+  case "$R" in ''|*[!0-9-]*) falla "vencimiento no verificable ($R)" ;; *) [ "$R" -ge "$MARGEN_CIERRE" ] || falla "quedan solo $R s (minimo $MARGEN_CIERRE s al empezar la evaluacion)" ;; esac
+  [ "$(sha256sum "$DROPIN" 2>/dev/null | cut -d' ' -f1)" = "$HASH_DROPIN" ] || falla "el archivo de sshd no esta colocado o no es el aprobado"
+  sshd -t > /dev/null 2>&1 || falla "sshd -t falla"
+  tai_efectivo_ok || falla "la configuracion efectiva de tai-inspect no es la esperada"
+  inv $D/invariantes-previo.txt; inv_igual $D/invariantes-base.txt $D/invariantes-previo.txt || falla "invariantes distintos (diff $D/invariantes-base.txt $D/invariantes-previo.txt)"
+  if m=$(clave_root_ok); then :; else falla "CLAVE_ROOT: $m"; fi
+  consola_b_viva || falla "la consola B (acceso administrativo independiente) ya no esta abierta"
+  [ "$E_B_PID" != "$E_A_PID" ] && [ -n "$E_B_PID" ] || falla "la consola B no era independiente de la de activacion"
+  [ "${E_B_REG:-0}" -lt "$E_T0" ] 2>/dev/null || falla "la consola B se registro DESPUES de activar (debe prepararse antes)"
+  comprobar_v13; comprobar_v14; comprobar_v15
+  comprobar_auditoria "$E_T0"
+  comprobar_accesos_root "$E_T0"
+  if [ -n "$FALLOS" ]; then
+    echo "F7_CIERRE_RECHAZADO (NO se cancela la proteccion):$FALLOS"
+    revertir_seguro "condiciones no cumplidas"; return 1
+  fi
+  # --- Todo verificado: ultima comprobacion de tiempo y cancelacion ---
+  R=$(rev_restan); DUR=$(( $(ahora) - T_INI ))
+  echo "controles_s=$DUR restan_s=$R (margen exigido al empezar: $MARGEN_CIERRE s; antes de parar: $MARGEN_FINAL s; controles: maximo $MAX_CONTROLES s)"
+  case "$R" in ''|*[!0-9-]*) revertir_seguro "vencimiento no verificable al cancelar"; return 1 ;; esac
+  [ "$DUR" -le "$MAX_CONTROLES" ] || { revertir_seguro "los controles tardaron $DUR s (maximo $MAX_CONTROLES s)"; return 1; }
+  [ "$R" -ge "$MARGEN_FINAL" ] || { revertir_seguro "margen agotado al cancelar ($R s)"; return 1; }
+  systemctl stop tai-reversion.timer; rc=$?
+  echo "cancelada rc=$rc"
+  if [ "$rc" -ne 0 ]; then revertir_seguro "la cancelacion fallo"; return 1; fi
+  vt=$(systemctl is-active tai-reversion.timer 2>/dev/null); vs=$(systemctl is-active tai-reversion.service 2>/dev/null); nt=$(systemctl list-timers --all --no-pager 2>/dev/null | grep -c tai-reversion)
+  echo "timer=$vt servicio=$vs temporizadores=$nt"
+  inv $D/invariantes-despues.txt
+  if { [ "$vt" = inactive ] || [ "$vt" = unknown ]; } && { [ "$vs" = inactive ] || [ "$vs" = unknown ]; } && [ "$nt" -eq 0 ] && inv_igual $D/invariantes-base.txt $D/invariantes-despues.txt && clave_root_ok > /dev/null; then
+    echo INVARIANTES_IGUALES
+    archivar CERRADA; reg "CERRADA id=$E_ID"
+    echo "F7_CERRADO_OK id=$E_ID. Falta SOLO el control del PC: https://treidilor.com/api/health con status=ok y el mismo sourceHash (CP5)."
+    return 0
+  fi
+  revertir_seguro "estado final no confirmado tras cancelar"; return 1
+}
+
+cmd_estado() {
+  echo "archivo sshd: $([ -e "$DROPIN" ] && echo colocado || echo ausente)"
+  echo "activacion: $(campo "$ESTADO" E_ESTADO) id=$(campo "$ESTADO" E_ID)"
+  rev_estado_linea
+  consola_b_viva && echo "consola B: viva" || echo "consola B: NO registrada o cerrada"
+}
+
+solo_root_cmd="$1"; [ $# -gt 0 ] && shift
+case "$solo_root_cmd" in
+  consola-b) cmd_consola_b ;;
+  preparar) cmd_preparar ;;
+  activar) cmd_activar ;;
+  cerrar) cmd_cerrar "$@" ;;
+  revertir) solo_root; revertir_seguro "reversion manual solicitada" ;;
+  estado) cmd_estado ;;
+  *) echo "uso: sh f7-vps.sh consola-b | preparar | activar | cerrar '<linea F7R1>' | revertir | estado"; exit 2 ;;
+esac
+TAI_F7_EOF
+if [ "$(sha256sum $D/f7-vps.sh.nuevo | cut -d' ' -f1)" = "9a621654612e60679c1a11358d04862c730e119817cf78bfed6d5ebe2e22bbe2" ]; then chown root:root $D/f7-vps.sh.nuevo; chmod 700 $D/f7-vps.sh.nuevo; mv -f $D/f7-vps.sh.nuevo $D/f7-vps.sh; echo "F7_SCRIPT_INSTALADO_OK 9a621654612e60679c1a11358d04862c730e119817cf78bfed6d5ebe2e22bbe2"; else rm -f $D/f7-vps.sh.nuevo; echo "F7_SCRIPT_CORRUPTO_NO_USAR: la huella no coincide; se ha descartado y NO se ha instalado"; fi
+umask $U

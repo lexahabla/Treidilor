@@ -1,0 +1,12 @@
+#!/usr/bin/python3 -I
+# -*- coding: utf-8 -*-
+# Utilidad de ADMINISTRACIÓN (la ejecuta root a mano al instalar o cambiar archivos): regenera MANIFEST.json.
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
+from tai_inspect import config, manifest  # noqa: E402
+
+man, problemas = manifest.guardar(config.INSTALL_DIR, config.MANIFEST_FILE)
+print("archivos: %d, problemas: %d" % (len(man), len(problemas)))
+sys.exit(1 if problemas else 0)

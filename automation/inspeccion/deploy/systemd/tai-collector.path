@@ -1,0 +1,12 @@
+# PLANTILLA (no instalada). Arranca el colector cuando el gate deja una peticion en el directorio.
+[Unit]
+Description=Peticiones de diagnostico pendientes (Treidilor AI)
+
+[Path]
+DirectoryNotEmpty=/var/lib/tai-inspect/requests
+Unit=tai-collector.service
+TriggerLimitIntervalSec=10s
+TriggerLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

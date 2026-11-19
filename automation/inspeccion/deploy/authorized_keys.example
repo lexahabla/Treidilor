@@ -1,0 +1,5 @@
+# PLANTILLA (no instalada). Se instalaría como /etc/ssh/authorized_keys.tai-inspect, propiedad de root:root, modo 0644
+# (la directiva AuthorizedKeysFile del bloque Match apunta ahí; el usuario restringido NO puede modificarlo).
+# Una única clave DEDICADA, protegida con passphrase, generada por el propietario; la clave de ejemplo es un MARCADOR, no una clave real.
+# Si hubiera una IP fija de origen se añadiría from="IP" a las opciones.
+restrict,command="/opt/tai-inspect/bin/tai-gate" ssh-ed25519 AAAAMARCADORNOESUNACLAVEREAL tai-inspect-dedicada

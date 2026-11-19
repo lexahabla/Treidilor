@@ -1,0 +1,2 @@
+# Estos archivos se ejecutarán en Linux: finales de línea LF siempre (un CRLF en un shebang rompe el script).
+* text eol=lf

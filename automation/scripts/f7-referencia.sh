@@ -1,0 +1,208 @@
+#!/bin/sh
+# f7-referencia.sh - Verificar la clave de root y aprobar una nueva referencia de invariantes de F7. Consola web de Hostinger, como root.
+#
+#   sh $D/f7-referencia.sh verificar                          SOLO LECTURA. Termina en CLAVE_ROOT_VERIFICADA solo si TODAS las comprobaciones pasan.
+#   APRUEBO=SI sh $D/f7-referencia.sh clasificar              Registra (no autoriza) accesos antiguos de claves TEMPORALES de consola, tras revisarlos.
+#   APRUEBO=SI SHA_APROBADO=<sha> sh $D/f7-referencia.sh aprobar
+#                                                             Aprueba la nueva referencia SOLO para el hash que mostro 'verificar' (SHA_PARA_APROBAR).
+#
+# NO modifica ninguna clave SSH ni la configuracion del servidor: solo LEE /root/.ssh/authorized_keys y escribe EXCLUSIVAMENTE en /root/tai-etapa2.
+# La referencia original se conserva siempre (invariantes-base.original-<sha12>.txt + .sha256) y nunca se sobrescribe.
+# La identidad de la clave de root se decide por su HUELLA (EXP), no por el hash del archivo: un proveedor puede reescribir el archivo, pero una
+# clave distinta, con opciones, o una segunda clave, nunca se verifica. Un acceso de root con una huella desconocida bloquea la verificacion
+# salvo que se haya CLASIFICADO expresamente (clasificar) como temporal de consola: clasificar no autoriza esa clave para nada.
+umask 077
+if [ "$TAI_F7_PRUEBAS" = 1 ]; then
+  # SOLO para las pruebas locales con programas simulados (en el servidor esta variable no existe y estas constantes son fijas)
+  F=$TAI_F; D=$TAI_D; EXP=$TAI_EXP
+else
+  F=/root/.ssh/authorized_keys
+  D=/root/tai-etapa2
+  EXP='SHA256:zzEk73jAM3o9yO0f7uBlYhu2gZhxRWbpTrL0RzKIlfE'
+fi
+BASE=$D/invariantes-base.txt
+NUEVA=$D/invariantes-nueva.txt
+PREVIO=$D/invariantes-previo.txt
+DIFF=$D/invariantes-diff-aprobacion.txt
+TEMPS=$D/f7-huellas-temporales.txt
+LOCK=$D/.f7-referencia.lock
+
+inv() { { echo "## sshd efectivo de root"; sshd -T -C user=root,host=localhost,addr=127.0.0.1 | sort; echo "## sshd global"; sshd -T | sort; echo "## huellas (no contenido)"; sha256sum "$F" /etc/ssh/sshd_config; echo "## docker (nombre y replicas)"; docker service ls --format '{{.Name}}|{{.Replicas}}'; echo "## puertos a la escucha"; ss -H -tuln | awk '{print $1, $5}' | sort; echo "## servicios"; systemctl is-active ssh docker; } > "$1" 2>&1; }
+hash_de() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+es_sha() { printf '%s' "$1" | grep -Eq '^[0-9a-f]{64}$'; }
+cuenta() { grep -c "^$1 .*authorized_keys\$" "$2" 2>/dev/null; }
+hash_de_base() { grep ' .*authorized_keys$' "$BASE" 2>/dev/null | awk '{print $1}'; }
+
+# ---- accesos de root en el registro de sshd: una linea por huella "huella|n|primero|ips" (solo lectura) ----
+accesos_root() {
+  JALL=$(journalctl -u ssh -o short-iso --no-pager 2>/dev/null) || return 1
+  OTROMET=$(printf '%s\n' "$JALL" | grep -E 'Accepted [a-z-]+ for root ' | grep -vc 'Accepted publickey for root ')
+  ACC=$(printf '%s\n' "$JALL" | awk '/Accepted publickey for root/ { ip="?"; fp="?"; for (i = 1; i <= NF; i++) { if ($i == "from") ip = $(i + 1); if ($i ~ /^SHA256:/) fp = $i } n[fp]++; if (!(fp in p)) p[fp] = $1; if (index(ips[fp], ip "," ) == 0) ips[fp] = ips[fp] ip "," } END { for (k in n) print k "|" n[k] "|" p[k] "|" ips[k] }' | sort)
+  return 0
+}
+
+# ---- verificacion: SOLO LECTURA. Deja V (1/0), FP, SHA, SHA_BASE. Cualquier comando que falle cuenta como fallo. ----
+verificar_clave() {
+  V=1; FP=; ACC=; OTROMET=0; NOCLAS=
+  echo "== 1. Estado del archivo (solo lectura) =="
+  [ -d "$D" ] || { echo "FALLA: no existe $D"; V=0; }
+  [ -f "$F" ] || { echo "FALLA: no existe $F"; V=0; return 0; }
+  ST=$(stat -c '%U:%G %a size=%s mtime=%y' "$F" 2>/dev/null) || { echo "FALLA: no se puede leer el estado del archivo"; V=0; }
+  echo "$ST"
+  SHA=$(hash_de "$F"); echo "sha256 actual: ${SHA:-ilegible}"
+  es_sha "$SHA" || { echo "FALLA: no se puede calcular el SHA-256 del archivo"; V=0; }
+  [ "$(stat -c '%U:%G %a' "$F" 2>/dev/null)" = "root:root 600" ] || { echo "FALLA: propietario o permisos"; V=0; }
+  N=$(grep -cEv '^[[:space:]]*(#|$)' "$F" 2>/dev/null); [ "$N" = 1 ] || { echo "FALLA: hay ${N:-?} claves (se espera 1)"; V=0; }
+  if grep -Ev '^[[:space:]]*(#|$)' "$F" 2>/dev/null | grep -qv '^ssh-ed25519 '; then echo "FALLA: la linea tiene opciones o no es ED25519"; V=0; fi
+  FPL=$(ssh-keygen -lf "$F" 2>/dev/null) || { echo "FALLA: ssh-keygen no puede leer el archivo"; V=0; }
+  FP=$(printf '%s' "$FPL" | awk '{print $2}'); echo "huella en el archivo: ${FP:-ilegible} ($(printf '%s' "$FPL" | cut -d' ' -f3-))"
+  [ "$FP" = "$EXP" ] || { echo "FALLA: la huella no es la de tu clave id_ed25519.pub del PC"; V=0; }
+  echo "== 2. Accesos de root en el registro de sshd =="
+  if ! accesos_root; then echo "FALLA: no se puede leer el registro de sshd (journalctl)"; V=0; ACC=; fi
+  [ "${OTROMET:-0}" = 0 ] || { echo "FALLA: hay $OTROMET accesos de root por un metodo que no es clave publica"; V=0; }
+  [ -z "$ACC" ] && echo "sin accesos de root por clave publica en el registro"
+  OLDIFS=$IFS; IFS='
+'
+  for l in $ACC; do
+    IFS=$OLDIFS
+    f=$(printf '%s' "$l" | cut -d'|' -f1); n=$(printf '%s' "$l" | cut -d'|' -f2); t=$(printf '%s' "$l" | cut -d'|' -f3); ips=$(printf '%s' "$l" | cut -d'|' -f4)
+    if [ "$f" = "$EXP" ]; then echo "  CONOCIDA   $f  accesos=$n primero=$t ip=$ips"
+    elif temporal_clasificada "$f" "$n" "$ips"; then echo "  TEMPORAL_CLASIFICADA (NO autorizada)  $f  accesos=$n primero=$t ip=$ips"
+    else echo "  FALLA: huella NO clasificada  $f  accesos=$n primero=$t ip=$ips"; NOCLAS="$NOCLAS $f"; V=0; fi
+    IFS='
+'
+  done
+  IFS=$OLDIFS
+  [ -z "$NOCLAS" ] || echo "  (si, tras revisarlas, son claves temporales de consola: APRUEBO=SI sh $0 clasificar)"
+  echo "== 3. Referencia de invariantes =="
+  SHA_BASE=$(hash_de_base)
+  if [ ! -s "$BASE" ]; then echo "FALLA: falta $BASE"; V=0
+  elif [ "$(printf '%s\n' "$SHA_BASE" | grep -c .)" != 1 ] || ! es_sha "$SHA_BASE"; then echo "FALLA: invariantes-base.txt no contiene exactamente una linea de authorized_keys"; V=0
+  elif [ "$SHA_BASE" = "$SHA" ]; then echo "estado de la referencia: AL_DIA (coincide con el archivo actual)"
+  else echo "estado de la referencia: PENDIENTE_DE_APROBAR (${SHA_BASE} -> ${SHA})"; fi
+  return 0
+}
+veredicto() {
+  if [ "$V" -eq 1 ]; then echo CLAVE_ROOT_VERIFICADA; [ "$SHA_BASE" = "$SHA" ] || echo "SHA_PARA_APROBAR=$SHA"; else echo CLAVE_ROOT_NO_VERIFICADA; fi
+}
+# una huella desconocida solo se admite como historica si fue CLASIFICADA (fp|ip|primer acceso) y no se ha reutilizado ni cambiado de origen
+temporal_clasificada() {  # $1 huella  $2 n.o de accesos  $3 ips ("a,b,")
+  [ "$2" = 1 ] || return 1
+  l=$(grep "^$1|" "$TEMPS" 2>/dev/null | head -1); [ -n "$l" ] || return 1
+  [ "$(printf '%s' "$l" | cut -d'|' -f2)" = "$3" ]
+}
+
+# ---- clasificar: registra (NO autoriza) accesos antiguos de claves temporales de consola ----
+cmd_clasificar() {
+  [ "$APRUEBO" = SI ] || { echo "RECHAZADO: falta la autorizacion explicita (APRUEBO=SI). No se ha cambiado nada."; return 2; }
+  accesos_root || { echo "RECHAZADO: no se puede leer el registro de sshd"; return 1; }
+  [ "${OTROMET:-0}" = 0 ] || { echo "RECHAZADO: hay accesos de root por un metodo que no es clave publica; no son claves temporales de consola"; return 1; }
+  FPS_ARCHIVO=$(ssh-keygen -lf "$F" 2>/dev/null | awk '{print $2}')
+  NUEVAS=; OLDIFS=$IFS; IFS='
+'
+  for l in $ACC; do
+    IFS=$OLDIFS
+    f=$(printf '%s' "$l" | cut -d'|' -f1); n=$(printf '%s' "$l" | cut -d'|' -f2); t=$(printf '%s' "$l" | cut -d'|' -f3); ips=$(printf '%s' "$l" | cut -d'|' -f4)
+    if [ "$f" != "$EXP" ] && ! grep -q "^$f|" "$TEMPS" 2>/dev/null; then
+      ok=1
+      [ "$n" = 1 ] || { echo "RECHAZADO: $f se uso $n veces (una clave temporal se usa una sola vez)"; ok=0; }
+      printf '%s' "$ips" | grep -Eq '^169\.254\.[0-9]+\.[0-9]+,$' || { echo "RECHAZADO: $f accedio desde $ips (no es un unico origen link-local 169.254.x.x)"; ok=0; }
+      printf '%s\n' "$FPS_ARCHIVO" | grep -qx "$f" && { echo "RECHAZADO: $f esta AUTORIZADA ahora en authorized_keys"; ok=0; }
+      [ "$ok" = 1 ] || return 1
+      NUEVAS="$NUEVAS$f|$ips|$t|clasificada_utc=$(date -u +%FT%TZ)
+"
+    fi
+    IFS='
+'
+  done
+  IFS=$OLDIFS
+  [ -n "$NUEVAS" ] || { echo "NADA_QUE_CLASIFICAR: todas las huellas ya estaban clasificadas o son la conocida"; return 0; }
+  { [ -f "$TEMPS" ] && cat "$TEMPS"; printf '%s' "$NUEVAS"; } > "$TEMPS.tmp" && mv -f "$TEMPS.tmp" "$TEMPS" || { rm -f "$TEMPS.tmp"; echo "ERROR: no se pudo escribir $TEMPS; no se ha cambiado nada"; return 1; }
+  echo "CLASIFICADAS (como temporales de consola; NO autorizadas):"; printf '%s' "$NUEVAS" | cut -d'|' -f1-3
+  return 0
+}
+
+# ---- aprobacion: cada operacion se comprueba; si algo falla NO se sustituye la referencia ----
+parar() { echo "PARAR: $1"; return 1; }
+aprobar_pasos() {
+  if [ "$SHA_BASE" = "$SHA" ]; then echo "REFERENCIA_AL_DIA: no hay nada que aprobar; no se ha cambiado nada"; return 0; fi
+  [ "$SHA_APROBADO" = "$SHA" ] || { parar "SHA_APROBADO no coincide con el hash que se verifico ($SHA); no se cambia nada"; return 1; }
+  SHA_ANT=$SHA_BASE; SHA_NUEVO=$SHA
+  A12=$(printf '%s' "$SHA_ANT" | cut -c1-12); N12=$(printf '%s' "$SHA_NUEVO" | cut -c1-12)
+  OR=$D/invariantes-base.original-$A12.txt; ACTA=$D/invariantes-aprobacion-$A12-$N12.txt
+  # 1) copia de la ORIGINAL, comprobada antes de tocar nada
+  if [ -e "$OR" ] || [ -e "$OR.sha256" ]; then
+    { [ -f "$OR" ] && [ -f "$OR.sha256" ] && cmp -s "$BASE" "$OR" && sha256sum -c "$OR.sha256" > /dev/null 2>&1; } || { parar "existe una copia original que NO coincide con la referencia actual o cuyo SHA-256 no se verifica ($OR); no se sobrescribe"; return 1; }
+    echo "copia original de un intento anterior: identica a la referencia y con SHA-256 verificado (se reutiliza)"
+  else
+    rm -f "$OR.tmp" "$OR.sha256.tmp"
+    cp -p "$BASE" "$OR.tmp" || { parar "no se pudo copiar la referencia original"; return 1; }
+    cmp -s "$BASE" "$OR.tmp" || { rm -f "$OR.tmp"; parar "la copia de la referencia no coincide con el original"; return 1; }
+    H1=$(hash_de "$BASE"); H2=$(hash_de "$OR.tmp")
+    { es_sha "$H1" && [ "$H1" = "$H2" ]; } || { rm -f "$OR.tmp"; parar "los SHA-256 de la referencia y de su copia no coinciden"; return 1; }
+    printf '%s  %s\n' "$H1" "$OR" > "$OR.sha256.tmp" || { rm -f "$OR.tmp" "$OR.sha256.tmp"; parar "no se pudo escribir el SHA-256 de la copia"; return 1; }
+    mv "$OR.tmp" "$OR" && mv "$OR.sha256.tmp" "$OR.sha256" || { rm -f "$OR" "$OR.tmp" "$OR.sha256" "$OR.sha256.tmp"; parar "no se pudo colocar la copia original"; return 1; }
+    sha256sum -c "$OR.sha256" > /dev/null 2>&1 || { rm -f "$OR" "$OR.sha256"; parar "la copia original no supera su verificacion SHA-256"; return 1; }
+    CREE_OR=1
+    echo "copia original creada y verificada: $OR (sha256 $H1)"
+  fi
+  # 2) nueva referencia + diff EXACTO contra la copia original verificada
+  rm -f "$NUEVA.tmp"; inv "$NUEVA.tmp"
+  [ -s "$NUEVA.tmp" ] || { rm -f "$NUEVA.tmp"; parar "no se pudo generar la nueva referencia"; return 1; }
+  mv -f "$NUEVA.tmp" "$NUEVA" || { parar "no se pudo guardar la nueva referencia"; return 1; }
+  diff "$OR" "$NUEVA" > "$DIFF.tmp"; DR=$?
+  [ "$DR" -eq 1 ] || { rm -f "$DIFF.tmp"; parar "diff termino con codigo $DR (se esperaba 1 = hay diferencias)"; return 1; }
+  mv -f "$DIFF.tmp" "$DIFF" || { parar "no se pudo guardar el diff"; return 1; }
+  if [ "$(grep -c '^[<>]' "$DIFF")" != 2 ] || [ "$(grep -c "^< $SHA_ANT .*authorized_keys\$" "$DIFF")" != 1 ] || [ "$(grep -c "^> $SHA_NUEVO .*authorized_keys\$" "$DIFF")" != 1 ]; then
+    parar "el diff NO es solo la linea de authorized_keys; no se cambia nada (ver $DIFF)"; return 1
+  fi
+  # 3) acta
+  { echo "aprobado_utc=$(date -u +%FT%TZ)"; echo "aprobado_por=propietario (APRUEBO=SI SHA_APROBADO=$SHA_APROBADO)"; echo "huella_clave=$FP"; echo "sha_anterior=$SHA_ANT"; echo "sha_nuevo=$SHA_NUEVO"
+    echo "sha256_referencia_original=$(hash_de "$OR")"; echo "mtime=$(stat -c %y "$F")"; echo "accesos_root_por_clave (huella|n|primero|ips):"; echo "${ACC:-ninguno}"
+    echo "huellas_temporales_clasificadas (NO autorizadas):"; cat "$TEMPS" 2>/dev/null || echo ninguna; } > "$ACTA.tmp" \
+    && mv -f "$ACTA.tmp" "$ACTA" || { rm -f "$ACTA.tmp"; parar "no se pudo escribir el acta"; return 1; }
+  # 4) sustitucion ATOMICA de la referencia (copia comprobada + rename); si algo falla, la referencia queda intacta
+  rm -f "$BASE.tmp"
+  cp -p "$NUEVA" "$BASE.tmp" && cmp -s "$NUEVA" "$BASE.tmp" || { rm -rf "$BASE.tmp"; rm -f "$ACTA"; parar "no se pudo preparar la nueva referencia; invariantes-base.txt NO se ha tocado"; return 1; }
+  mv -f "$BASE.tmp" "$BASE" || { rm -f "$BASE.tmp" "$ACTA"; parar "no se pudo sustituir invariantes-base.txt (sigue siendo la original)"; return 1; }
+  REEMPLAZADA=1
+  # 5) comprobacion final contra el estado real; si no coincide se RESTAURA la original
+  rm -f "$PREVIO.tmp"; inv "$PREVIO.tmp"
+  if [ -s "$PREVIO.tmp" ] && cmp -s "$BASE" "$PREVIO.tmp"; then
+    mv -f "$PREVIO.tmp" "$PREVIO"
+    echo REFERENCIA_APROBADA_Y_VERIFICADA; return 0
+  fi
+  rm -f "$PREVIO.tmp"
+  if cp -p "$OR" "$BASE.tmp" && cmp -s "$OR" "$BASE.tmp" && mv -f "$BASE.tmp" "$BASE"; then
+    rm -f "$ACTA"; REEMPLAZADA=0
+    echo "REFERENCIA_RESTAURADA_A_LA_ORIGINAL: la nueva referencia no coincidio con el estado real al comprobarla"
+  else
+    echo "ERROR GRAVE: no se pudo restaurar la original automaticamente. Restaurar a mano: cp -p $OR $BASE"
+  fi
+  return 1
+}
+
+cmd_aprobar() {
+  [ "$APRUEBO" = SI ] || { echo "RECHAZADO: falta la autorizacion explicita (APRUEBO=SI). No se ha cambiado nada."; return 2; }
+  verificar_clave; veredicto
+  [ "$V" -eq 1 ] || { echo "RECHAZADO: la clave no esta verificada. No se ha cambiado nada."; return 1; }
+  [ "$SHA_BASE" = "$SHA" ] || [ -n "$SHA_APROBADO" ] || { echo "RECHAZADO: falta SHA_APROBADO=$SHA (el hash que acabas de revisar). No se ha cambiado nada."; return 2; }
+  echo "== 4. Aprobacion de la nueva referencia (la original se conserva) =="
+  mkdir "$LOCK" 2> /dev/null || { echo "PARAR: hay otra ejecucion en curso o restos de una interrumpida ($LOCK; si no hay ninguna en curso, retirar con: rmdir $LOCK)"; return 1; }
+  CREE_OR=0; REEMPLAZADA=0; OR=; ACTA=
+  aprobar_pasos; rc=$?
+  if [ "$rc" -ne 0 ] && [ "$REEMPLAZADA" -eq 0 ] && [ "$CREE_OR" -eq 1 ]; then rm -f "$OR" "$OR.sha256"; fi
+  rm -f "$NUEVA.tmp" "$DIFF.tmp" "$BASE.tmp" "$PREVIO.tmp"
+  [ -z "$ACTA" ] || rm -f "$ACTA.tmp"
+  [ -z "$OR" ] || rm -f "$OR.tmp" "$OR.sha256.tmp"
+  rmdir "$LOCK" 2> /dev/null
+  return "$rc"
+}
+
+modo="$1"
+case "$modo" in
+  verificar) verificar_clave; veredicto; [ "$V" -eq 1 ] ;;
+  clasificar) cmd_clasificar ;;
+  aprobar) cmd_aprobar ;;
+  *) echo "uso: sh f7-referencia.sh verificar | APRUEBO=SI sh f7-referencia.sh clasificar | APRUEBO=SI SHA_APROBADO=<sha> sh f7-referencia.sh aprobar"; exit 2 ;;
+esac
