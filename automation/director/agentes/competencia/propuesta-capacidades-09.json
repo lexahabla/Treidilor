@@ -1,0 +1,45 @@
+{
+  "esquema": "propuesta-capacidades/1",
+  "agente": "09",
+  "estado": "propuesta_no_aprobada",
+  "aviso": "Este archivo NO forma parte del registro de capacidades: ninguna de estas capacidades existe, está aprobada ni se puede invocar desde el Director. El registro (registro-agentes.v1.json) no lo lee. El Agente 09 sigue «planificado» y sin capacidades.",
+  "fecha": "2026-11-15",
+  "fichaOriginal": {
+    "nombre": "Competencia y expertos (ficha: «Investigación de competencia y expertos»)",
+    "mision": "Observa competidores y fuentes expertas para detectar huecos y buenas prácticas.",
+    "entradas": ["Fuentes públicas citadas"],
+    "salidas": ["Informe de competencia con fuentes y fecha"],
+    "alcancesPrevistos": ["research:write"],
+    "riesgo": "bajo",
+    "aprobacion": "Sólo informes",
+    "medicion": "Huecos explotados",
+    "honestidad": "Respetar términos de uso de cada fuente; sin copiar contenido",
+    "etapa": "Posterior a 2.5"
+  },
+  "implementadoLocalSinPermisos": [
+    "validarObservaciones: valida observaciones APORTADAS (fuente citada con URL segura, fecha, términos de uso revisados; sin credenciales, sin órdenes ocultas, sin extractos largos)",
+    "informeCompetencia modo completo: hechos verificados, observaciones, estimaciones y no disponibles; huecos (≥ 2 fuentes utilizables); prácticas observadas; brechas de precio con equivalencia verificada",
+    "informeCompetencia modos validacion | huecos | precios: cada uno equivale a una capacidad propuesta"
+  ],
+  "capacidadesPropuestas": [
+    { "id": "09.validar-observaciones", "nivel": "L0", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["observaciones aportadas por parámetro"], "limites": ["no accede a ninguna fuente", "una ejecución a la vez"], "requisitos": ["fuente citada con fecha", "términos de uso revisados por una persona"], "nota": "Informa de qué es utilizable y qué no, y por qué." },
+    { "id": "09.detectar-huecos", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["observaciones aportadas", "catálogo de referencia aportado (categorías y fichas)", "informe del Agente 10 (opcional, solo ids)"], "limites": ["mínimo 2 fuentes utilizables por hueco", "es una hipótesis, no una conclusión"], "requisitos": ["lista de temas que ya cubrimos"], "nota": "Alimentaría a los Agentes 07 y 08 como propuesta; no planifica ni publica." },
+    { "id": "09.comparar-precios-observados", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["observaciones de precio con equivalencia verificada por una persona", "nuestras fichas aportadas (con fecha de captura)"], "limites": ["solo EUR, condición «nuevo» y observación de menos de 14 días", "no incluye envío ni condiciones", "no afirma ventaja comercial"], "requisitos": [], "nota": "No duplica al Agente 05: este compara precios propios y ofertas propias; aquí el precio ajeno es una observación citada." },
+    { "id": "09.proponer-informe-competencia", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["las tres anteriores"], "limites": ["solo informes", "sin acceso a la web"], "requisitos": [], "nota": "Informe completo con fuentes y fecha (la salida de la ficha)." },
+    { "id": "09.registrar-observacion", "nivel": "L3", "modo": "accion", "alcances": ["research:write"], "efectos": "escritura_reversible", "requiereAprobacion": true, "dependencias": ["almacén de investigación (no existe; decisión pendiente, compartida con el 07)"], "limites": ["sin datos personales", "con copia previa y deshacer"], "requisitos": [], "nota": "BLOQUEADA hasta definir el almacén; es el alcance previsto en la ficha (research:write)." },
+    { "id": "09.consultar-fuente-externa", "nivel": "L3", "modo": "accion", "alcances": ["web:read (NUEVO)"], "efectos": "lectura_externa", "requiereAprobacion": true, "dependencias": ["revisión humana de los términos de uso de cada fuente", "política de ritmo y de no scraping", "presupuesto si la fuente es de pago"], "limites": ["lista blanca de dominios", "sin scraping masivo", "sin copiar contenido"], "requisitos": ["autorización expresa del propietario"], "nota": "BLOQUEADA: hoy NINGÚN componente accede a webs externas." }
+  ],
+  "accionesQueNuncaSeranCapacidadDelAgente": [
+    { "accion": "cambiar precios o fichas a partir de lo observado", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "contactar, suscribirse o registrarse en webs de competidores o expertos", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "publicar contenido propio inspirado en un hueco", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "revisar y aprobar los términos de uso de una fuente", "nivel": "L4", "ejecuta": "persona" }
+  ],
+  "decisionesPendientes": [
+    "¿Se aprueban las capacidades L0/L1 (sin alcances)? Con ellas la integración sigue el patrón de 07 y 08.",
+    "Almacén de investigación (research:write), compartido con el 07.",
+    "¿Se autoriza algún día consultar fuentes externas (web:read) y con qué política de términos de uso, ritmo y coste?",
+    "Quién aporta y verifica las observaciones, y con qué plantilla de fuente citada.",
+    "Registro de huecos trabajados y su resultado, para poder medir «huecos explotados»."
+  ]
+}

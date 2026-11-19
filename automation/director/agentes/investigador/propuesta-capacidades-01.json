@@ -1,0 +1,32 @@
+{
+  "esquema": "propuesta-capacidades/1",
+  "agente": "01",
+  "estado": "propuesta_no_aprobada",
+  "aviso": "Este archivo NO forma parte del registro de capacidades: ninguna de estas capacidades existe, está aprobada ni se puede invocar desde el Director. El registro (registro-agentes.v1.json) no lo lee. El Agente 01 sigue «construido_local» (workflow local v0) y sin capacidades en el registro.",
+  "fecha": "2026-11-15",
+  "fichaOriginal": {
+    "nombre": "Investigador de tendencias y productos (ficha: «Investigador de mercado»)",
+    "mision": "Detecta productos, categorías y nichos con potencial usando datos reales (catálogo, observaciones verificadas y, más adelante, fuentes externas citadas).",
+    "entradas": ["Catálogo (lectura)", "Observaciones de precio verificadas", "Fuentes externas (v1, con presupuesto)"],
+    "salidas": ["Informe de candidatos con evidencias y puntuación explicada"],
+    "alcancesPrevistos": ["catalog:read (existe)", "research:write", "proposals:create"],
+    "riesgo": "bajo",
+    "aprobacion": "Sólo propone; no importa nada",
+    "etapa": "2.0 (v0 reglas) → 2.5 (web)",
+    "medicion": "Candidatos aceptados / propuestos",
+    "honestidad": "v0: descuentos DECLARADOS, nunca verificados; sin valoraciones ni ventas inventadas"
+  },
+  "diseñoAprobadoDocumentado": "REGISTRO-AGENTES.md §4: `01.investigar-tendencias` — propuesta, L1, «v0 de reglas sobre catálogo; la versión con web externa llega en 2.5» (nombre provisional).",
+  "capacidadesPropuestas": [
+    { "id": "01.investigar-tendencias", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "disponibilidad": "propuesta_f1", "dependencias": ["feed de lectura del catálogo aportado por parámetro (formato automation-catalog/1)", "automation/lib/researcher.mjs (construirInformeInvestigador, ya existente y probado)", "adaptador informe-investigador → informe-agente/1 (a escribir; pequeño y puro)"], "limites": ["v0 de reglas deterministas, sin IA ni web", "descuentos solo DECLARADOS y siempre no verificados", "sin valoraciones ni reseñas como señal", "una ejecución a la vez"], "requisitos": ["con datos reales: token con catalog:read y la API de automatización activada (hoy desactivada)"], "nota": "Es la capacidad del diseño aprobado. Se integraría con el mismo patrón que 05/07/09: el Director ejecuta la lógica pura sobre un feed por parámetro; NO necesita el workflow de n8n para funcionar en local. El nombre «tendencias» es provisional: la v0 detecta candidatos, no tendencias (no hay serie temporal)." },
+    { "id": "01.leer-ultimo-informe", "nivel": "L0", "modo": "consulta", "alcances": [], "efectos": "ninguno", "disponibilidad": "lectura_f1", "dependencias": ["variante de producción del workflow (no existe)", "tabla de instantáneas del 01 (no existe)", "workflow lector compartido de n8n (no existe)"], "limites": ["solo lectura de la última instantánea"], "requisitos": ["autorización para crear la variante de producción y su tabla"], "nota": "PENDIENTE: solo tiene sentido cuando el 01 se ejecute en n8n y persista sus informes como el 04 y el 12." },
+    { "id": "01.lanzar-investigacion", "nivel": "L2", "modo": "accion", "alcances": ["catalog:read"], "efectos": "lectura_con_carga", "requiereAprobacion": true, "disponibilidad": "requiere_f3", "dependencias": ["workflow envoltorio nuevo", "aprobación humana por ejecución"], "limites": ["lee el feed por páginas con pausa; consume cuota de la API"], "requisitos": ["F3 autorizada"], "nota": "NO se propone todavía: igual que 04.auditar-catalogo, depende de F3." },
+    { "id": "01.registrar-propuestas", "nivel": "L3", "modo": "accion", "alcances": ["research:write", "proposals:create"], "efectos": "escritura_reversible", "requiereAprobacion": true, "dependencias": ["almacén de propuestas e investigación (no existe)"], "limites": ["solo propone; no importa nada (importar es L4)"], "requisitos": [], "nota": "BLOQUEADA hasta definir el almacén (decisión compartida con 06, 07, 08, 09 y 11)." }
+  ],
+  "queFaltaParaConectarloAlDirector": [
+    "Aprobar `01.investigar-tendencias` (L1, sin alcances) y su nombre definitivo.",
+    "Escribir el adaptador informe-investigador → informe-agente/1 y el método del Director (mismo patrón que los demás agentes).",
+    "Un feed del catálogo por parámetro (sintético en local; real exige `catalog:read` y la API de automatización activa).",
+    "Para ejecutarlo en n8n y leerlo después: variante de producción del workflow, tabla de instantáneas y el lector compartido (ver INTEGRACION-N8N-DISENO.md)."
+  ]
+}

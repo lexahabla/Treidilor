@@ -1,0 +1,31 @@
+{
+  "formato": "instantaneas-exportadas/1",
+  "agente": "12",
+  "tabla": "auditor_general_instantaneas",
+  "exportadoEn": "2026-11-14T12:00:00.000Z",
+  "sintetico": true,
+  "filas": [
+    {
+      "id": 1,
+      "entorno": "produccion",
+      "host": "treidilor.com",
+      "generadoEn": "2026-11-13T08:00:00.000Z",
+      "idEjecucion": "fx-12-01",
+      "origen": "manual",
+      "calidad": "completa",
+      "huella": "e3b0c44298fc1c14",
+      "payload": "{\"esquema\":1,\"agente\":\"auditor-general\",\"version\":\"0.2.0\",\"entorno\":\"produccion\",\"host\":\"treidilor.com\",\"generadoEn\":\"2026-11-13T08:00:00.000Z\",\"calidad\":{\"estado\":\"completa\",\"motivos\":[]},\"alcance\":{\"host\":\"treidilor.com\",\"salud\":true,\"rutas\":[],\"enlaces\":[],\"fichas\":[],\"contenido\":null,\"catalogo\":{\"leido\":true,\"completo\":true}},\"incidencias\":[]}"
+    },
+    {
+      "id": 2,
+      "entorno": "produccion",
+      "host": "treidilor.com",
+      "generadoEn": "2026-11-14T08:00:00.000Z",
+      "idEjecucion": "fx-12-02",
+      "origen": "manual",
+      "calidad": "completa",
+      "huella": "f84ece87a951c434",
+      "payload": "{\"esquema\":1,\"agente\":\"auditor-general\",\"version\":\"0.2.0\",\"entorno\":\"produccion\",\"host\":\"treidilor.com\",\"generadoEn\":\"2026-11-14T08:00:00.000Z\",\"calidad\":{\"estado\":\"completa\",\"motivos\":[]},\"alcance\":{\"host\":\"treidilor.com\",\"salud\":true,\"rutas\":[],\"enlaces\":[],\"fichas\":[],\"contenido\":null,\"catalogo\":{\"leido\":true,\"completo\":true}},\"incidencias\":[{\"clave\":\"enlace:no_encontrada:/ejemplo\",\"area\":\"enlace\",\"codigo\":\"no_encontrada\",\"gravedad\":\"media\",\"cantidad\":null,\"ocurrencias\":1}]}"
+    }
+  ]
+}

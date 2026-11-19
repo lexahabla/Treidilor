@@ -1,0 +1,96 @@
+{
+  "esquema": "inventario-ia/1",
+  "version": "simulado-1",
+  "sintetico": true,
+  "nota": "DATOS FICTICIOS para probar el modelo y la lógica de recomendaciones. No son suscripciones, precios, cuotas ni saldos reales de nadie. Sustituir por el inventario real (con procedencia verificada) solo con autorización. Sin credenciales: solo nombres.",
+  "proveedores": [
+    { "id": "anthropic", "nombre": "Claude (Anthropic)" },
+    { "id": "openai", "nombre": "OpenAI" },
+    { "id": "futuro-x", "nombre": "Proveedor futuro X" }
+  ],
+  "planes": [
+    {
+      "id": "claude-suscripcion", "proveedor": "anthropic", "nombre": "Claude · suscripción interactiva", "tipo": "suscripcion_interactiva", "activo": true,
+      "costeFijoMensualEur": { "valor": 18, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null },
+      "creditosDisponiblesEur": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "renovacion": { "valor": "2026-11-20", "verificacion": "estimado", "fuente": "dato simulado", "fecha": null },
+      "usoAutomatizado": { "permitido": "no", "base": "uso personal interactivo" },
+      "cuotas": [
+        { "id": "mensajes-5h", "nombre": "Mensajes por ventana de 5 h", "unidad": "mensajes", "ventana": "5h",
+          "limite": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+          "usado": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null } }
+      ],
+      "modelos": []
+    },
+    {
+      "id": "claude-herramienta", "proveedor": "anthropic", "nombre": "Claude Code · herramienta oficial (incluida en la suscripción)", "tipo": "herramienta_oficial", "activo": true,
+      "costeFijoMensualEur": { "valor": 0, "verificacion": "estimado", "fuente": "dato simulado: incluida en la suscripción", "fecha": null },
+      "creditosDisponiblesEur": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "renovacion": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "usoAutomatizado": { "permitido": "si", "base": "declarado erróneamente a propósito: debe ignorarse" },
+      "cuotas": [],
+      "modelos": []
+    },
+    {
+      "id": "anthropic-api", "proveedor": "anthropic", "nombre": "Claude · API de pago por uso", "tipo": "api_pago_por_uso", "activo": true,
+      "costeFijoMensualEur": { "valor": 0, "verificacion": "verificado", "fuente": "dato simulado de prueba", "fecha": "2026-11-01" },
+      "creditosDisponiblesEur": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "renovacion": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "usoAutomatizado": { "permitido": "si", "base": "API con clave propia" },
+      "credencial": "ANTHROPIC_API_KEY (solo el nombre)",
+      "cuotas": [
+        { "id": "tokens-mes", "nombre": "Tokens de entrada por mes", "unidad": "tokens", "ventana": "mes",
+          "limite": { "valor": 2000000, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null },
+          "usado": { "valor": 1700000, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null } }
+      ],
+      "modelos": [
+        { "id": "modelo-grande-sim", "categorias": ["razonamiento_planificacion", "redaccion_larga", "resumen_informes", "clasificacion_intencion"],
+          "tarifa": { "entradaEurPor1M": { "valor": 12, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null }, "salidaEurPor1M": { "valor": 60, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null } },
+          "calidad": { "valor": 5, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null } },
+        { "id": "modelo-pequeno-sim", "categorias": ["clasificacion_intencion", "resumen_informes"],
+          "tarifa": { "entradaEurPor1M": { "valor": 0.8, "verificacion": "verificado", "fuente": "dato simulado de prueba", "fecha": "2026-11-01" }, "salidaEurPor1M": { "valor": 4, "verificacion": "verificado", "fuente": "dato simulado de prueba", "fecha": "2026-11-01" } },
+          "calidad": { "valor": 3, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null } }
+      ]
+    },
+    {
+      "id": "openai-api", "proveedor": "openai", "nombre": "OpenAI · API de pago por uso", "tipo": "api_pago_por_uso", "activo": true,
+      "costeFijoMensualEur": { "valor": 0, "verificacion": "verificado", "fuente": "dato simulado de prueba", "fecha": "2026-11-01" },
+      "creditosDisponiblesEur": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "renovacion": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "usoAutomatizado": { "permitido": "desconocido", "base": "términos sin verificar" },
+      "credencial": "OPENAI_API_KEY (solo el nombre)",
+      "cuotas": [],
+      "modelos": [
+        { "id": "gpt-6.1-terra", "categorias": ["clasificacion_intencion", "resumen_informes", "razonamiento_planificacion"],
+          "tarifa": { "entradaEurPor1M": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null }, "salidaEurPor1M": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null } },
+          "calidad": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null } },
+        { "id": "modelo-mini-sim", "categorias": ["clasificacion_intencion", "resumen_informes"],
+          "tarifa": { "entradaEurPor1M": { "valor": 0.5, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null }, "salidaEurPor1M": { "valor": 2, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null } },
+          "calidad": { "valor": 3, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null } }
+      ]
+    },
+    {
+      "id": "openai-creditos", "proveedor": "openai", "nombre": "OpenAI · créditos de API incluidos", "tipo": "creditos_api_incluidos", "activo": true,
+      "costeFijoMensualEur": { "valor": 0, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null },
+      "creditosDisponiblesEur": { "valor": 4.5, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null },
+      "renovacion": { "valor": "2026-11-18", "verificacion": "estimado", "fuente": "dato simulado", "fecha": null },
+      "usoAutomatizado": { "permitido": "si", "base": "créditos consumibles por API" },
+      "credencial": "OPENAI_API_KEY (solo el nombre)",
+      "cuotas": [],
+      "modelos": [
+        { "id": "modelo-mini-creditos-sim", "categorias": ["clasificacion_intencion"],
+          "tarifa": { "entradaEurPor1M": { "valor": 0.5, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null }, "salidaEurPor1M": { "valor": 2, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null } },
+          "calidad": { "valor": 3, "verificacion": "estimado", "fuente": "dato simulado", "fecha": null } }
+      ]
+    },
+    {
+      "id": "futuro-x-api", "proveedor": "futuro-x", "nombre": "Proveedor futuro X · API", "tipo": "api_pago_por_uso", "activo": false,
+      "costeFijoMensualEur": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "creditosDisponiblesEur": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "renovacion": { "valor": null, "verificacion": "no_disponible", "fuente": null, "fecha": null },
+      "usoAutomatizado": { "permitido": "desconocido", "base": "no evaluado" },
+      "cuotas": [],
+      "modelos": []
+    }
+  ]
+}

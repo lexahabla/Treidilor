@@ -1,0 +1,789 @@
+{
+  "sintetico": true,
+  "nota": "Catálogo FICTICIO con observaciones de precios para probar el Agente 05; generado con el motor existente. Fechas relativas a 2026-11-14T12:00Z.",
+  "productos": [
+    {
+      "id": "amazon-b0sinobs00",
+      "title": "Libro de cocina mediterránea ilustrado",
+      "description": "",
+      "price": 18.5,
+      "image": "https://img.example.com/x.jpg",
+      "category": "Prueba",
+      "merchant": "Amazon",
+      "network": "amazon",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.amazon.es/dp/B0SINOBS001",
+      "asin": "B0SINOBS00",
+      "sourceId": "B0SINOBS00",
+      "brand": "Editorial Ejemplo",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "precios-sinteticos",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-13T10:00:00.000Z",
+          "capturedAtInferred": false,
+          "receivedAt": "2026-11-14T12:00:00.000Z",
+          "source": {
+            "channel": "json",
+            "batchId": "precios-sinteticos",
+            "adapter": "json-import"
+          }
+        },
+        "sourceUrl": "https://www.amazon.es/dp/B0SINOBS001",
+        "identifiers": {
+          "asin": "B0SINOBS00"
+        }
+      }
+    },
+    {
+      "id": "amazon-b0media000",
+      "title": "Tablet 10 pulgadas 128 GB",
+      "description": "",
+      "price": 99,
+      "image": "https://img.example.com/x.jpg",
+      "category": "Prueba",
+      "merchant": "Amazon",
+      "network": "amazon",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.amazon.es/dp/B0MEDIA0001",
+      "asin": "B0MEDIA000",
+      "sourceId": "B0MEDIA000",
+      "brand": "Nova",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "precios-sinteticos",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-14T09:00:00.000Z",
+          "receivedAt": "2026-11-14T09:00:00.000Z",
+          "shipping": {
+            "cost": 0,
+            "free": true,
+            "days": 2,
+            "asOf": "2026-11-14T09:00:00.000Z"
+          }
+        },
+        "sourceUrl": "https://www.amazon.es/dp/B0MEDIA0001",
+        "identifiers": {
+          "asin": "B0MEDIA000"
+        },
+        "observations": [
+          {
+            "capturedAt": "2026-10-05T12:00:00.000Z",
+            "verifiedAt": "2026-10-05T12:00:00.000Z",
+            "price": 120,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-9"
+          },
+          {
+            "capturedAt": "2026-10-15T12:00:00.000Z",
+            "verifiedAt": "2026-10-15T12:00:00.000Z",
+            "price": 118,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-10"
+          },
+          {
+            "capturedAt": "2026-10-25T12:00:00.000Z",
+            "verifiedAt": "2026-10-25T12:00:00.000Z",
+            "price": 121,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-11"
+          },
+          {
+            "capturedAt": "2026-11-04T12:00:00.000Z",
+            "verifiedAt": "2026-11-04T12:00:00.000Z",
+            "price": 119,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-12"
+          },
+          {
+            "capturedAt": "2026-11-14T09:00:00.000Z",
+            "verifiedAt": "2026-11-14T09:00:00.000Z",
+            "price": 99,
+            "originalPrice": 139,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-13"
+          }
+        ]
+      },
+      "originalPrice": 139,
+      "lastPriceSync": "2026-11-14T09:00:00.000Z"
+    },
+    {
+      "id": "amazon-b0moneda01",
+      "title": "Cargador USB-C 65W GaN",
+      "description": "",
+      "price": 24.9,
+      "image": "https://img.example.com/x.jpg",
+      "category": "Prueba",
+      "merchant": "Amazon",
+      "network": "amazon",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.amazon.es/dp/B0MONEDA01",
+      "asin": "B0MONEDA01",
+      "sourceId": "B0MONEDA01",
+      "brand": "Volt",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "precios-sinteticos",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-13T10:00:00.000Z",
+          "capturedAtInferred": false,
+          "receivedAt": "2026-11-14T12:00:00.000Z",
+          "source": {
+            "channel": "json",
+            "batchId": "precios-sinteticos",
+            "adapter": "json-import"
+          }
+        },
+        "sourceUrl": "https://www.amazon.es/dp/B0MONEDA01",
+        "identifiers": {
+          "asin": "B0MONEDA01"
+        },
+        "observations": [
+          {
+            "capturedAt": "2026-11-14T05:00:00.000Z",
+            "verifiedAt": "2026-11-14T05:00:00.000Z",
+            "price": 26.9,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "USD",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "USD|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-8"
+          }
+        ]
+      },
+      "lastPriceSync": "2026-11-14T05:00:00.000Z"
+    },
+    {
+      "id": "amazon-b0desajust",
+      "title": "Lámpara de escritorio LED regulable",
+      "description": "",
+      "price": 49.9,
+      "image": "https://img.example.com/x.jpg",
+      "category": "Prueba",
+      "merchant": "Amazon",
+      "network": "amazon",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.amazon.es/dp/B0DESAJUST",
+      "asin": "B0DESAJUST",
+      "sourceId": "B0DESAJUST",
+      "brand": "Lumi",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "precios-sinteticos",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-13T10:00:00.000Z",
+          "capturedAtInferred": false,
+          "receivedAt": "2026-11-14T12:00:00.000Z",
+          "source": {
+            "channel": "json",
+            "batchId": "precios-sinteticos",
+            "adapter": "json-import"
+          }
+        },
+        "sourceUrl": "https://www.amazon.es/dp/B0DESAJUST",
+        "identifiers": {
+          "asin": "B0DESAJUST"
+        },
+        "observations": [
+          {
+            "capturedAt": "2026-11-14T04:00:00.000Z",
+            "verifiedAt": "2026-11-14T04:00:00.000Z",
+            "price": 59.9,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-7"
+          }
+        ]
+      },
+      "lastPriceSync": "2026-11-14T04:00:00.000Z"
+    },
+    {
+      "id": "amazon-b0cross001",
+      "title": "Auriculares Bluetooth Aurora A5",
+      "description": "",
+      "price": 59.9,
+      "image": "https://img.example.com/x.jpg",
+      "category": "Prueba",
+      "merchant": "Amazon",
+      "network": "amazon",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.amazon.es/dp/B0CROSS001",
+      "asin": "B0CROSS001",
+      "sourceId": "B0CROSS001",
+      "brand": "Aurora",
+      "condition": "Nuevo",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "precios-sinteticos",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-14T07:00:00.000Z",
+          "receivedAt": "2026-11-14T07:00:00.000Z",
+          "shipping": {
+            "cost": 0,
+            "free": true,
+            "days": 2,
+            "asOf": "2026-11-14T07:00:00.000Z"
+          }
+        },
+        "sourceUrl": "https://www.amazon.es/dp/B0CROSS001",
+        "identifiers": {
+          "gtin": "8710103964278",
+          "asin": "B0CROSS001"
+        },
+        "offers": [
+          {
+            "platform": "ebay",
+            "sellerName": "SonidoPlus",
+            "externalId": "305000000001",
+            "url": "https://www.ebay.es/itm/305000000001",
+            "canonicalUrl": "ebay.es/itm/305000000001",
+            "price": 52.5,
+            "currency": "EUR",
+            "availability": "in_stock",
+            "shipping": {
+              "cost": 4.5,
+              "free": false,
+              "days": 3,
+              "asOf": "2026-11-14T08:00:00.000Z"
+            },
+            "condition": "new",
+            "capturedAt": "2026-11-14T08:00:00.000Z",
+            "offerId": "eb361388c6",
+            "offerKey": "ebay:305000000001:sonidoplus",
+            "receivedAt": "2026-11-14T12:00:00.000Z",
+            "verifiedAt": "2026-11-14T08:00:00.000Z",
+            "source": {
+              "channel": "json",
+              "batchId": "precios-sinteticos",
+              "adapter": "json-import"
+            },
+            "status": "active"
+          }
+        ],
+        "observations": [
+          {
+            "capturedAt": "2026-11-14T07:00:00.000Z",
+            "verifiedAt": "2026-11-14T07:00:00.000Z",
+            "price": 59.9,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-6"
+          }
+        ]
+      },
+      "lastPriceSync": "2026-11-14T07:00:00.000Z"
+    },
+    {
+      "id": "amazon-b0salto001",
+      "title": "Monitor LED 27 pulgadas QHD",
+      "description": "",
+      "price": 45,
+      "image": "https://img.example.com/x.jpg",
+      "category": "Prueba",
+      "merchant": "Amazon",
+      "network": "amazon",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.amazon.es/dp/B0SALTO001",
+      "asin": "B0SALTO001",
+      "sourceId": "B0SALTO001",
+      "brand": "Acme",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "precios-sinteticos",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-14T10:00:00.000Z",
+          "receivedAt": "2026-11-14T10:00:00.000Z",
+          "shipping": {
+            "cost": 0,
+            "free": true,
+            "days": 2,
+            "asOf": "2026-11-14T10:00:00.000Z"
+          }
+        },
+        "sourceUrl": "https://www.amazon.es/dp/B0SALTO001",
+        "identifiers": {
+          "asin": "B0SALTO001"
+        },
+        "observations": [
+          {
+            "capturedAt": "2026-11-11T12:00:00.000Z",
+            "verifiedAt": "2026-11-11T12:00:00.000Z",
+            "price": 120,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-4"
+          },
+          {
+            "capturedAt": "2026-11-14T10:00:00.000Z",
+            "verifiedAt": "2026-11-14T10:00:00.000Z",
+            "price": 45,
+            "originalPrice": 150,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-5"
+          }
+        ]
+      },
+      "originalPrice": 150,
+      "lastPriceSync": "2026-11-14T10:00:00.000Z"
+    },
+    {
+      "id": "raton-gaming-inalambrico-rgb-16000-dpi-e18ad7",
+      "title": "Ratón gaming inalámbrico RGB 16000 DPI",
+      "description": "",
+      "price": 14.99,
+      "image": "https://img.example.com/x.jpg",
+      "category": "Prueba",
+      "merchant": "Aliexpress",
+      "network": "aliexpress",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://es.aliexpress.com/item/1005006123456789.html",
+      "sourceId": "AE-1005006123456789",
+      "brand": "Genérico",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "precios-sinteticos",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-13T10:00:00.000Z",
+          "capturedAtInferred": false,
+          "receivedAt": "2026-11-14T12:00:00.000Z",
+          "source": {
+            "channel": "json",
+            "batchId": "precios-sinteticos",
+            "adapter": "json-import"
+          }
+        },
+        "sourceUrl": "https://es.aliexpress.com/item/1005006123456789.html",
+        "offerSeller": {
+          "name": "TechStore Official"
+        },
+        "observations": [
+          {
+            "capturedAt": "2026-11-04T12:00:00.000Z",
+            "verifiedAt": "2026-11-04T12:00:00.000Z",
+            "price": 14.99,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-3"
+          }
+        ]
+      },
+      "lastPriceSync": "2026-11-04T12:00:00.000Z"
+    },
+    {
+      "id": "teclado-mecanico-keychron-k2-inalambrico-214dcc",
+      "title": "Teclado mecánico Keychron K2 inalámbrico",
+      "description": "",
+      "price": 89.9,
+      "image": "https://img.example.com/x.jpg",
+      "category": "Prueba",
+      "merchant": "Ebay",
+      "network": "ebay",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.ebay.es/itm/305123456789",
+      "sourceId": "305123456789",
+      "brand": "Keychron",
+      "condition": "Nuevo",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "precios-sinteticos",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-13T10:00:00.000Z",
+          "capturedAtInferred": false,
+          "receivedAt": "2026-11-14T12:00:00.000Z",
+          "source": {
+            "channel": "json",
+            "batchId": "precios-sinteticos",
+            "adapter": "json-import"
+          }
+        },
+        "sourceUrl": "https://www.ebay.es/itm/305123456789",
+        "offerSeller": {
+          "name": "TecladosPro"
+        },
+        "identifiers": {
+          "gtin": "5901234123457"
+        }
+      },
+      "originalPrice": 129.9
+    },
+    {
+      "id": "amazon-b09xs7jwhh",
+      "title": "Auriculares Sony WH-1000XM5 Negro",
+      "description": "",
+      "price": 299.99,
+      "image": "https://img.example.com/x.jpg",
+      "category": "Prueba",
+      "merchant": "Amazon",
+      "network": "amazon",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.amazon.es/dp/B09XS7JWHH",
+      "asin": "B09XS7JWHH",
+      "sourceId": "B09XS7JWHH",
+      "brand": "Sony",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "precios-sinteticos",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-14T06:00:00.000Z",
+          "receivedAt": "2026-11-14T06:00:00.000Z",
+          "shipping": {
+            "cost": 0,
+            "free": true,
+            "days": 2,
+            "asOf": "2026-11-14T06:00:00.000Z"
+          }
+        },
+        "sourceUrl": "https://www.amazon.es/dp/B09XS7JWHH",
+        "identifiers": {
+          "gtin": "4006381333931",
+          "asin": "B09XS7JWHH"
+        },
+        "offers": [
+          {
+            "platform": "temu",
+            "sellerName": "AudioShop",
+            "externalId": "601099512345",
+            "url": "https://www.temu.com/goods.html?goods_id=601099512345",
+            "canonicalUrl": "temu.com/goods.html?goods_id=601099512345",
+            "price": 279.5,
+            "currency": "EUR",
+            "availability": "in_stock",
+            "shipping": {
+              "cost": null,
+              "free": null,
+              "days": null
+            },
+            "condition": "unknown",
+            "capturedAt": "2026-11-13T10:00:00.000Z",
+            "offerId": "5fc9cdc4f4",
+            "offerKey": "temu:601099512345:audioshop",
+            "receivedAt": "2026-11-14T12:00:00.000Z",
+            "verifiedAt": "",
+            "source": {
+              "channel": "json",
+              "batchId": "precios-sinteticos",
+              "adapter": "json-import"
+            },
+            "status": "active"
+          }
+        ],
+        "observations": [
+          {
+            "capturedAt": "2026-11-09T12:00:00.000Z",
+            "verifiedAt": "2026-11-09T12:00:00.000Z",
+            "price": 329,
+            "originalPrice": null,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-1"
+          },
+          {
+            "capturedAt": "2026-11-14T06:00:00.000Z",
+            "verifiedAt": "2026-11-14T06:00:00.000Z",
+            "price": 299.99,
+            "originalPrice": 349.99,
+            "inStock": true,
+            "shippingCost": 0,
+            "deliveryMinDays": 1,
+            "deliveryMaxDays": 3,
+            "context": {
+              "currency": "EUR",
+              "destination": "ES",
+              "merchantId": null,
+              "variantId": null,
+              "condition": "new",
+              "quantity": null,
+              "shippingCriterion": "standard"
+            },
+            "contextKey": "EUR|ES|||new||standard",
+            "source": {
+              "type": "sintetico",
+              "id": "fixture"
+            },
+            "runId": "run-2"
+          }
+        ]
+      },
+      "originalPrice": 349.99,
+      "lastPriceSync": "2026-11-14T06:00:00.000Z"
+    }
+  ]
+}

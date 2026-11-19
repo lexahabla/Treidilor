@@ -1,0 +1,33 @@
+{
+  "esquema": "propuesta-capacidades/1",
+  "estado": "propuesta_no_aprobada",
+  "aviso": "Este archivo NO forma parte del registro de capacidades: ninguna de estas capacidades existe, está aprobada ni se puede invocar. Solo documenta lo que se propone al propietario. El registro (registro-agentes.v1.json) no lo lee.",
+  "fecha": "2026-11-15",
+  "principio": "D1: el Agente 13 es el CANAL del Agente 00; sin autoridad propia, sin decisión de permisos y sin ejecución directa de acciones de otros agentes. Con el registro actual el canal funciona SIN capacidades propias: usa la sesión del propietario y lecturas del Director.",
+  "implementadoSinNuevosPermisos": [
+    "recibir instrucciones y entregarlas al Director",
+    "mostrar estado de agentes, tareas y autorizaciones (lecturas del Director)",
+    "presentar informes, incidencias y solicitudes de autorización",
+    "explicar, con alternativas, consecuencias y limitaciones, la última respuesta",
+    "consultar consumo y suscripciones de IA con las métricas de F1.5",
+    "recomendar optimización sin cambiar nada"
+  ],
+  "capacidadesPropuestas": [
+    { "id": "13.presentar-estado", "nivel": "L0", "alcances": ["tasks:read"], "efectos": "ninguno", "nota": "Formalizaría las lecturas de estado como capacidad auditable; hoy son métodos del Director." },
+    { "id": "13.presentar-autorizacion", "nivel": "L0", "alcances": ["tasks:read"], "efectos": "ninguno", "nota": "Presentar una solicitud con alcance, coste y caducidad; la decisión sigue siendo del propietario en la interfaz." },
+    { "id": "13.consultar-consumo-ia", "nivel": "L0", "alcances": ["budget:read (NUEVO)"], "efectos": "ninguno", "nota": "Requiere un alcance nuevo que el registro no tiene." },
+    { "id": "13.recomendar-optimizacion", "nivel": "L1", "alcances": ["budget:read (NUEVO)"], "efectos": "ninguno", "nota": "Propuestas de ahorro; ningún cambio de presupuesto o proveedor es automático (L4 humano)." },
+    { "id": "13.consultar-propuestas", "nivel": "L0", "alcances": ["proposals:read"], "efectos": "ninguno", "nota": "BLOQUEADA: en F1 no existe almacén de propuestas." },
+    { "id": "13.consultar-auditoria", "nivel": "L0", "alcances": ["audit:read"], "efectos": "ninguno", "nota": "Lectura del ledger para el propietario; hoy se hace a través del Director." },
+    { "id": "13.canal-voz", "nivel": "L1", "alcances": ["voice:session (NUEVO)"], "efectos": "ninguno", "estado": "desactivada hasta F4", "nota": "Requiere seleccionar proveedor y aprobar su coste y privacidad; la voz nunca confirma L2–L4." },
+    { "id": "13.notificar-propietario", "nivel": "L2", "alcances": ["notify:send (NUEVO)"], "efectos": "envío externo", "estado": "no propuesta aún", "nota": "Avisos fuera de la sesión (correo, móvil): implica un canal externo y datos del propietario; requiere decisión específica." }
+  ],
+  "alcancesPrevistosEnLaFicha": ["tasks:read", "proposals:read", "audit:read"],
+  "decisionesPendientes": [
+    "¿Se formalizan las lecturas del canal como capacidades del registro o se mantienen como métodos del Director (opción actual, sin capacidades propias)?",
+    "¿Se crea el alcance budget:read para consumo y presupuestos?",
+    "Almacén de propuestas (proposals:read) y cómo se presentan al propietario.",
+    "Autenticación de la interfaz que confirma L2–L4 (hoy simulada).",
+    "Proveedor de voz, coste, privacidad y reglas de reautenticación (F4)."
+  ]
+}

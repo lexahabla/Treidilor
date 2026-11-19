@@ -1,0 +1,46 @@
+{
+  "esquema": "propuesta-capacidades/1",
+  "agente": "07",
+  "estado": "propuesta_no_aprobada",
+  "aviso": "Este archivo NO forma parte del registro de capacidades: ninguna de estas capacidades existe, está aprobada ni se puede invocar desde el Director. Solo documenta lo que se propone al propietario. El registro (registro-agentes.v1.json) no lo lee.",
+  "fecha": "2026-11-15",
+  "fichaOriginal": {
+    "nombre": "Marketing multicanal y SEO",
+    "mision": "Planifica calendario de contenidos, campañas y mejoras SEO medibles para tráfico cualificado.",
+    "entradas": ["Analítica", "Informes de producto/precio", "Estacionalidad (p. ej. Black Friday)"],
+    "salidas": ["Plan de campañas y briefs", "Auditoría SEO"],
+    "alcancesPrevistos": ["research:write", "drafts:write"],
+    "riesgo": "medio",
+    "aprobacion": "Nada se publica sin aprobación",
+    "medicion": "Tráfico cualificado; coste por visita",
+    "honestidad": "Cumplir normas de afiliación y publicidad; sin afirmaciones no demostrables",
+    "etapa": "Posterior a 2.6"
+  },
+  "implementadoLocalSinPermisos": [
+    "planificarCampanas: plan de campañas propuesto (calendario comercial + categorías + señales de los informes 05 y 10)",
+    "redactarBrief: borrador de brief (ángulos evaluados, mensajes factuales con fecha, cumplimiento, calendario de acciones)",
+    "revisarTextoPublicitario: revisión de afirmaciones y de cumplimiento (afiliación, urgencia, superlativos, precio sin fecha)",
+    "auditarSEO: auditoría de contenido de fichas y categorías aportadas"
+  ],
+  "capacidadesPropuestas": [
+    { "id": "07.proponer-plan-campanas", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["calendario comercial", "catálogo de referencia (lectura aportada)", "informes de los Agentes 05 y 10 (opcionales)"], "limites": ["una ejecución a la vez", "sin red ni gasto", "no publica ni envía"], "nota": "Con catálogo REAL exigiría catalog:read (alcance aún no concedido)." },
+    { "id": "07.redactar-briefs", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["07.proponer-plan-campanas"], "limites": ["borrador no publicado", "mensajes solo con datos verificados y fechados"], "nota": "Pasa por la revisión de afirmaciones antes de entregarse." },
+    { "id": "07.auditar-seo-contenido", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["fichas y categorías aportadas"], "limites": ["no rastrea la web (lo hace el Agente 12)", "umbrales configurables"], "nota": "Con datos de buscador (Search Console) exigiría una fuente nueva, no propuesta aún." },
+    { "id": "07.revisar-texto-publicitario", "nivel": "L0", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["publicClaims (reglas R1–R6)"], "limites": ["solo analiza el texto recibido"], "nota": "También útil para el 08 (contenido) y el 06 (historias)." },
+    { "id": "07.guardar-borrador-campana", "nivel": "L3", "modo": "accion", "alcances": ["drafts:write"], "efectos": "escritura_reversible", "requiereAprobacion": true, "dependencias": ["almacén de borradores (no existe; decisión pendiente)"], "limites": ["área privada con copia previa y deshacer, como el 06", "nunca publica"], "nota": "Solo tendría sentido simulado hasta definir dónde se guardan los borradores." },
+    { "id": "07.registrar-investigacion", "nivel": "L3", "modo": "accion", "alcances": ["research:write"], "efectos": "escritura_reversible", "requiereAprobacion": true, "dependencias": ["almacén de investigación (no existe)"], "limites": ["notas de investigación propias; sin datos personales"], "nota": "BLOQUEADA hasta definir el almacén y su contenido." }
+  ],
+  "accionesQueNuncaSeranCapacidadDelAgente": [
+    { "accion": "publicar contenido o campañas", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "enviar emails o mensajes (incluidos avisos a usuarios)", "nivel": "L4", "ejecuta": "persona", "nota": "Exige además base de consentimiento y baja (RGPD/LSSI); no consta en los datos" },
+    { "accion": "invertir en publicidad o fijar presupuestos", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "modificar títulos, descripciones o contenido real", "nivel": "L4", "ejecuta": "persona" }
+  ],
+  "decisionesPendientes": [
+    "¿Se aprueban las capacidades L0/L1 (sin alcances nuevos) para integrarlas en el registro?",
+    "¿Dónde se guardan los borradores y las notas de investigación (drafts:write, research:write)?",
+    "¿Se concede catalog:read al 07 o recibe siempre las fuentes por parámetro como hoy?",
+    "Datos de buscador y de gasto publicitario: ¿existirán alguna vez y con qué fuente?",
+    "Texto legal de divulgación de afiliación: lo valida el propietario."
+  ]
+}

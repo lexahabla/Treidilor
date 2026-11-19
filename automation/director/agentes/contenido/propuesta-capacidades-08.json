@@ -1,0 +1,49 @@
+{
+  "esquema": "propuesta-capacidades/1",
+  "agente": "08",
+  "estado": "propuesta_no_aprobada",
+  "aviso": "Este archivo NO forma parte del registro de capacidades: ninguna de estas capacidades existe, está aprobada ni se puede invocar desde el Director. El registro (registro-agentes.v1.json) no lo lee. El Agente 08 sigue «planificado» y sin capacidades.",
+  "fecha": "2026-11-15",
+  "fichaOriginal": {
+    "nombre": "Contenido y recursos visuales",
+    "mision": "Redacta textos y propone imágenes/vídeos para fichas, guías, historias y redes.",
+    "entradas": ["Briefs del agente de marketing", "Datos reales del catálogo"],
+    "salidas": ["Borradores de texto y recursos"],
+    "alcancesPrevistos": ["drafts:write"],
+    "riesgo": "medio",
+    "aprobacion": "Revisión humana antes de publicar",
+    "medicion": "Piezas aprobadas / generadas",
+    "honestidad": "Imágenes con derechos claros; sin precios ni descuentos inventados",
+    "etapa": "Posterior a 2.6"
+  },
+  "implementadoLocalSinPermisos": [
+    "borradorFicha: título, descripción y puntos clave solo con datos de la ficha (plantilla local, no IA)",
+    "proponerRecursosVisuales: imágenes existentes clasificadas por origen y derechos, texto alternativo, prompt PROPUESTO sin generar",
+    "borradorHistoria: historia con el modelo del Agente 06 (siempre borrador) desde un brief del Agente 07",
+    "borradorPostsRedes: textos para redes desde los mensajes verificados del brief, con divulgación de afiliación",
+    "revisarPieza e informeContenido: revisión (reglas del 07, derechos de imagen, seguridad de URL) e informe informe-agente/1",
+    "prepararContenidoCampana: paquete completo de una campaña del plan del 07"
+  ],
+  "capacidadesPropuestas": [
+    { "id": "08.proponer-borrador-ficha", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["fichas de referencia aportadas por parámetro", "reglas de afirmaciones (07 y publicClaims)"], "limites": ["una ejecución a la vez", "sin IA ni red", "no modifica fichas"], "nota": "Con catálogo REAL exigiría catalog:read (no concedido)." },
+    { "id": "08.proponer-recursos-visuales", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["fichas de referencia", "publicSafety", "imageQuality"], "limites": ["no genera ni descarga imágenes", "derechos siempre pendientes de verificar"], "nota": "Los derechos de imagen solo los puede verificar una persona." },
+    { "id": "08.proponer-borrador-historia", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["brief del Agente 07", "modelo de historias del Agente 06"], "limites": ["siempre borrador", "solo mensajes verificados con fecha"], "nota": "Publicar una historia es L4 humano." },
+    { "id": "08.proponer-borrador-redes", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["brief del Agente 07"], "limites": ["sin enlaces reales", "con divulgación de afiliación", "≤ 280 caracteres"], "nota": "Publicar en una red es L4 humano; cada red tiene normas propias no verificadas." },
+    { "id": "08.revisar-pieza", "nivel": "L0", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["07.revisar-texto-publicitario"], "limites": ["solo analiza la pieza recibida"], "nota": "Revisión de texto e imágenes de una pieza aportada." },
+    { "id": "08.guardar-borrador-contenido", "nivel": "L3", "modo": "accion", "alcances": ["drafts:write"], "efectos": "escritura_reversible", "requiereAprobacion": true, "dependencias": ["almacén de borradores (no existe; decisión pendiente, compartida con 07)"], "limites": ["área privada con copia previa y deshacer, como el 06", "nunca publica"], "nota": "BLOQUEADA hasta definir el almacén." },
+    { "id": "08.generar-imagen-ia", "nivel": "L3", "modo": "accion", "alcances": ["images:generate (NUEVO)"], "efectos": "gasto_externo", "requiereAprobacion": true, "dependencias": ["proveedor de imagen", "presupuesto de IA aprobado (F1.5: consumo real desactivado)", "almacén de borradores"], "limites": ["coste por imagen estimado y aprobado antes", "tope diario y mensual del Director"], "nota": "BLOQUEADA: implica gasto de IA; hoy el consumo real está desactivado." }
+  ],
+  "accionesQueNuncaSeranCapacidadDelAgente": [
+    { "accion": "publicar texto, imágenes o historias en la web", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "publicar en redes u otros canales externos", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "modificar fichas, descripciones o imágenes reales del catálogo", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "aprobar derechos de uso de una imagen", "nivel": "L4", "ejecuta": "persona" }
+  ],
+  "decisionesPendientes": [
+    "¿Se aprueban las capacidades L0/L1 (sin alcances nuevos)?",
+    "Almacén de borradores (drafts:write), compartido con el 07.",
+    "Política de derechos de imagen: qué fuentes se consideran utilizables y quién las verifica.",
+    "¿Se autoriza algún día la generación de imágenes con IA y con qué presupuesto?",
+    "Registro de aprobaciones humanas de piezas para medir «aprobadas / generadas»."
+  ]
+}

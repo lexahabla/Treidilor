@@ -1,0 +1,92 @@
+{
+  "sintetico": true,
+  "nota": "Catálogo FICTICIO de referencia para simular importaciones; generado con el motor existente. No es el catálogo de producción.",
+  "productos": [
+    {
+      "id": "teclado-mecanico-keychron-k2-inalambrico-214dcc",
+      "title": "Teclado mecánico Keychron K2 inalámbrico",
+      "description": "",
+      "price": 89.9,
+      "image": "https://img.example.com/k2.jpg",
+      "category": "Prueba",
+      "merchant": "Ebay",
+      "network": "ebay",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.ebay.es/itm/305123456789",
+      "sourceId": "305123456789",
+      "brand": "Keychron",
+      "condition": "Nuevo",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "base-sintetica",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-10T10:00:00.000Z",
+          "capturedAtInferred": false,
+          "receivedAt": "2026-11-14T12:00:00.000Z",
+          "source": {
+            "channel": "json",
+            "batchId": "base-sintetica",
+            "adapter": "json-import"
+          }
+        },
+        "sourceUrl": "https://www.ebay.es/itm/305123456789",
+        "offerSeller": {
+          "name": "TecladosPro"
+        },
+        "identifiers": {
+          "gtin": "5901234123457"
+        }
+      }
+    },
+    {
+      "id": "amazon-b09xs7jwhh",
+      "title": "Auriculares Sony WH-1000XM5 Negro",
+      "description": "",
+      "price": 299.99,
+      "image": "https://img.example.com/sony.jpg",
+      "category": "Prueba",
+      "merchant": "Amazon",
+      "network": "amazon",
+      "currency": "EUR",
+      "inStock": true,
+      "affiliateUrl": "https://www.amazon.es/dp/B09XS7JWHH?tag=x&th=1",
+      "asin": "B09XS7JWHH",
+      "sourceId": "B09XS7JWHH",
+      "brand": "Sony",
+      "pros": [],
+      "cons": [],
+      "link_status": "pending",
+      "ia_status": "pending",
+      "extra": {
+        "importMeta": {
+          "channel": "json",
+          "batchId": "base-sintetica",
+          "importedAt": "2026-11-14T12:00:00.000Z"
+        },
+        "priceReading": {
+          "capturedAt": "2026-11-10T10:00:00.000Z",
+          "capturedAtInferred": false,
+          "receivedAt": "2026-11-14T12:00:00.000Z",
+          "source": {
+            "channel": "json",
+            "batchId": "base-sintetica",
+            "adapter": "json-import"
+          }
+        },
+        "sourceUrl": "https://www.amazon.es/dp/B09XS7JWHH?tag=x&th=1",
+        "identifiers": {
+          "gtin": "4006381333931",
+          "asin": "B09XS7JWHH"
+        }
+      }
+    }
+  ]
+}

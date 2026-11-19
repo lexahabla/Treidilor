@@ -1,0 +1,455 @@
+{
+  "esquema": "afiliacion-programas/1",
+  "version": "simulado-1",
+  "sintetico": true,
+  "capturadoEn": "2026-10-20T00:00:00.000Z",
+  "nota": "DATOS FICTICIOS para probar la lógica del Agente 02: no son comisiones, cookies ni condiciones reales de ningún programa. Sustituir por datos con fuente y fecha reales (revisión humana de la documentación pública de cada red). Sin credenciales.",
+  "programas": [
+    {
+      "id": "amazon",
+      "nombre": "Amazon Associates",
+      "tipo": "programa_directo",
+      "integradoEnTreidilor": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "AGENTS.md: conector de red existente (documentado)",
+        "fecha": null
+      },
+      "comisionPct": {
+        "valor": 4.0,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-10-20"
+      },
+      "cookieDias": {
+        "valor": 1,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-10-20"
+      },
+      "pagoMinimoEur": {
+        "valor": 10,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-10-20"
+      },
+      "periodoPagoDias": {
+        "valor": 60,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-10-20"
+      },
+      "mercadoEspana": {
+        "valor": true,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-10-20"
+      },
+      "categorias": [
+        "informatica",
+        "hogar",
+        "sonido"
+      ],
+      "condiciones": [
+        {
+          "texto": "Enlaces solo con etiqueta propia; sin precios cacheados",
+          "fuente": "dato simulado",
+          "fecha": null
+        }
+      ],
+      "restricciones": [
+        "no usar enlaces en correo masivo"
+      ]
+    },
+    {
+      "id": "aliexpress",
+      "nombre": "AliExpress Portals",
+      "tipo": "programa_directo",
+      "integradoEnTreidilor": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "AGENTS.md: conector de red existente (documentado)",
+        "fecha": null
+      },
+      "comisionPct": {
+        "valor": 6.0,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "cookieDias": {
+        "valor": 3,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "pagoMinimoEur": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "periodoPagoDias": {
+        "valor": 30,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "mercadoEspana": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "categorias": [
+        "informatica",
+        "hogar"
+      ],
+      "condiciones": [
+        {
+          "texto": "Cuenta de afiliado sujeta a revisión",
+          "fuente": "dato simulado",
+          "fecha": null
+        }
+      ],
+      "restricciones": []
+    },
+    {
+      "id": "ebay",
+      "nombre": "eBay Partner Network",
+      "tipo": "programa_directo",
+      "integradoEnTreidilor": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "AGENTS.md: conector de red existente (documentado)",
+        "fecha": null
+      },
+      "comisionPct": {
+        "valor": 5.0,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "cookieDias": {
+        "valor": 1,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "pagoMinimoEur": {
+        "valor": 10,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "periodoPagoDias": {
+        "valor": 30,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "mercadoEspana": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "categorias": [
+        "informatica",
+        "sonido"
+      ],
+      "condiciones": [],
+      "restricciones": [
+        "comisión depende de la categoría"
+      ]
+    },
+    {
+      "id": "awin",
+      "nombre": "Awin",
+      "tipo": "red",
+      "integradoEnTreidilor": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "AGENTS.md: conector de red existente (documentado)",
+        "fecha": null
+      },
+      "comisionPct": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "cookieDias": {
+        "valor": 30,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "pagoMinimoEur": {
+        "valor": 20,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "periodoPagoDias": {
+        "valor": 60,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "mercadoEspana": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "categorias": [
+        "informatica",
+        "hogar",
+        "sonido"
+      ],
+      "condiciones": [
+        {
+          "texto": "Comisión distinta por anunciante",
+          "fuente": "dato simulado",
+          "fecha": null
+        }
+      ],
+      "restricciones": [
+        "aprobación por anunciante"
+      ]
+    },
+    {
+      "id": "cj",
+      "nombre": "CJ Affiliate",
+      "tipo": "red",
+      "integradoEnTreidilor": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "AGENTS.md: conector de red existente (documentado)",
+        "fecha": null
+      },
+      "comisionPct": {
+        "valor": 7.5,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "cookieDias": {
+        "valor": 45,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "pagoMinimoEur": {
+        "valor": 50,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "periodoPagoDias": {
+        "valor": 30,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "mercadoEspana": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "categorias": [
+        "hogar"
+      ],
+      "condiciones": [],
+      "restricciones": []
+    },
+    {
+      "id": "admitad",
+      "nombre": "Admitad",
+      "tipo": "red",
+      "integradoEnTreidilor": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "AGENTS.md: conector de red existente (documentado)",
+        "fecha": null
+      },
+      "comisionPct": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "cookieDias": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "pagoMinimoEur": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "periodoPagoDias": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "mercadoEspana": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "categorias": [],
+      "condiciones": [],
+      "restricciones": []
+    },
+    {
+      "id": "tradedoubler",
+      "nombre": "Tradedoubler",
+      "tipo": "red",
+      "integradoEnTreidilor": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "AGENTS.md: conector de red existente (documentado)",
+        "fecha": null
+      },
+      "comisionPct": {
+        "valor": 3.5,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-02-01"
+      },
+      "cookieDias": {
+        "valor": 30,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-02-01"
+      },
+      "pagoMinimoEur": {
+        "valor": 25,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-02-01"
+      },
+      "periodoPagoDias": {
+        "valor": 60,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-02-01"
+      },
+      "mercadoEspana": {
+        "valor": true,
+        "verificacion": "verificado",
+        "fuente": "documentación pública simulada",
+        "fecha": "2026-02-01"
+      },
+      "categorias": [
+        "informatica"
+      ],
+      "condiciones": [],
+      "restricciones": []
+    },
+    {
+      "id": "kwanko",
+      "nombre": "Kwanko",
+      "tipo": "red",
+      "integradoEnTreidilor": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "AGENTS.md: conector de red existente (documentado)",
+        "fecha": null
+      },
+      "comisionPct": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "cookieDias": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "pagoMinimoEur": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "periodoPagoDias": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "mercadoEspana": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "categorias": [],
+      "condiciones": [],
+      "restricciones": []
+    },
+    {
+      "id": "etsy",
+      "nombre": "Etsy (Awin)",
+      "tipo": "programa_directo",
+      "integradoEnTreidilor": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "AGENTS.md: conector de red existente (documentado)",
+        "fecha": null
+      },
+      "comisionPct": {
+        "valor": 4.0,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "cookieDias": {
+        "valor": 30,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "pagoMinimoEur": {
+        "valor": null,
+        "verificacion": "no_disponible",
+        "fuente": null,
+        "fecha": null
+      },
+      "periodoPagoDias": {
+        "valor": 60,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "mercadoEspana": {
+        "valor": true,
+        "verificacion": "estimado",
+        "fuente": "dato simulado",
+        "fecha": null
+      },
+      "categorias": [
+        "hogar"
+      ],
+      "condiciones": [
+        {
+          "texto": "Se gestiona a través de Awin",
+          "fuente": "dato simulado",
+          "fecha": null
+        }
+      ],
+      "restricciones": []
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "esquema": "propuesta-capacidades/1",
+  "agente": "11",
+  "estado": "propuesta_no_aprobada",
+  "aviso": "Este archivo NO forma parte del registro de capacidades: ninguna de estas capacidades existe, está aprobada ni se puede invocar desde el Director. El registro (registro-agentes.v1.json) no lo lee. El Agente 11 sigue «planificado» y sin capacidades.",
+  "fecha": "2026-11-15",
+  "fichaOriginal": {
+    "nombre": "Webs nicho (ficha: «Expansión mediante webs nicho»)",
+    "mision": "Estudia la viabilidad de nuevos nichos y webs (demanda, competencia, afiliación, coste).",
+    "entradas": ["Informes de mercado y afiliación"],
+    "salidas": ["Estudio de viabilidad con hipótesis y riesgos"],
+    "alcancesPrevistos": ["research:write"],
+    "riesgo": "bajo",
+    "aprobacion": "Decisión del propietario",
+    "medicion": "Estudios con decisión",
+    "honestidad": "Hipótesis marcadas como tales",
+    "etapa": "Posterior a 2.5"
+  },
+  "implementadoLocalSinPermisos": [
+    "estudiarNicho: estudio de viabilidad en borrador (demanda, competencia, afiliación, coste y catálogo propio, cada dimensión con su estado) con hipótesis marcadas y riesgos",
+    "analizarOportunidades: orden de nichos por MADUREZ DE LA EVIDENCIA (no por beneficio previsto)",
+    "informeNichos: informe informe-agente/1 en dos modos (viabilidad y oportunidades)"
+  ],
+  "dentroDeLaFicha": [
+    { "id": "11.analizar-oportunidades-nicho", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["informes de los Agentes 02, 09 y 10 (por parámetro)", "nuestro catálogo de referencia aportado"], "limites": ["ordena por madurez de la evidencia, no por beneficio", "máx. 12 nichos por ejecución"], "requisitos": [], "nota": "Cubre «informes de mercado y afiliación» → estudio con hipótesis." },
+    { "id": "11.estudiar-viabilidad-nicho", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["11.analizar-oportunidades-nicho", "demanda y costes aportados por el propietario con fuente, fecha y método"], "limites": ["no proyecta ingresos, tráfico ni rentabilidad", "las hipótesis se marcan como tales"], "requisitos": ["datos de demanda y de coste aportados por una persona"], "nota": "La salida de la ficha: estudio de viabilidad con hipótesis y riesgos; la decisión es del propietario." },
+    { "id": "11.registrar-estudio", "nivel": "L3", "modo": "accion", "alcances": ["research:write"], "efectos": "escritura_reversible", "requiereAprobacion": true, "dependencias": ["almacén de investigación (no existe; decisión pendiente, compartida con 07 y 09)"], "limites": ["con copia previa y deshacer", "sin datos personales"], "requisitos": [], "nota": "BLOQUEADA hasta definir el almacén; es el alcance previsto en la ficha y permitiría medir «estudios con decisión»." }
+  ],
+  "fueraDeLaFichaPendientesDeAutorizacion": [
+    { "id": "11.proponer-estructura-sitio", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["catálogo de referencia", "huecos del Agente 09"], "limites": ["esqueleto de secciones; sin nombre, dominio, tecnología ni contenido"], "nota": "La ficha NO incluye proponer estructuras de sitios. Existe como función pura marcada fueraDeFicha; requiere autorización expresa para registrarse." },
+    { "id": "11.proponer-estrategia-contenido", "nivel": "L1", "modo": "consulta", "alcances": [], "efectos": "ninguno", "dependencias": ["huecos del Agente 09", "calendario comercial del Agente 07", "capacidades del Agente 08"], "limites": ["lista de piezas a redactar; sin textos, sin tráfico ni ingresos esperados"], "nota": "La ficha NO incluye proponer estrategias de contenido. Existe como función pura marcada fueraDeFicha; requiere autorización expresa para registrarse." }
+  ],
+  "accionesQueNuncaSeranCapacidadDelAgente": [
+    { "accion": "crear la web, comprar el dominio o contratar alojamiento", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "publicar contenido o activar campañas", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "darse de alta en programas de afiliación para el nuevo sitio", "nivel": "L4", "ejecuta": "persona" },
+    { "accion": "decidir si un nicho se lleva adelante", "nivel": "L4", "ejecuta": "propietario" }
+  ],
+  "decisionesPendientes": [
+    "¿Se aprueban las capacidades L1 de la ficha (sin alcances)? Con ellas la integración sigue el patrón de 07, 08 y 09.",
+    "¿Se autorizan las dos funciones fuera de la ficha (estructura de sitio y estrategia de contenido) o se descartan?",
+    "Almacén de investigación (research:write), compartido con 07 y 09.",
+    "Quién aporta y verifica la demanda y los costes de un nicho, y con qué plantilla.",
+    "Registro de la decisión del propietario sobre cada estudio, para medir «estudios con decisión»."
+  ]
+}

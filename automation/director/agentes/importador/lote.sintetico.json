@@ -1,0 +1,65 @@
+{
+  "defaults": {
+    "category": "Prueba"
+  },
+  "products": [
+    {
+      "title": "Auriculares Sony WH-1000XM5 Negro",
+      "brand": "Sony",
+      "gtin": "4006381333931",
+      "image": "https://img.example.com/sony.jpg",
+      "platform": "amazon",
+      "asin": "B09XS7JWHH",
+      "url": "https://www.amazon.es/dp/B09XS7JWHH?tag=x&th=1",
+      "price": 299.99,
+      "currency": "EUR",
+      "availability": "in_stock",
+      "capturedAt": "2026-11-10T10:00:00Z"
+    },
+    {
+      "title": "Sony WH-1000XM5 auriculares inalámbricos",
+      "brand": "Sony",
+      "gtin": "4006381333931",
+      "image": "https://img.example.com/sony-temu.jpg",
+      "platform": "temu",
+      "externalId": "601099512345",
+      "sellerName": "AudioShop",
+      "url": "https://www.temu.com/goods.html?goods_id=601099512345",
+      "price": 279.5,
+      "currency": "EUR",
+      "availability": "in_stock",
+      "capturedAt": "2026-11-10T10:00:00Z"
+    },
+    {
+      "title": "Ratón gaming inalámbrico RGB 16000 DPI",
+      "brand": "Genérico",
+      "image": "https://img.example.com/mouse.jpg",
+      "platform": "aliexpress",
+      "externalId": "1005006123456789",
+      "sellerName": "TechStore Official",
+      "url": "https://es.aliexpress.com/item/1005006123456789.html",
+      "price": 14.99,
+      "currency": "EUR",
+      "availability": "in_stock",
+      "capturedAt": "2026-11-10T10:00:00Z"
+    },
+    {
+      "title": "",
+      "platform": "temu",
+      "url": "https://www.temu.com/x-g-1.html"
+    },
+    {
+      "title": "Auriculares Sony WH-1000XM5 Negro",
+      "brand": "Sony",
+      "gtin": "4006381333931",
+      "image": "https://img.example.com/sony.jpg",
+      "platform": "amazon",
+      "asin": "B000000000",
+      "url": "https://www.amazon.es/dp/B09XS7JWHH",
+      "price": 299.99,
+      "currency": "EUR",
+      "availability": "in_stock",
+      "capturedAt": "2026-11-10T10:00:00Z"
+    }
+  ]
+}

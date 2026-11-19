@@ -1,0 +1,31 @@
+{
+  "formato": "instantaneas-exportadas/1",
+  "agente": "04",
+  "tabla": "calidad_catalogo_instantaneas",
+  "exportadoEn": "2026-11-14T12:00:00.000Z",
+  "sintetico": true,
+  "filas": [
+    {
+      "id": 1,
+      "entorno": "produccion",
+      "host": "treidilor.com",
+      "generadoEn": "2026-11-13T09:00:00.000Z",
+      "idEjecucion": "fx-04-01",
+      "origen": "manual",
+      "calidad": "completa",
+      "huella": "f0d1003c68364946",
+      "payload": "{\"esquema\":1,\"agente\":\"calidad-catalogo\",\"version\":\"0.2.0\",\"entorno\":\"produccion\",\"host\":\"treidilor.com\",\"generadoEn\":\"2026-11-13T09:00:00.000Z\",\"calidad\":{\"estado\":\"completa\",\"motivos\":[]},\"alcance\":{\"host\":\"treidilor.com\",\"salud\":true,\"rutas\":[],\"enlaces\":[],\"fichas\":[\"p-001\",\"p-002\",\"p-003\",\"p-004\",\"p-005\",\"p-006\",\"p-007\",\"p-008\",\"p-009\",\"p-010\",\"p-011\",\"p-012\"],\"contenido\":null,\"catalogo\":{\"leido\":true,\"completo\":true}},\"incidencias\":[{\"clave\":\"ficha:sin_categoria:p-001\",\"area\":\"ficha\",\"codigo\":\"sin_categoria\",\"gravedad\":\"media\",\"cantidad\":null,\"ocurrencias\":1},{\"clave\":\"ficha:sin_categoria:p-002\",\"area\":\"ficha\",\"codigo\":\"sin_categoria\",\"gravedad\":\"media\",\"cantidad\":null,\"ocurrencias\":1},{\"clave\":\"ficha:comercio_malformado:p-003\",\"area\":\"ficha\",\"codigo\":\"comercio_malformado\",\"gravedad\":\"media\",\"cantidad\":null,\"ocurrencias\":1},{\"clave\":\"ficha:fecha_captura_antigua:p-004\",\"area\":\"ficha\",\"codigo\":\"fecha_captura_antigua\",\"gravedad\":\"baja\",\"cantidad\":null,\"ocurrencias\":1}]}"
+    },
+    {
+      "id": 2,
+      "entorno": "produccion",
+      "host": "treidilor.com",
+      "generadoEn": "2026-11-14T09:00:00.000Z",
+      "idEjecucion": "fx-04-02",
+      "origen": "manual",
+      "calidad": "completa",
+      "huella": "fd4338624f2965b3",
+      "payload": "{\"esquema\":1,\"agente\":\"calidad-catalogo\",\"version\":\"0.2.0\",\"entorno\":\"produccion\",\"host\":\"treidilor.com\",\"generadoEn\":\"2026-11-14T09:00:00.000Z\",\"calidad\":{\"estado\":\"completa\",\"motivos\":[]},\"alcance\":{\"host\":\"treidilor.com\",\"salud\":true,\"rutas\":[],\"enlaces\":[],\"fichas\":[\"p-001\",\"p-002\",\"p-003\",\"p-004\",\"p-005\",\"p-006\",\"p-007\",\"p-008\",\"p-009\",\"p-010\",\"p-011\",\"p-012\"],\"contenido\":null,\"catalogo\":{\"leido\":true,\"completo\":true}},\"incidencias\":[{\"clave\":\"ficha:sin_categoria:p-001\",\"area\":\"ficha\",\"codigo\":\"sin_categoria\",\"gravedad\":\"media\",\"cantidad\":null,\"ocurrencias\":1},{\"clave\":\"ficha:comercio_malformado:p-003\",\"area\":\"ficha\",\"codigo\":\"comercio_malformado\",\"gravedad\":\"media\",\"cantidad\":null,\"ocurrencias\":1},{\"clave\":\"ficha:fecha_captura_antigua:p-004\",\"area\":\"ficha\",\"codigo\":\"fecha_captura_antigua\",\"gravedad\":\"baja\",\"cantidad\":null,\"ocurrencias\":1},{\"clave\":\"ficha:red_no_identificada:p-005\",\"area\":\"ficha\",\"codigo\":\"red_no_identificada\",\"gravedad\":\"baja\",\"cantidad\":null,\"ocurrencias\":1}]}"
+    }
+  ]
+}

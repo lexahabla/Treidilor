@@ -1,0 +1,294 @@
+{
+  "registro": "registro-agentes/1",
+  "version": "1.0.0-f1-borrador",
+  "estado": "borrador_pendiente_de_revision_del_propietario",
+  "generadoDe": "automation/docs/REGISTRO-AGENTES.md (13-14/11/2026)",
+  "nota": "El Director solo LEE este registro; un cambio de nivel, alcance o efecto es un cambio de versión con aprobación expresa. «comunicado» = lo afirma el propietario y nadie lo ha verificado.",
+  "agentes": [
+    { "id": "00", "nombre": "Director y coordinador conversacional", "estado": "construido_local", "origenEstado": "documentado", "etapa": "F1 (consola local, sin LLM)", "riesgo": "medio", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "01", "nombre": "Investigador de tendencias y productos", "estado": "construido_local", "origenEstado": "documentado", "etapa": "2.0 → 2.5", "riesgo": "bajo", "invocacion": { "tipo": "n8n-workflow", "referencia": "workflow local, solo manual" }, "credencial": null },
+    { "id": "02", "nombre": "Investigador de programas de afiliación", "estado": "construido_local", "origenEstado": "documentado", "etapa": "2.5 (local, datos simulados)", "riesgo": "bajo", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "03", "nombre": "Importador", "estado": "construido_local", "origenEstado": "documentado", "etapa": "2.5 (local, motor existente, fixtures sintéticos)", "riesgo": "medio", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "04", "nombre": "Calidad del catálogo", "salvedades": [ { "tema": "reparto_comercio", "texto": "El campo «comercio» tiene una incidencia abierta sin corregir (valor «[object Object]» en algunas fichas de Amazon, y redes no identificadas): cualquier reparto por comercio o por red está afectado y no es fiable. Conviene esperar a su diagnóstico o leer el feed de forma autorizada." } ], "estado": "operativo", "origenEstado": "comunicado", "etapa": "2.4 (detectar) → 2.5 (proponer)", "riesgo": "medio", "invocacion": { "tipo": "lectura-instantanea", "referencia": "calidad_catalogo_instantaneas" }, "credencial": "Treidilor — Catálogo (solo lectura)" },
+    { "id": "05", "nombre": "Analista de ofertas y precios", "estado": "construido_local", "origenEstado": "documentado", "etapa": "2.4 → 2.5 (local, funciones existentes, fixtures sintéticos)", "riesgo": "alto", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "06", "nombre": "Diseñador de categorías, portada e historias", "estado": "construido_local", "origenEstado": "documentado", "etapa": "2.5 (local, portada editable existente, fixtures sintéticos)", "riesgo": "medio", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "07", "nombre": "Marketing multicanal y SEO", "estado": "construido_local", "origenEstado": "documentado", "etapa": "posterior a 2.6 (local: 4 capacidades L0/L1 autorizadas el 15/11/2026; fuentes por parámetro, sin acceso al catálogo real)", "riesgo": "medio", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "08", "nombre": "Contenido y recursos visuales", "estado": "construido_local", "origenEstado": "documentado", "etapa": "posterior a 2.6 (local: 5 capacidades L0/L1 autorizadas el 15/11/2026; fuentes por parámetro; sin drafts:write ni images:generate)", "riesgo": "medio", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "09", "nombre": "Competencia y expertos", "estado": "construido_local", "origenEstado": "documentado", "etapa": "posterior a 2.5 (local: 4 capacidades L0/L1 autorizadas el 15/11/2026; observaciones por parámetro, sin acceso a webs)", "riesgo": "bajo", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "10", "nombre": "Analítica y conversión", "estado": "construido_local", "origenEstado": "documentado", "etapa": "posterior a 2.5 (local, analítica existente, fixtures sintéticos)", "riesgo": "bajo", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "11", "nombre": "Webs nicho", "estado": "construido_local", "origenEstado": "documentado", "etapa": "posterior a 2.5 (local: 2 capacidades L1 autorizadas el 15/11/2026; datos e informes por parámetro; las demás propuestas siguen bloqueadas)", "riesgo": "bajo", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null },
+    { "id": "12", "nombre": "Auditor General", "estado": "operativo", "origenEstado": "comunicado", "etapa": "2.0 (v0 piloto)", "riesgo": "bajo", "invocacion": { "tipo": "lectura-instantanea", "referencia": "auditor_general_instantaneas" }, "credencial": null },
+    { "id": "13", "nombre": "Asistente conversacional (canal del 00)", "estado": "construido_local", "origenEstado": "documentado", "etapa": "2.6 / 2.7 (canal de texto local; la voz queda para F4)", "riesgo": "medio", "invocacion": { "tipo": "ninguna", "referencia": "—" }, "credencial": null }
+  ],
+  "capacidades": [
+    {
+      "id": "04.leer-ultimo-informe", "agente": "04", "version": "1.0.0", "descripcion": "Lee la última instantánea guardada de la auditoría de calidad del catálogo",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 10000,
+      "entrada": { "entorno": "produccion|local (opcional)" }, "salida": { "informe": "informe-calidad/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "7d", "actualizarHasta": "30d", "invalidadoPor": ["importacion", "publicacion"] },
+      "verificacion": "releer la fuente y comparar la huella del informe", "tabla": "calidad_catalogo_instantaneas"
+    },
+    {
+      "id": "04.leer-historial", "agente": "04", "version": "1.0.0", "descripcion": "Lista las instantáneas anteriores de calidad (históricos: se conservan y se consultan siempre)",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 10000,
+      "entrada": { "entorno": "opcional", "limite": "entero 1-50 (opcional)", "idEjecucion": "opcional" }, "salida": { "informe": "informe-calidad/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "7d", "actualizarHasta": "30d", "invalidadoPor": ["importacion", "publicacion"] },
+      "verificacion": "releer la fuente y comparar la huella del informe", "tabla": "calidad_catalogo_instantaneas"
+    },
+    {
+      "id": "04.comparar-informes", "agente": "04", "version": "1.0.0", "descripcion": "Compara dos instantáneas (nuevas, persistentes, resueltas) con el motor de seguimiento existente, solo lectura",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 10000,
+      "entrada": { "entorno": "opcional", "anterior": "idEjecucion (opcional)", "actual": "idEjecucion (opcional)" }, "salida": { "informe": "seguimiento", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "7d", "actualizarHasta": "30d", "invalidadoPor": ["importacion", "publicacion"] },
+      "verificacion": "las dos instantáneas existen y son completas", "tabla": "calidad_catalogo_instantaneas"
+    },
+    {
+      "id": "04.auditar-catalogo", "agente": "04", "version": "1.0.0", "descripcion": "Lee el feed del catálogo (≤ 8 páginas) y guarda una instantánea inmutable",
+      "modo": "accion", "nivelRiesgo": "L2", "alcances": ["catalog:read"], "efectos": "lectura_con_carga", "requiereAprobacion": true,
+      "disponibilidad": "requiere_f3", "motivoNoDisponible": "Hoy solo existe el disparador manual en n8n; lanzarla desde el Director exige el envoltorio de D5 (ejecución) y autorización expresa (F3).",
+      "plazoMs": 120000,
+      "entrada": { "entorno": "produccion|local", "paginas": "entero 1-8 (opcional)" }, "restricciones": { "entorno": { "enum": ["local", "produccion"] }, "paginas": { "min": 1, "max": 8 } },
+      "procedimientoManual": "Abre n8n, carpeta «Treidilor AI / Agente 04 — Calidad del catálogo», workflow «Calidad del catálogo — Producción» y pulsa «Execute workflow» (respeta ≥ 2 min entre ejecuciones y ≤ 20 al día).",
+      "salida": { "informe": "informe-calidad/1", "sobre": "informe-agente/1" },
+      "limites": { "maxPorDia": 20, "intervaloMinimoSeg": 120, "concurrencia": 1, "maxPaginas": 8 },
+      "frescura": { "vigenteHasta": "7d", "actualizarHasta": "30d", "invalidadoPor": ["importacion", "publicacion"] },
+      "costeEstimado": { "llamadasApi": 8, "ia": 0 }, "verificacion": "releer la fila guardada (id numérico + idEjecucion propio)", "tabla": "calidad_catalogo_instantaneas"
+    },
+    {
+      "id": "04.proponer-correcciones", "agente": "04", "version": "0.1.0", "descripcion": "Propone correcciones de fichas con datos reales (aplicarlas es L4 y lo hace una persona en el panel)",
+      "modo": "propuesta", "nivelRiesgo": "L1", "alcances": ["proposals:create"], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "planificada", "motivoNoDisponible": "Previsto para 2.5.", "plazoMs": 60000,
+      "entrada": {}, "salida": { "sobre": "informe-agente/1" }, "limites": { "concurrencia": 1 }, "verificacion": "—"
+    },
+    {
+      "id": "12.leer-ultimo-informe", "agente": "12", "version": "1.0.0", "descripcion": "Lee el último informe guardado del Auditor General",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 10000,
+      "entrada": { "entorno": "produccion|local (opcional)" }, "salida": { "informe": "informe-auditor", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["despliegue"] },
+      "verificacion": "releer la fuente y comparar la huella del informe", "tabla": "auditor_general_instantaneas"
+    },
+    {
+      "id": "12.leer-historial", "agente": "12", "version": "1.0.0", "descripcion": "Lista instantáneas anteriores del Auditor para comparar (históricos: se conservan y se consultan siempre)",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 10000,
+      "entrada": { "entorno": "opcional", "limite": "entero 1-50 (opcional)", "idEjecucion": "opcional" }, "salida": { "informe": "informe-auditor", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["despliegue"] },
+      "verificacion": "releer la fuente y comparar la huella del informe", "tabla": "auditor_general_instantaneas"
+    },
+    {
+      "id": "12.comparar-informes", "agente": "12", "version": "1.0.0", "descripcion": "Compara dos instantáneas del Auditor con el motor de seguimiento existente, solo lectura",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 10000,
+      "entrada": { "entorno": "opcional", "anterior": "idEjecucion (opcional)", "actual": "idEjecucion (opcional)" }, "salida": { "informe": "seguimiento", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["despliegue"] },
+      "verificacion": "las dos instantáneas existen y son completas", "tabla": "auditor_general_instantaneas"
+    },
+    {
+      "id": "12.auditar-salud", "agente": "12", "version": "1.0.0", "descripcion": "Lanza una auditoría del sitio (GET a páginas públicas) y guarda una instantánea inmutable",
+      "modo": "accion", "nivelRiesgo": "L2", "alcances": [], "efectos": "lectura_con_carga", "requiereAprobacion": true,
+      "disponibilidad": "requiere_f3", "motivoNoDisponible": "Hoy solo existe el disparador manual en n8n; lanzarla desde el Director exige el envoltorio de D5 (ejecución) y autorización expresa (F3).",
+      "plazoMs": 180000,
+      "entrada": { "entorno": "produccion|local" }, "restricciones": { "entorno": { "enum": ["local", "produccion"] } },
+      "procedimientoManual": "Abre n8n, workflow «Auditor General | Producción» y pulsa «Execute workflow» (una ejecución a la vez).",
+      "salida": { "informe": "informe-auditor", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["despliegue"] },
+      "costeEstimado": { "llamadasApi": 0, "ia": 0 }, "verificacion": "releer la fila guardada (`guardada` solo si el Insert devuelve la fila)", "tabla": "auditor_general_instantaneas"
+    },
+    {
+      "id": "01.investigar-tendencias", "agente": "01", "version": "0.1.0", "descripcion": "Identifica CANDIDATOS e HIPÓTESIS comerciales con reglas deterministas sobre un feed del catálogo aportado (la misma lógica del workflow local): descuentos solo DECLARADOS y nunca verificados; NO analiza tendencias temporales ni afirma que nada esté en tendencia; solo propone",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_catalogo"] },
+      "verificacion": "recalcular el informe y comparar la huella", "fuenteDatos": "feed del catálogo (forma automation-catalog/1) aportado por parámetro y automation/lib/researcher.mjs; sin acceso al catálogo real, sin red, sin escritura"
+    },
+    {
+      "id": "02.comparar-programas", "agente": "02", "version": "0.1.0", "descripcion": "Compara programas y redes de afiliación por la comisión DECLARADA, con procedencia de cada dato (los que no tienen comisión no entran en el ranking)",
+      "modo": "propuesta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 10000,
+      "entrada": { "categoria": "opcional", "entorno": "opcional" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "90d", "actualizarHasta": "180d", "invalidadoPor": ["cambio_de_condiciones"] },
+      "verificacion": "recalcular el informe desde el conjunto de datos y comparar la huella", "fuenteDatos": "afiliacion_programas (local, simulado)"
+    },
+    {
+      "id": "02.estudiar-programa-afiliacion", "agente": "02", "version": "0.1.0", "descripcion": "Perfil de un programa o red: comisión, cookie, pagos, condiciones y huecos de datos, con fuente y fecha («no consta» si falta)",
+      "modo": "propuesta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 10000,
+      "entrada": { "programa": "id del programa (obligatorio)", "entorno": "opcional" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "90d", "actualizarHasta": "180d", "invalidadoPor": ["cambio_de_condiciones"] },
+      "verificacion": "recalcular el informe desde el conjunto de datos y comparar la huella", "fuenteDatos": "afiliacion_programas (local, simulado)"
+    },
+    {
+      "id": "03.proponer-lote", "agente": "03", "version": "0.1.0", "descripcion": "Analiza una entrada de importación ya aportada (JSON): identifica plataforma y tipo, valida, detecta duplicados y conflictos entre comercios con el MOTOR EXISTENTE, y propone el lote; prepara (sin enviar) la solicitud de autorización de la importación real",
+      "modo": "propuesta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": { "entradaRef": "huella sha256 de la entrada aportada (JSON, ASIN o URL; ≤ 20000 caracteres)", "entradaBytes": "tamaño (opcional)" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "1h", "actualizarHasta": "24h", "invalidadoPor": ["importacion", "cambio_de_catalogo"] },
+      "verificacion": "recalcular el análisis y comparar la huella del informe", "fuenteDatos": "motor de importación existente (src/lib/jsonImport), sin escritura"
+    },
+    {
+      "id": "03.simular-importacion", "agente": "03", "version": "0.2.0", "descripcion": "Simula la importación (dry-run) de una entrada aportada con el motor existente sobre una COPIA del catálogo de referencia; no escribe nada. Con entradas que exigen una fuente externa (ASIN/URL/categoría, de pago) lo declara y no la consulta",
+      "modo": "accion", "nivelRiesgo": "L2", "alcances": [], "efectos": "lectura_con_carga", "requiereAprobacion": true,
+      "disponibilidad": "simulacion_local", "plazoMs": 60000,
+      "entrada": { "entradaRef": "huella sha256 de la entrada aportada (JSON, ASIN o URL; ≤ 20000 caracteres)", "entradaBytes": "tamaño (opcional)" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1, "intervaloMinimoSeg": 0 }, "frescura": { "vigenteHasta": "1h", "actualizarHasta": "24h", "invalidadoPor": ["importacion", "cambio_de_catalogo"] },
+      "costeEstimado": { "llamadasApi": 0, "ia": 0 }, "verificacion": "recalcular la simulación y comparar la huella del informe", "fuenteDatos": "motor de importación existente (src/lib/jsonImport), sin escritura"
+    },
+    {
+      "id": "05.detectar-caidas-precio", "agente": "05", "version": "0.1.0", "descripcion": "Analiza observaciones de precios con fuente, fecha, mercado y verificación: precios verificados vigentes, descuentos verificados frente a declarados, bajadas, anomalías y comparación entre comercios del mismo producto; solo propone (nunca escribe precios)",
+      "modo": "propuesta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": { "producto": "id de ficha (opcional)" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "72h", "actualizarHasta": "7d", "invalidadoPor": ["actualizacion_de_precios", "importacion"] },
+      "verificacion": "recalcular el análisis y comparar la huella del informe", "fuenteDatos": "observaciones y ofertas del catálogo de referencia (funciones existentes de Treidilor), sin escritura"
+    },
+    {
+      "id": "06.proponer-portada", "agente": "06", "version": "0.1.0", "descripcion": "Propone portada (bloques), historias y organización de categorías con los módulos EXISTENTES de portada editable; el resultado es un borrador PROPUESTO, no se guarda ni se publica",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 30000,
+      "entrada": { "informesAgente05": "informes normalizados del Agente 05 (opcional)" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular la propuesta y comparar la huella del informe", "fuenteDatos": "fuentes de referencia (catálogo, categorías y secciones) con las funciones existentes de portada editable, sin escritura"
+    },
+    {
+      "id": "06.guardar-borrador-portada", "agente": "06", "version": "0.2.0", "descripcion": "SIMULA guardar la propuesta como borrador en un área PRIVADA del Director (nunca home-layout.json), con copia previa y deshacer; publicar y activar son L4 humano",
+      "modo": "accion", "nivelRiesgo": "L3", "alcances": [], "efectos": "escritura_reversible", "requiereAprobacion": true,
+      "disponibilidad": "simulacion_local", "plazoMs": 60000,
+      "entrada": { "propuestaRef": "huella sha256 de la propuesta generada por 06.proponer-portada" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "1h", "actualizarHasta": "24h", "invalidadoPor": ["importacion", "cambio_de_categorias"] },
+      "verificacion": "releer el borrador del área privada, validarlo con validateDocument y comparar su huella con la propuesta", "fuenteDatos": "propuesta guardada por referencia; área privada del Director"
+    },
+    {
+      "id": "07.proponer-plan-campanas", "agente": "07", "version": "0.1.0", "descripcion": "Propone el plan de campañas de los momentos comerciales próximos (calendario existente) con categorías y candidatos del catálogo de REFERENCIA aportado por parámetro; un borrador sin publicar",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular el plan y comparar la huella del informe", "fuenteDatos": "fuentes de referencia aportadas por parámetro (productos, categorías) y calendario comercial existente; sin acceso al catálogo real ni escritura"
+    },
+    {
+      "id": "07.redactar-briefs", "agente": "07", "version": "0.1.0", "descripcion": "Redacta el brief BORRADOR de una campaña (ángulos evaluados, mensajes con precio y fecha, cumplimiento y calendario de acciones); nunca lo publica",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": { "campana": "nombre o id de la campaña (p. ej. black-friday)" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular el brief y comparar la huella del informe", "fuenteDatos": "fuentes de referencia aportadas por parámetro y calendario comercial existente; sin escritura"
+    },
+    {
+      "id": "07.auditar-seo-contenido", "agente": "07", "version": "0.1.0", "descripcion": "Audita el CONTENIDO SEO (títulos, descripciones, imágenes, precio, duplicados) de las fichas de referencia aportadas; no rastrea la web ni modifica nada",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular la auditoría y comparar la huella del informe", "fuenteDatos": "fichas y categorías de referencia aportadas por parámetro; sin acceso al catálogo real ni a buscadores"
+    },
+    {
+      "id": "07.revisar-texto-publicitario", "agente": "07", "version": "0.1.0", "descripcion": "Revisa un texto publicitario aportado: afirmaciones no demostrables, urgencia, descuentos no verificados, precio sin fecha y divulgación de afiliación; solo lee el texto",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 10000,
+      "entrada": { "textoRef": "huella sha256 del texto aportado (≤ 4000 caracteres)", "textoBytes": "tamaño (opcional)" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular la revisión y comparar la huella del informe", "fuenteDatos": "texto aportado y fichas de referencia aportadas por parámetro; sin escritura"
+    },
+    {
+      "id": "08.proponer-borrador-ficha", "agente": "08", "version": "0.1.0", "descripcion": "Propone un BORRADOR de título, descripción y puntos clave de una ficha de referencia solo con sus datos (plantilla local, no IA); precio solo con fecha y descuento solo si es el verificado; nunca modifica la ficha ni publica",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": { "producto": "id o título de la ficha de referencia" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular el borrador y comparar la huella del informe", "fuenteDatos": "ficha de referencia aportada por parámetro y reglas existentes de afirmaciones; sin acceso al catálogo real ni escritura"
+    },
+    {
+      "id": "08.proponer-recursos-visuales", "agente": "08", "version": "0.1.0", "descripcion": "Propone recursos visuales de una ficha: imágenes existentes clasificadas por origen y derechos (siempre pendientes de verificar por una persona), texto alternativo y un prompt PROPUESTO como texto; no genera ni descarga imágenes",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": { "producto": "id o título de la ficha de referencia" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular la propuesta y comparar la huella del informe", "fuenteDatos": "ficha de referencia aportada por parámetro; sin generación de imágenes, sin red ni escritura"
+    },
+    {
+      "id": "08.proponer-borrador-historia", "agente": "08", "version": "0.1.0", "descripcion": "Propone un BORRADOR de historia (modelo del Agente 06) con los mensajes verificados del brief de una campaña del Agente 07; siempre borrador, nunca publicada",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": { "campana": "nombre o id de la campaña (p. ej. black-friday)" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular el borrador y comparar la huella del informe", "fuenteDatos": "fuentes de referencia aportadas por parámetro, calendario comercial y brief del Agente 07; sin escritura"
+    },
+    {
+      "id": "08.proponer-borrador-redes", "agente": "08", "version": "0.1.0", "descripcion": "Propone BORRADORES de texto para redes (≤ 280 caracteres, con divulgación de afiliación y enlace pendiente) desde el brief de una campaña del Agente 07; nunca publica",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": { "campana": "nombre o id de la campaña (p. ej. black-friday)" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular los borradores y comparar la huella del informe", "fuenteDatos": "fuentes de referencia aportadas por parámetro, calendario comercial y brief del Agente 07; sin escritura"
+    },
+    {
+      "id": "08.revisar-pieza", "agente": "08", "version": "0.1.0", "descripcion": "Revisa una pieza aportada: su texto con las reglas de afirmaciones y de afiliación y, si se da, la URL de una imagen (origen, seguridad y derechos pendientes); solo lee lo recibido",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 20000,
+      "entrada": { "textoRef": "huella sha256 del texto aportado (≤ 4000 caracteres)", "textoBytes": "tamaño (opcional)", "imagenUrl": "URL de una imagen a revisar (opcional)" }, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["importacion", "actualizacion_de_precios", "cambio_de_categorias"] },
+      "verificacion": "recalcular la revisión y comparar la huella del informe", "fuenteDatos": "texto e imagen aportados y fichas de referencia aportadas por parámetro; sin escritura"
+    },
+    {
+      "id": "09.validar-observaciones", "agente": "09", "version": "0.1.0", "descripcion": "Valida las observaciones de competidores y expertos aportadas: fuente citada con URL segura y fecha, términos de uso revisados, sin credenciales, órdenes ocultas ni extractos largos; informa de qué es utilizable y qué no, y por qué",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 20000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["nueva_observacion", "cambio_de_catalogo"] },
+      "verificacion": "recalcular la validación y comparar la huella del informe", "fuenteDatos": "observaciones aportadas por parámetro (fuente citada, fecha y términos de uso revisados por una persona); sin acceso a webs ni a fuentes externas, sin escritura"
+    },
+    {
+      "id": "09.detectar-huecos", "agente": "09", "version": "0.1.0", "descripcion": "Detecta HUECOS (hipótesis de oportunidad) citados por al menos dos fuentes utilizables que no cubrimos, y prácticas observadas; con una sola fuente es solo una señal débil",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["nueva_observacion", "cambio_de_catalogo"] },
+      "verificacion": "recalcular los huecos y comparar la huella del informe", "fuenteDatos": "observaciones aportadas por parámetro (fuente citada, fecha y términos de uso revisados por una persona); sin acceso a webs ni a fuentes externas, sin escritura"
+    },
+    {
+      "id": "09.comparar-precios-observados", "agente": "09", "version": "0.1.0", "descripcion": "Compara precios OBSERVADOS de competidores con nuestras fichas solo con equivalencia verificada por una persona, EUR, condición nuevo y observación reciente; el resultado es un dato fechado, nunca una ventaja comercial",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["nueva_observacion", "cambio_de_catalogo"] },
+      "verificacion": "recalcular la comparación y comparar la huella del informe", "fuenteDatos": "observaciones aportadas por parámetro (fuente citada, fecha y términos de uso revisados por una persona); sin acceso a webs ni a fuentes externas, sin escritura"
+    },
+    {
+      "id": "09.proponer-informe-competencia", "agente": "09", "version": "0.1.0", "descripcion": "Informe completo de competencia y expertos con fuentes y fecha: hechos verificados, observaciones, estimaciones y datos no disponibles, huecos, prácticas y brechas de precio; solo informe",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["nueva_observacion", "cambio_de_catalogo"] },
+      "verificacion": "recalcular el informe y comparar la huella", "fuenteDatos": "observaciones aportadas por parámetro (fuente citada, fecha y términos de uso revisados por una persona); sin acceso a webs ni a fuentes externas, sin escritura"
+    },
+    {
+      "id": "11.analizar-oportunidades-nicho", "agente": "11", "version": "0.1.0", "descripcion": "Ordena los nichos aportados por MADUREZ DE LA EVIDENCIA (no por beneficio previsto) con sus riesgos; no proyecta demanda, tráfico, ingresos ni rentabilidad; la decisión es del propietario",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["nueva_observacion", "cambio_de_catalogo", "datos_de_nicho"] },
+      "verificacion": "recalcular el análisis y comparar la huella del informe", "fuenteDatos": "nichos con demanda y costes aportados por parámetro e informes de los Agentes 02, 09 y 10 ya existentes; sin acceso a webs, sin escritura, sin crear webs ni comprar dominios"
+    },
+    {
+      "id": "11.estudiar-viabilidad-nicho", "agente": "11", "version": "0.1.0", "descripcion": "Estudio de viabilidad en BORRADOR de los nichos aportados (demanda, competencia, afiliación, coste y catálogo propio, cada dimensión con su estado) con hipótesis marcadas como tales y riesgos; no crea webs, no compra dominios y no publica",
+      "modo": "consulta", "nivelRiesgo": "L1", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "propuesta_f1", "plazoMs": 20000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["nueva_observacion", "cambio_de_catalogo", "datos_de_nicho"] },
+      "verificacion": "recalcular el estudio y comparar la huella del informe", "fuenteDatos": "nichos con demanda y costes aportados por parámetro e informes de los Agentes 02, 09 y 10 ya existentes; sin acceso a webs, sin escritura, sin crear webs ni comprar dominios"
+    },
+    {
+      "id": "10.leer-analitica-agregada", "agente": "10", "version": "0.2.0", "descripcion": "Lee analítica AGREGADA (nunca datos de usuarios finales) y la analiza con las funciones existentes: tendencias, fuentes, rendimiento por producto y experimentos propuestos solo con muestra suficiente; distingue medido, declarado, estimado, sintético y no disponible",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": ["analytics:read"], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 10000,
+      "entrada": {}, "salida": { "informe": "informe-agente/1", "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "24h", "actualizarHasta": "7d", "invalidadoPor": ["nueva_exportacion_de_analitica", "vaciado_de_analitica"] },
+      "verificacion": "recalcular el análisis desde la fuente y comparar la huella del informe", "fuenteDatos": "analítica existente de Treidilor (src/lib/analyticsMonths.ts), exportación agregada; sin escritura y sin datos personales"
+    }
+  ]
+}
