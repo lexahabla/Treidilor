@@ -1,0 +1,574 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "informe-agente/1 (tai-protocolo/1 §6): informe normalizado que el Director lee de cualquier agente",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "esquema",
+    "agente",
+    "capacidad",
+    "version",
+    "entorno",
+    "idEjecucion",
+    "generadoEn",
+    "completo",
+    "fuente",
+    "resumen",
+    "hallazgos",
+    "seguimiento",
+    "persistencia",
+    "limitaciones",
+    "honestidad"
+  ],
+  "properties": {
+    "esquema": {
+      "enum": [
+        "informe-agente/1"
+      ]
+    },
+    "agente": {
+      "type": "string",
+      "pattern": "^\\d{2}$"
+    },
+    "capacidad": {
+      "type": "string",
+      "minLength": 3
+    },
+    "version": {
+      "type": "string"
+    },
+    "entorno": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idEjecucion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generadoEn": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    },
+    "completo": {
+      "type": "boolean"
+    },
+    "fuente": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sistema",
+        "tabla",
+        "host",
+        "registrosLeidos",
+        "origenDatos",
+        "origenEjecucion",
+        "firma"
+      ],
+      "properties": {
+        "sistema": {
+          "type": "string"
+        },
+        "tabla": {
+          "type": "string"
+        },
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "registrosLeidos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "origenDatos": {
+          "enum": [
+            "exportacion",
+            "datos_de_prueba"
+          ]
+        },
+        "origenEjecucion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "firma": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "resumen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estadoCalidad",
+        "incidencias",
+        "porGravedad",
+        "porCerteza",
+        "porPrioridad",
+        "elementosAfectados",
+        "elementosTotales"
+      ],
+      "properties": {
+        "estadoCalidad": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "incidencias": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "porGravedad": {
+          "type": "object"
+        },
+        "porCerteza": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "porPrioridad": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "elementosAfectados": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "elementosTotales": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "enRanking": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sinComision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "huecos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "registros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nuevas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vinculadas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "actualizadas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sinCambios": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "revisiones": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rechazadas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "errores": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "omitiriaConSoloNuevos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "productos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verificadosVigentes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "desactualizados": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sinVerificar": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "descuentosVerificados": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "descuentosNoVerificados": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "caidasVerificadas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "anomalias": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "oportunidades": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "comparaciones": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "correccionesPropuestas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bloques": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bloquesVisibles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bloquesOcultos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "historias": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "historiasOmitidas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "propuestasCategorias": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eventos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eventosDescartados": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sesionesActual": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sesionesAnterior": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "salidasActual": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "comprasDeclaradasActual": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "productosAnalizados": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "productosSinMuestra": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "oportunidadesOptimizacion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "experimentosPropuestos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tasaClicSalidaActualPct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tasaClicSalidaAnteriorPct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "campanas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "campanasEnPreparacion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidatosTotales": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "horizonteDias": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "problemasSeo": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "problemasTexto": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mensajes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mensajesSinRedactar": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "angulosUtilizables": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "piezas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "piezasConProblemas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "piezasNoRedactables": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imagenes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imagenesDerechosPendientes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "piezasAprobadas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fuentes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fuentesUtilizables": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observaciones": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hechosVerificados": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observacionesNoVerificadas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "estimaciones": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "noDisponibles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observacionesExcluidas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "datosRechazados": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "huecosSenalDebil": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "brechasPrecio": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "preciosNoComparables": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nichos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nichosEvidenciaRazonable": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nichosEvidenciaParcial": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nichosEvidenciaInsuficiente": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hipotesis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "riesgos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "estudiosConDecision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidatosElegibles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidatos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sospechosos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fichasConDatosFaltantes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categoriasConPocosProductos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicadosProbables": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "hallazgos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "clave",
+          "regla",
+          "certeza",
+          "prioridad",
+          "gravedad",
+          "elemento",
+          "evidencia",
+          "accionSugerida"
+        ],
+        "properties": {
+          "clave": {
+            "type": "string",
+            "minLength": 1
+          },
+          "regla": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "certeza": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prioridad": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gravedad": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "elemento": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidencia": {
+            "type": "object"
+          },
+          "accionSugerida": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "seguimiento": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "persistencia": {
+      "type": "object"
+    },
+    "limitaciones": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "honestidad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "datosAusentesDeclarados"
+      ],
+      "properties": {
+        "datosAusentesDeclarados": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

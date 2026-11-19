@@ -1,0 +1,85 @@
+{
+  "active": false,
+  "connections": {
+    "Recibir (canario)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Responder (canario)",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "name": "Treidilor AI · Canario de aislamiento (sin datos)",
+  "nodes": [
+    {
+      "id": "fa4a6fb8-17f0-434a-aa40-bb4ee0f84a68",
+      "name": "Aviso",
+      "parameters": {
+        "content": "TREIDILOR AI · CANARIO DE AISLAMIENTO. SIN DATOS.\nResponde {\"canario\":true} en /webhook/tai-lector-prod-canario con una credencial DESECHABLE («Treidilor — Canario aislamiento (desechable)», Header Auth x-treidilor-canario; el valor se crea a mano y se borra al terminar). No lee tablas, no escribe, no hace peticiones salientes. GUARDA sus ejecuciones a propósito para contarlas: 0 desde fuera y 1 por cada prueba interior autorizada.\nSirve SOLO para comprobar que el proxy público no entrega esta ruta (mismo prefijo que el lector real). Se importa INACTIVO, se publica de forma temporal y se elimina junto con su credencial. Generado por scripts/automation/build-canario-aislamiento.mjs.",
+        "height": 200,
+        "width": 460
+      },
+      "position": [
+        0,
+        -300
+      ],
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Treidilor — Canario aislamiento (desechable)"
+        }
+      },
+      "id": "4e13b4f0-525c-4172-a997-5df169844373",
+      "name": "Recibir (canario)",
+      "parameters": {
+        "authentication": "headerAuth",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "tai-lector-prod-canario",
+        "responseMode": "responseNode"
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "314ee565-8c02-4445-a5a9-8f7ea0bf9c91"
+    },
+    {
+      "id": "82437a5c-09c7-479b-aad9-c69535dc4e1c",
+      "name": "Responder (canario)",
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "json",
+        "responseBody": "{\"canario\":true}"
+      },
+      "position": [
+        300,
+        0
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 30,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "timezone": "Europe/Madrid"
+  },
+  "tags": []
+}

@@ -11,7 +11,7 @@ const cats = await import('../../src/lib/categories.ts');
 const route = await import('../../src/pages/api/admin/icon-library.ts');
 const { adminCookie, apiRequest } = await import('./_helpers.mjs');
 
-const read = (p) => fs.readFileSync('d:/AXEL/WEBS/TRADYLOR/tradylor_web/' + p, 'utf8');
+const read = (p) => fs.readFileSync(import.meta.dirname + '/../../' + p, 'utf8');
 
 /* ───────────── Subcategorías sin carpeta ───────────── */
 

@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { validarAislamiento } from '../../automation/lib/urlPolicy.mjs';
 import { COLUMNAS_INSTANTANEAS } from '../../automation/lib/seguimiento.mjs';
+import { validarConfigCalidad, validarProduccionCalidad } from '../../automation/lib/urlPolicyCalidad.mjs';
 
 export const TIPOS_PERMITIDOS = new Set([
   'n8n-nodes-base.manualTrigger',
@@ -15,9 +16,16 @@ export const TIPOS_PERMITIDOS = new Set([
   'n8n-nodes-base.code',
   'n8n-nodes-base.httpRequest',
   'n8n-nodes-base.noOp',
+  'n8n-nodes-base.wait', // sólo en el Agente 04: pausa fija por intervalo (ver más abajo)
   'n8n-nodes-base.stickyNote',
   'n8n-nodes-base.dataTable', // memoria del Auditor (2c): sólo listar tablas, leer filas e insertar filas (y crear la tabla en el workflow de preparación)
 ]);
+// POLÍTICA EXPLÍCITA del LECTOR COMPARTIDO (puente Director ↔ n8n): estos dos tipos sólo se admiten en `lector-instantaneas.local.json` y bajo `comprobarLector` (más abajo).
+const TIPOS_LECTOR = new Set(['n8n-nodes-base.webhook', 'n8n-nodes-base.respondToWebhook']);
+const ARCHIVO_LECTOR = 'lector-instantaneas.local.json';
+const CREDENCIAL_LECTOR = 'Treidilor — Lector puente (solo lectura)';
+const TABLAS_LECTOR = { '04': 'calidad_catalogo_instantaneas', '12': 'auditor_general_instantaneas' };
+const CADENA_LECTOR = ['n8n-nodes-base.webhook', 'n8n-nodes-base.code', 'n8n-nodes-base.dataTable', 'n8n-nodes-base.code', 'n8n-nodes-base.respondToWebhook'];
 const MAX_NODOS = 30;
 const MAX_CODE_BYTES = 80_000;
 const MAX_WORKFLOW_BYTES = 600_000;
@@ -65,6 +73,65 @@ function recorrer(valor, visita, ruta = '') {
 }
 
 /**
+ * Política del LECTOR COMPARTIDO: sólo consulta. Por cada agente (04, 12) una cadena EXACTA Webhook → Code (valida) → Data table Get (tabla fija) → Code (arma) → Responder.
+ * Sin HTTP saliente, sin disparadores manuales o programados, sin escritura, sin variante de producción, y con la credencial Header Auth por NOMBRE.
+ */
+function comprobarLector(wf, ctx, err) {
+  if (ctx.nombreArchivo !== ARCHIVO_LECTOR) err(`Lector: el único archivo admitido es «${ARCHIVO_LECTOR}» (no hay variante de producción autorizada)`);
+  const permitidos = new Set([...TIPOS_LECTOR, 'n8n-nodes-base.code', 'n8n-nodes-base.dataTable', 'n8n-nodes-base.stickyNote']);
+  for (const n of wf.nodes) if (!permitidos.has(n.type)) err(`Lector: el nodo «${n.name}» (${n.type}) no está permitido en el lector (sin HTTP saliente ni disparadores manuales o programados)`);
+  const porNombre = Object.fromEntries(wf.nodes.map((n) => [n.name, n]));
+  const sucesores = (nombre) => (wf.connections?.[nombre]?.main ?? []).flatMap((g) => (g ?? []).map((c) => c.node));
+  const webhooks = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.webhook');
+  const agentesVistos = new Set();
+  if (webhooks.length !== 2) err(`Lector: debe haber exactamente 2 webhooks (agentes 04 y 12); hay ${webhooks.length}`);
+  for (const w of webhooks) {
+    const p = w.parameters ?? {};
+    const m = /^tai-lector-(04|12)$/.exec(String(p.path ?? ''));
+    if (!m) { err(`Lector: el path del webhook «${w.name}» debe ser tai-lector-04 o tai-lector-12 (fijo, sin parámetros)`); continue; }
+    const agente = m[1];
+    if (agentesVistos.has(agente)) err(`Lector: el agente ${agente} tiene más de un webhook`);
+    agentesVistos.add(agente);
+    if (p.httpMethod !== 'POST') err(`Lector: el webhook «${w.name}» debe ser POST`);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(String(w.webhookId ?? ''))) err(`Lector: el webhook «${w.name}» debe llevar un webhookId (UUID); sin él n8n registra una ruta que depende del id del workflow`);
+    if (p.authentication !== 'headerAuth') err(`Lector: el webhook «${w.name}» debe autenticarse con headerAuth`);
+    if (p.responseMode !== 'responseNode') err(`Lector: el webhook «${w.name}» debe responder con un nodo «Respond to Webhook»`);
+    if (Object.keys(p.options ?? {}).length) err(`Lector: el webhook «${w.name}» no admite opciones adicionales`);
+    const cred = w.credentials?.httpHeaderAuth;
+    if (!cred || cred.name !== CREDENCIAL_LECTOR || Object.keys(w.credentials).length !== 1) err(`Lector: el webhook «${w.name}» debe usar sólo la credencial «${CREDENCIAL_LECTOR}» (Header Auth, por nombre)`);
+    // cadena exacta
+    const cadena = [w];
+    for (let i = 1; i < CADENA_LECTOR.length; i++) {
+      const sig = sucesores(cadena[i - 1].name);
+      if (sig.length !== 1 || !porNombre[sig[0]] || porNombre[sig[0]].type !== CADENA_LECTOR[i]) { err(`Lector: la cadena del agente ${agente} debe ser Webhook → Code → Data table (Get) → Code → Responder (se rompe tras «${cadena[i - 1].name}»)`); break; }
+      cadena.push(porNombre[sig[0]]);
+    }
+    if (cadena.length !== CADENA_LECTOR.length) continue;
+    if (sucesores(cadena[4].name).length) err(`Lector: «${cadena[4].name}» no puede tener nodos posteriores`);
+    const [, validar, leer, armar, responder] = cadena;
+    const dt = leer.parameters ?? {};
+    if (dt.resource !== 'row' || dt.operation !== 'get') err(`Lector: «${leer.name}» sólo puede ser Data table → row/get (consulta)`);
+    if (dt.dataTableId?.value !== TABLAS_LECTOR[agente] || dt.dataTableId?.mode !== 'name') err(`Lector: «${leer.name}» debe leer sólo la tabla «${TABLAS_LECTOR[agente]}» por nombre`);
+    const cond = dt.filters?.conditions ?? [];
+    if (cond.length !== 1 || cond[0].keyName !== 'entorno' || cond[0].condition !== 'eq' || cond[0].keyValue !== '={{ $json.entorno }}') err(`Lector: «${leer.name}» sólo puede filtrar por entorno con el valor ya validado por el nodo anterior`);
+    if (!(Number(dt.limit) >= 1 && Number(dt.limit) <= 60)) err(`Lector: «${leer.name}» debe limitar a ≤ 60 filas`);
+    if (leer.retryOnFail === true) err(`Lector: «${leer.name}» no puede reintentar automáticamente`);
+    const rp = responder.parameters ?? {};
+    if (rp.respondWith !== 'json' || rp.responseBody !== '={{ JSON.stringify($json) }}' || Number(rp.options?.responseCode) !== 200) err(`Lector: «${responder.name}» debe responder el JSON armado con código 200 y nada más`);
+    for (const [nodo, funcion] of [[validar, 'validarSolicitudLector('], [armar, 'armarRespuestaLector(']]) {
+      const js = String(nodo.parameters?.jsCode ?? '');
+      const mc = js.match(/const LECTOR = (\{[\s\S]*?\n\});/);
+      let cfg = null;
+      try { cfg = mc ? JSON.parse(mc[1]) : null; } catch { cfg = null; }
+      if (!cfg || cfg.agente !== agente || cfg.tabla !== TABLAS_LECTOR[agente] || JSON.stringify(cfg.entornos) !== '["local"]' || cfg.sintetico !== true) err(`Lector: «${nodo.name}» debe llevar la configuración LECTOR del agente ${agente} (tabla fija, entorno «local», datos de prueba)`);
+      if (!js.includes(funcion)) err(`Lector: «${nodo.name}» debe usar ${funcion.slice(0, -1)} (la lógica compartida con el Director)`);
+    }
+  }
+  for (const a of Object.keys(TABLAS_LECTOR)) if (!agentesVistos.has(a)) err(`Lector: falta el webhook del agente ${a}`);
+  if (/\.produccion\./i.test(ctx.nombreArchivo ?? '') || /producci[oó]n/i.test(String(wf.name ?? ''))) err('Lector: no hay variante de producción autorizada');
+}
+
+/**
  * Comprueba un workflow ya parseado. Devuelve { errores:[...], avisos:[...] }.
  * `ctx.nombreArchivo` (p. ej. «auditor-general.produccion.json»): los de producción no pueden llevar credenciales.
  */
@@ -86,20 +153,24 @@ export function comprobarWorkflow(wf, ctx = {}) {
   if (!(Number(settings.executionTimeout) > 0 && Number(settings.executionTimeout) <= 1800)) err('settings.executionTimeout debe estar entre 1 y 1800 segundos');
 
   const nombres = new Set();
+  const esLector = /^lector-instantaneas\./.test(ctx.nombreArchivo ?? '');
   const esProduccion = /[.-]produccion\./i.test(ctx.nombreArchivo ?? '') || /producci[oó]n/i.test(String(wf.name ?? ''));
   let hayHttp = false;
   let hayPolitica = false;
   const tablasDt = new Set();
   let tablaConfig = null;
+  let cfgCalidad = null; // configuración del Agente 04 (modo lectura_catalogo), si el workflow lo es
+  // ¿Es el workflow del Agente 04? (lleva la guardia de la política `lectura_catalogo`). Es el ÚNICO que puede referenciar una credencial en producción: la del feed de sólo lectura, por NOMBRE.
+  const esAgenteCalidad = wf.nodes.some((n) => n?.type === 'n8n-nodes-base.code' && /validarConfigCalidad\(CONFIG\)/.test(String(n.parameters?.jsCode ?? '')));
   for (const n of wf.nodes) {
     const etiqueta = `Nodo «${n?.name ?? '?'}»`;
     if (!n || typeof n !== 'object' || typeof n.name !== 'string' || !n.name) { err('Hay un nodo sin nombre'); continue; }
     if (nombres.has(n.name)) err(`${etiqueta}: nombre repetido`);
     nombres.add(n.name);
-    if (!TIPOS_PERMITIDOS.has(n.type)) { err(`${etiqueta}: tipo no permitido (${n.type})`); continue; }
+    if (!TIPOS_PERMITIDOS.has(n.type) && !(esLector && TIPOS_LECTOR.has(n.type))) { err(`${etiqueta}: tipo no permitido (${n.type})`); continue; }
     if (n.type === 'n8n-nodes-base.scheduleTrigger' && n.disabled !== true) err(`${etiqueta}: la programación debe ir desactivada (disabled: true)`);
     if (n.credentials && Object.keys(n.credentials).length) {
-      if (esProduccion) err(`${etiqueta}: los workflows de producción no pueden referenciar credenciales (v0 sólo lectura pública)`);
+      if (esProduccion && !esAgenteCalidad) err(`${etiqueta}: los workflows de producción no pueden referenciar credenciales (v0 sólo lectura pública)`);
       for (const [tipo, c] of Object.entries(n.credentials)) {
         if (tipo !== 'httpHeaderAuth') err(`${etiqueta}: tipo de credencial no permitido (${tipo})`);
         if (!/solo lectura/i.test(String(c?.name ?? ''))) err(`${etiqueta}: la credencial debe llamarse «… (solo lectura)»`);
@@ -121,10 +192,19 @@ export function comprobarWorkflow(wf, ctx = {}) {
           if (!esProduccion && cfg.entorno !== 'local') err(`${etiqueta}: aislamiento — un workflow local debe llevar la configuración local`);
           if (!esProduccion && /treidilor\.com/i.test(JSON.stringify(cfg))) err(`${etiqueta}: aislamiento — un workflow local no puede mencionar treidilor.com`);
           if (cfg.seguimiento && typeof cfg.seguimiento.tabla === 'string') tablaConfig = cfg.seguimiento.tabla;
+          if (cfg.modo === 'lectura_catalogo' || /validarConfigCalidad\(CONFIG\)|function\s+validarConfigCalidad\b/.test(js)) {
+            cfgCalidad = cfg;
+            for (const e of validarConfigCalidad(cfg)) err(`${etiqueta}: política lectura_catalogo — ${e}`);
+            if (esProduccion) {
+              for (const e of validarProduccionCalidad(cfg)) err(`${etiqueta}: política lectura_catalogo (producción) — ${e}`);
+              if (!js.includes('validarProduccionCalidad(CONFIG)')) err(`${etiqueta}: falta la guardia de producción (validarProduccionCalidad) al inicio del nodo`);
+            }
+            if (!/validarConfigCalidad\(CONFIG\)/.test(js)) err(`${etiqueta}: falta la guardia de la política lectura_catalogo (validarConfigCalidad) al inicio del nodo`);
+          }
         }
         if (!/validarAislamiento\(CONFIG\)/.test(js)) err(`${etiqueta}: falta la guardia de aislamiento al inicio del nodo`);
       }
-      if (/function\s+evaluarUrl\b/.test(js) && /hostsPermitidos/.test(js)) hayPolitica = true;
+      if ((/function\s+evaluarUrl\b/.test(js) || /function\s+evaluarUrlCalidad\b/.test(js)) && /hostsPermitidos/.test(js)) hayPolitica = true;
     }
     if (n.type === 'n8n-nodes-base.dataTable') {
       const p = n.parameters ?? {};
@@ -165,6 +245,48 @@ export function comprobarWorkflow(wf, ctx = {}) {
       if (n.onError !== 'continueRegularOutput') avisos.push(`${etiqueta}: conviene onError = continueRegularOutput para no perder el informe ante un fallo puntual`);
     }
   }
+  if (esLector) comprobarLector(wf, ctx, err);
+  // Nodos Wait: sólo en el Agente 04, sólo por intervalo en segundos (nunca webhook, formulario ni fecha) y de duración acotada (< 65 s: se espera en memoria).
+  for (const n of wf.nodes.filter((x) => x.type === 'n8n-nodes-base.wait')) {
+    const p = n.parameters ?? {};
+    if (!cfgCalidad) err(`Nodo «${n.name}»: el nodo Wait sólo se admite en el Agente 04`);
+    if (p.resume !== 'timeInterval' || p.unit !== 'seconds') err(`Nodo «${n.name}»: la espera debe ser por intervalo en segundos (resume: timeInterval, unit: seconds)`);
+    if (!(Number(p.amount) >= 1 && Number(p.amount) <= 60)) err(`Nodo «${n.name}»: la espera debe durar entre 1 y 60 segundos`);
+    if (cfgCalidad && !(Number(p.amount) * 1000 >= cfgCalidad.pausaMs)) err(`Nodo «${n.name}»: la espera (${p.amount} s) no puede ser inferior a pausaMs (${cfgCalidad.pausaMs} ms)`);
+    if (n.webhookId) err(`Nodo «${n.name}»: el nodo Wait no puede llevar webhook`);
+  }
+  if (cfgCalidad) {
+    // la 1.ª página y el resto van SIEMPRE separados por un Wait: Páginas restantes → Wait → Pedir catálogo (resto)
+    const sig = (de) => (wf.connections?.[de]?.main?.[0] ?? []).map((c) => c.node);
+    const w = sig('Páginas restantes');
+    const esWait = (nm) => wf.nodes.find((x) => x.name === nm)?.type === 'n8n-nodes-base.wait';
+    if (w.length !== 1 || !esWait(w[0]) || sig(w[0]).join() !== 'Pedir catálogo (resto)') err('Agente 04: entre «Páginas restantes» y «Pedir catálogo (resto)» debe haber un único nodo Wait');
+  }
+  if (cfgCalidad && esProduccion) {
+    // Agente 04 en PRODUCCIÓN: inactivo, sin programación ni webhooks, y la credencial es la de la configuración (por nombre, con el id de relleno de la importación: nunca un id de instalación ni un valor).
+    if (wf.active !== false) err('Agente 04 en producción: el workflow debe ir inactivo (active: false)');
+    for (const n of wf.nodes) {
+      if (/scheduleTrigger|webhook|cron|interval|formTrigger|chatTrigger/i.test(String(n.type))) err(`Nodo «${n.name}»: el Agente 04 en producción no puede llevar disparadores automáticos (${n.type})`);
+      if (n.type === 'n8n-nodes-base.manualTrigger' && wf.nodes.filter((x) => /Trigger$/.test(String(x.type))).length !== 1) err('Agente 04 en producción: el único disparador debe ser el manual');
+      const c = n.credentials?.httpHeaderAuth;
+      if (c && c.id !== 'REEMPLAZAR_AL_IMPORTAR') err(`Nodo «${n.name}»: la credencial debe llevar el id de relleno «REEMPLAZAR_AL_IMPORTAR», nunca el id de una instalación`);
+    }
+    if (!cfgCalidad.credencialCatalogo) err('Agente 04 en producción: falta el nombre de la credencial del feed');
+  }
+  if (cfgCalidad) {
+    // Agente 04: la pausa entre peticiones respeta los límites del cliente y sólo los nodos «Pedir catálogo…» llevan la credencial (por nombre) de la configuración.
+    for (const n of wf.nodes) {
+      if (n.type !== 'n8n-nodes-base.httpRequest') continue;
+      const intervalo = Number(n.parameters?.options?.batching?.batch?.batchInterval);
+      if (!(intervalo >= cfgCalidad.pausaMs)) err(`Nodo «${n.name}»: la pausa entre peticiones (${intervalo} ms) debe ser ≥ pausaMs de la configuración (${cfgCalidad.pausaMs} ms: límite de ${cfgCalidad.peticionesPorMinuto}/min del cliente)`);
+      if (Number(n.parameters?.options?.batching?.batch?.batchSize) !== 1) err(`Nodo «${n.name}»: el Agente 04 pide las páginas de una en una (batchSize = 1)`);
+      const cred = n.credentials?.httpHeaderAuth;
+      if (!/^Pedir catálogo/.test(n.name)) err(`Nodo «${n.name}»: en el Agente 04 sólo los nodos «Pedir catálogo…» pueden hacer peticiones`);
+      if (!cred || cred.name !== cfgCalidad.credencialCatalogo) err(`Nodo «${n.name}»: debe usar la credencial «${cfgCalidad.credencialCatalogo}» (Header Auth, por nombre)`);
+      const cabeceras = (n.parameters?.headerParameters?.parameters ?? []).map((h) => h.name).sort().join(',');
+      if (cabeceras !== 'User-Agent,X-Treidilor-Agente') err(`Nodo «${n.name}»: sólo se permiten las cabeceras User-Agent y X-Treidilor-Agente (la autenticación la añade la credencial)`);
+    }
+  }
   if (hayHttp && !hayPolitica) err('Hay nodos HTTP pero ningún nodo Code incluye la política de URLs (evaluarUrl + hostsPermitidos)');
   if (tablaConfig && [...tablasDt].some((x) => x !== tablaConfig)) err(`Los nodos Data table deben usar sólo la tabla de la configuración («${tablaConfig}»)`);
 
@@ -183,7 +305,9 @@ export function comprobarWorkflow(wf, ctx = {}) {
     if (n.type !== 'n8n-nodes-base.httpRequest') continue;
     const entradas = aristas.filter(([, a]) => a === n.name).map(([d]) => d);
     if (n.disabled === true && !entradas.length) continue; // deshabilitado y sin conexiones: no se ejecuta (sirve para validar versiones de nodo al importar)
-    if (!entradas.length || entradas.some((d) => tipoDe[d] !== 'n8n-nodes-base.code')) err(`Nodo «${n.name}»: sólo puede recibir datos de nodos Code`);
+    // Un nodo Wait (pausa) puede ir en medio: sólo reenvía lo que decidió un nodo Code (nunca origina datos).
+    const origenCode = (d) => tipoDe[d] === 'n8n-nodes-base.code' || (tipoDe[d] === 'n8n-nodes-base.wait' && aristas.filter(([, a]) => a === d).every(([o]) => tipoDe[o] === 'n8n-nodes-base.code') && aristas.some(([, a]) => a === d));
+    if (!entradas.length || entradas.some((d) => !origenCode(d))) err(`Nodo «${n.name}»: sólo puede recibir datos de nodos Code (o de un Wait que los reenvía)`);
   }
   for (const n of wf.nodes) {
     if (n.type !== 'n8n-nodes-base.dataTable' || n.parameters?.operation !== 'insert') continue;
@@ -224,7 +348,7 @@ function listarJson(destino) {
 
 if (process.argv[1]?.endsWith('lint-workflows.mjs')) {
   const destinos = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-  const lista = (destinos.length ? destinos : ['automation/workflows']).flatMap((d) => (fs.existsSync(d) ? listarJson(d) : []));
+  const lista = (destinos.length ? destinos : ['automation/workflows', 'automation/workflows-puente']).flatMap((d) => (fs.existsSync(d) ? listarJson(d) : []));
   if (!lista.length) {
     console.error('No hay workflows que comprobar.');
     process.exit(2);

@@ -265,7 +265,7 @@ test('/api/catalogo/facets devuelve el mismo total que el listado', async () => 
 
 /* ───────────── Interfaz y navegación (comprobación sobre el código fuente) ───────────── */
 
-const read = (p) => fs.readFileSync('d:/AXEL/WEBS/TRADYLOR/tradylor_web/' + p, 'utf8');
+const read = (p) => fs.readFileSync(import.meta.dirname + '/../../' + p, 'utf8');
 
 test('portada: filtros en la URL, diversidad desactivada con filtros, sin módulos editoriales sobre los resultados y orden de la URL sobre la cookie', () => {
   const index = read('src/pages/index.astro');

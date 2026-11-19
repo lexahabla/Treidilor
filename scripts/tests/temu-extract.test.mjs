@@ -365,7 +365,7 @@ test('muestra REAL con /es/: EUR y mercado español comprobados → se importan;
 });
 
 test('el adaptador de Temu no usa IA ni red', () => {
-  const text = fs.readFileSync(path.join('d:/AXEL/WEBS/TRADYLOR/tradylor_web', 'src/lib/jsonImport/apifyTemu.ts'), 'utf8');
+  const text = fs.readFileSync(path.join(import.meta.dirname, '../..', 'src/lib/jsonImport/apifyTemu.ts'), 'utf8');
   assert.ok(!/from '\.\.\/ai'|openai|anthropic|fetch\(/i.test(text));
 });
 
@@ -935,7 +935,7 @@ test('trabajos ya terminados sin explicar: se explican UNA vez con el diagnósti
 });
 
 test('el resumen del panel muestra la cuenta hasta los N solicitados y los motivos de los ausentes', () => {
-  const panel = fs.readFileSync(path.join('d:/AXEL/WEBS/TRADYLOR/tradylor_web', 'src/pages/upayp1b4.astro'), 'utf8');
+  const panel = fs.readFileSync(path.join(import.meta.dirname, '../..', 'src/pages/upayp1b4.astro'), 'utf8');
   assert.ok(panel.includes("'Solicitados ' + job.limit + ' → la categoría listó '"));
   assert.ok(panel.includes("'Diferencia hasta ' + job.limit + ': '"));
 });

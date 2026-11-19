@@ -1,0 +1,22 @@
+{
+  "entorno": "produccion",
+  "baseUrl": "https://treidilor.com",
+  "hostsPermitidos": [
+    "treidilor.com"
+  ],
+  "modo": "lectura_catalogo",
+  "maxPaginasCatalogo": 8,
+  "limitePorPagina": 100,
+  "peticionesPorMinuto": 10,
+  "pausaMs": 7000,
+  "credencialCatalogo": "Treidilor — Catálogo (solo lectura)",
+  "umbrales": {},
+  "seguimiento": {
+    "tabla": "calidad_catalogo_instantaneas",
+    "maxHistorial": 60,
+    "origenesValidos": [
+      "manual",
+      "programada"
+    ]
+  }
+}

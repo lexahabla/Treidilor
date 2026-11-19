@@ -531,7 +531,9 @@ test('tamaño de los nodos Code: el del Informe queda por debajo de 80 kB con ma
     for (const n of wf.nodes.filter((x) => x.type === 'n8n-nodes-base.code')) {
       const bytes = Buffer.byteLength(n.parameters.jsCode);
       assert.ok(bytes < 80_000, `${f} · ${n.name}: ${bytes} bytes`);
-      if (n.name !== 'Informe') assert.ok(bytes < 25_000, `${f} · ${n.name}: ${bytes} bytes (sólo incrusta lo que usa)`);
+      // Agente 04: el código se reparte en Analizar / Informe / Confirmar escritura (todos < 80 kB, comprobado arriba)
+      const pesado = n.name === 'Informe' || (f.startsWith('calidad-catalogo') && ['Analizar', 'Confirmar escritura'].includes(n.name));
+      if (!pesado) assert.ok(bytes < 25_000, `${f} · ${n.name}: ${bytes} bytes (sólo incrusta lo que usa)`);
     }
   }
   const informeProd = J('automation/workflows/auditor-general.produccion.json').nodes.find((n) => n.name === 'Informe').parameters.jsCode;

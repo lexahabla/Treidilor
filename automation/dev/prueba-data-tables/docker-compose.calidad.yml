@@ -1,0 +1,46 @@
+# VARIANTE de validación del Agente 04 (Calidad del catálogo) en `tai-prueba-dt`. Se aplica ENCIMA del compose base (NO sustituye a docker-compose.validacion.yml, que es del Auditor y no se toca):
+#
+#   docker compose -p tai-prueba-dt --env-file <env fuera del repo> -f automation/dev/prueba-data-tables/docker-compose.yml -f automation/dev/prueba-data-tables/docker-compose.calidad.yml up -d --pull never
+#
+# Qué cambia respecto al compose base (y NADA más):
+#   1) n8n puede cargar el nodo HTTP Request (se retira `httpRequest` de NODES_EXCLUDE). Siguen excluidos executeCommand, ssh y readWriteFile.
+#   2) Un contenedor `sitio-calidad` (imagen node:22-bookworm-slim YA descargada) con el sitio sintético del Agente 04 (`sitio-calidad.mjs`) y el alias de red `puente-treidilor`,
+#      de modo que la configuración LOCAL del agente (http://puente-treidilor:4350) funcione sin cambios. Escucha en 0.0.0.0 SOLO dentro de la red aislada (sin `ports`).
+#
+# Lo que NO cambia:
+#   · La red `tai-dt-aislada` sigue siendo `internal: true`: sin Internet, sin anfitrión, sin otros contenedores. Esta variante no define ni modifica redes.
+#   · NO se publica ningún puerto nuevo (el único sigue siendo 127.0.0.1:5689 → editor de n8n, del compose base).
+#   · El control del sitio escucha sólo en el loopback DEL CONTENEDOR (127.0.0.1:4351): se maneja con `docker exec`.
+#   · Sin extra_hosts, sin network_mode, sin socket de Docker, sin privilegios; sistema de ficheros de sólo lectura; usuario sin privilegios; límites de memoria y CPU.
+#   · Credenciales: ninguna real. El token es FICTICIO y vive fuera del repositorio. El sitio sintético NO contiene datos de Treidilor.
+services:
+  n8n:
+    environment:
+      NODES_EXCLUDE: '["n8n-nodes-base.executeCommand","n8n-nodes-base.ssh","n8n-nodes-base.readWriteFile"]'
+
+  sitio-calidad:
+    image: node:22-bookworm-slim
+    container_name: tai-dt-sitio-calidad
+    restart: "no"
+    read_only: true
+    user: node
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 192m
+    cpus: 0.25
+    labels:
+      com.treidilor.prueba: data-tables
+    networks:
+      aislada:
+        aliases:
+          - puente-treidilor
+    volumes:
+      - ./sitio-calidad.mjs:/app/sitio-calidad.mjs:ro
+      - ./sitio-prueba.mjs:/app/sitio-prueba.mjs:ro   # sólo se importan sus constantes (forma del token ficticio y ruta del feed)
+    command: ["node", "/app/sitio-calidad.mjs"]
+    environment:
+      PUERTO: "4350"
+      PUERTO_CONTROL: "4351"
+      ANFITRION: "0.0.0.0"
+      ESCENARIO_INICIAL: calidad_base

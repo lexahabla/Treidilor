@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { normalizarWorkflow, serializar } from './normalize-workflow.mjs';
+import { idNodo, normalizarWorkflow, serializar } from './normalize-workflow.mjs';
 import { COLUMNAS_INSTANTANEAS } from '../../automation/lib/seguimiento.mjs';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -17,7 +17,7 @@ const CONFIG = path.join(RAIZ, 'automation', 'config');
 const SALIDA = path.join(RAIZ, 'automation', 'workflows');
 
 /** Módulos que se incrustan, en orden de dependencia. */
-const ORDEN = { auditor: ['common', 'urlPolicy', 'seguimiento', 'auditor'], investigador: ['common', 'urlPolicy', 'seguimiento', 'auditor', 'researcher'], diagnostico: ['common', 'urlPolicy', 'seguimiento', 'auditor', 'diagnostico'] };
+const ORDEN = { auditor: ['common', 'urlPolicy', 'seguimiento', 'auditor'], investigador: ['common', 'urlPolicy', 'seguimiento', 'auditor', 'researcher'], diagnostico: ['common', 'urlPolicy', 'seguimiento', 'auditor', 'diagnostico'], calidad: ['common', 'urlPolicy', 'seguimiento', 'auditor', 'urlPolicyCalidad', 'calidadCatalogo'], lector: ['seguimiento', 'lectorPuente'] };
 
 /** Lee un módulo de `automation/lib` y le quita `import`, `export` y los comentarios de línea completa (documentación del módulo; no cambian el comportamiento). */
 function leerModulo(nombre, lib = LIB) {
@@ -83,8 +83,10 @@ function codigo(agente, cfg, adaptador) {
 
 const nodoCode = (nombre, js, pos) => ({ parameters: { jsCode: js }, name: nombre, type: 'n8n-nodes-base.code', typeVersion: 2, position: pos });
 const nodoManual = (pos) => ({ parameters: {}, name: 'Ejecutar a mano', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: pos });
+/** Pausa FIJA entre la primera página y el resto (nodo Wait, intervalo en segundos): garantiza ≥ pausaMs entre TODAS las peticiones GET. Menos de 65 s: n8n la espera en memoria. */
+const nodoEspera = (nombre, pos, ms) => ({ parameters: { resume: 'timeInterval', amount: Math.ceil(ms / 1000), unit: 'seconds' }, name: nombre, type: 'n8n-nodes-base.wait', typeVersion: 1.1, position: pos });
 const nota = (texto, pos) => ({ parameters: { content: texto, height: 220, width: 420 }, name: 'Aviso', type: 'n8n-nodes-base.stickyNote', typeVersion: 1, position: pos });
-function nodoHttp(nombre, agente, pos, credencial) {
+function nodoHttp(nombre, agente, pos, credencial, ajustes = {}) {
   const n = {
     parameters: {
       method: 'GET',
@@ -92,11 +94,11 @@ function nodoHttp(nombre, agente, pos, credencial) {
       authentication: credencial ? 'genericCredentialType' : 'none',
       ...(credencial ? { genericAuthType: 'httpHeaderAuth' } : {}),
       sendHeaders: true,
-      headerParameters: { parameters: [{ name: 'User-Agent', value: `TreidilorAI-${agente}/0.2 (solo lectura)` }, { name: 'X-Treidilor-Agente', value: agente }] },
+      headerParameters: { parameters: [{ name: 'User-Agent', value: `TreidilorAI-${agente}/${ajustes.version ?? '0.2'} (solo lectura)` }, { name: 'X-Treidilor-Agente', value: agente }] },
       options: {
         timeout: 15000,
         redirect: { redirect: { followRedirects: false } },
-        batching: { batch: { batchSize: 1, batchInterval: 700 } },
+        batching: { batch: { batchSize: 1, batchInterval: ajustes.pausaMs ?? 700 } },
         response: { response: { fullResponse: true, neverError: true, responseFormat: 'text' } },
       },
     },
@@ -221,6 +223,72 @@ function crearTablaInstantaneas() {
   return { name: 'Treidilor AI · Auditor · crear tabla de instantáneas', nodes: nodos, connections: cadena(['Ejecutar a mano', 'Crear tabla de instantáneas']), active: false, settings: AJUSTES, tags: [] };
 }
 
+/**
+ * Agente 04 — Calidad del catálogo (v0 «detectar»). Código de los nodos «Code»: la biblioteca podada por nodo + el adaptador. La guardia comprueba el aislamiento Y la política
+ * `lectura_catalogo` (host único, GET, limit/page, límites del cliente) antes de hacer ninguna petición. Separación en tres nodos pesados para respetar los 80 kB por nodo:
+ * «Analizar» (feed + reglas), «Informe» (seguimiento + informe) y «Confirmar escritura».
+ */
+function codigoCalidad(cfg, adaptador) {
+  // En producción la guardia añade `validarProduccionCalidad` (host exacto, límites del cliente, credencial obligatoria); el workflow local NO la lleva (ni menciona el dominio real).
+  const extra = cfg.entorno === 'produccion' ? '.concat(validarProduccionCalidad(CONFIG))' : '';
+  const guardia = `{ const errCfg = validarAislamiento(CONFIG).concat(validarConfigCalidad(CONFIG))${extra}; if (errCfg.length) throw new Error('CONFIGURACIÓN: ' + errCfg.join('; ')); }`;
+  return `${empaquetar('calidad', `${guardia}\n${AYUDA}\n${adaptador}`)}\n\n// ── adaptador del nodo ──\nconst CONFIG = ${JSON.stringify(cfg, null, 2)};\n${guardia}\n${AYUDA}\n${adaptador}\n`;
+}
+
+function calidad(entorno) {
+  const cfg = leerConfig(`calidad.${entorno}`);
+  const ajustes = { version: '0.1', pausaMs: cfg.pausaMs };
+  const pasos = [
+    ['Configuración', 'return items(crearObjetivosCalidad(CONFIG));'],
+    ['Pedir catálogo', null, cfg.credencialCatalogo],
+    ['Páginas restantes', "return items(crearObjetivosCalidadResto(nodo('Configuración'), nodo('Pedir catálogo'), CONFIG));"],
+    // Wait: la 1.ª y la 2.ª petición están en nodos distintos (el batching del HTTP sólo espaciaba las de un mismo nodo). Con una sola página la pausa también precede al marcador (sin parada silenciosa).
+    ['Pausa entre páginas', null, undefined, 'espera'],
+    ['Pedir catálogo (resto)', null, cfg.credencialCatalogo],
+    // Una sola «hora» para todo el análisis: se fija aquí y la reutiliza el nodo Informe.
+    ['Analizar', "const feed = leerFeedCalidad([...nodo('Configuración'), ...nodo('Páginas restantes')], [...nodo('Pedir catálogo'), ...nodo('Pedir catálogo (resto)')], CONFIG);\nconst ahoraIso = new Date().toISOString();\nreturn [{ json: { feed, analisis: analizarCalidad(feed, CONFIG, ahoraIso), ahoraIso } }];"],
+    ['Uno tabla', 'return [{ json: {} }];', undefined, 'pequeno'],
+    ['Comprobar tabla', null, undefined, 'dt-listar'],
+    ['Uno historial', 'return [{ json: {} }];', undefined, 'pequeno'],
+    ['Leer historial', null, undefined, 'dt-leer'],
+    ['Informe', `const entrada = nodo('Analizar')[0];
+const resultado = construirInformeDesdeAnalisis({
+  cfg: CONFIG, feed: entrada.feed, analisis: entrada.analisis, ahoraIso: entrada.ahoraIso,
+  persistencia: { tablas: nodo('Comprobar tabla'), historial: nodo('Leer historial'), idEjecucion: 'ex-' + String($execution.id), origen: origenDeModo($execution.mode) },
+});
+return [{ json: resultado.informe }].concat(resultado.fila ? [{ json: Object.assign({ tipo: 'fila' }, resultado.fila) }] : []);`],
+    ['Solo la fila', "return $input.all().filter((i) => i.json.tipo === 'fila');", undefined, 'pequeno'],
+    ['Guardar instantánea', null, undefined, 'dt-insertar'],
+    ['Confirmar escritura', "const informe = nodo('Informe')[0];\nreturn [{ json: confirmarEscrituraCalidad(informe, $input.all().map((i) => i.json)) }];"],
+  ];
+  const aviso = `TREIDILOR AI · AGENTE 04 · CALIDAD DEL CATÁLOGO (detectar). SÓLO LECTURA.\nSólo lee el feed automation-catalog/1 con peticiones GET (sólo limit y page, sin redirecciones) a un único host. NO escribe en Treidilor, no usa IA ni APIs de pago y no modifica ninguna ficha.\nSe genera desde automation/lib con scripts/automation/build-workflows.mjs: no se edita a mano. Se activa/programa SÓLO a mano y con autorización.\nEntorno: ${entorno} · modo: ${cfg.modo}. Credencial necesaria (sólo lectura): «${cfg.credencialCatalogo}» (Header Auth), creada a mano en n8n: el token NUNCA va en este archivo.\nMEMORIA: lee e inserta instantáneas en la Data Table «${cfg.seguimiento.tabla}» (créala antes con el workflow «Calidad · crear tabla de instantáneas»). Sólo se guardan ejecuciones COMPLETAS.\nPAUSA: un nodo Wait de ${Math.ceil(cfg.pausaMs / 1000)} s separa la 1.ª página del resto; el batching del HTTP separa las demás.${entorno === 'produccion' ? `
+PRODUCCIÓN · INACTIVO: sin Schedule ni webhooks; se lanza SÓLO a mano y con autorización. Límites del cliente de la API: ${cfg.peticionesPorMinuto} peticiones/minuto, 500/día, ${cfg.maxPaginasCatalogo} páginas como máximo y ${cfg.pausaMs / 1000} s de pausa entre CUALESQUIERA dos peticiones (Wait entre la página 1 y el resto; batching entre las demás). Deja al menos 2 minutos entre dos ejecuciones manuales.` : ''}`;
+  const nodos = [nodoManual([0, 0]), nota(aviso, [0, -300])];
+  pasos.forEach(([n, js, cred, tipo], i) => {
+    const pos = [260 * (i + 1), 0];
+    if (tipo === 'dt-listar') nodos.push(nodoDt(n, pos, cfg, 'listar'));
+    else if (tipo === 'dt-leer') nodos.push(nodoDt(n, pos, cfg, 'leer'));
+    else if (tipo === 'dt-insertar') nodos.push(nodoDt(n, pos, cfg, 'insertar'));
+    else if (tipo === 'pequeno') nodos.push(nodoCode(n, js, pos));
+    else if (tipo === 'espera') nodos.push(nodoEspera(n, pos, cfg.pausaMs));
+    else nodos.push(js === null ? nodoHttp(n, 'calidad-catalogo', pos, cred ?? null, ajustes) : nodoCode(n, codigoCalidad(cfg, js), pos));
+  });
+  const conexiones = cadena(['Ejecutar a mano', ...pasos.map((p) => p[0])]);
+  conexiones['Guardar instantánea'] = { main: [[{ node: 'Confirmar escritura', type: 'main', index: 0 }], [{ node: 'Confirmar escritura', type: 'main', index: 0 }]] };
+  return { name: `Treidilor AI · Calidad del catálogo v0 (${entorno})`, nodes: nodos, connections: conexiones, active: false, settings: AJUSTES, tags: [] };
+}
+
+/** Workflow de PREPARACIÓN de la memoria del Agente 04 (se ejecuta una vez a mano en cada n8n): crea SU tabla de instantáneas, con las columnas del historial, si no existe. */
+function crearTablaCalidad() {
+  const cfg = leerConfig('calidad.local');
+  const nodos = [
+    nodoManual([0, 0]),
+    nota(`TREIDILOR AI · PREPARACIÓN de la memoria del Agente 04 (Calidad del catálogo).\nCrea (si no existe) la Data Table «${cfg.seguimiento.tabla}», EXCLUSIVA de este agente, con las columnas del historial de instantáneas.\nSe ejecuta UNA vez a mano en cada instalación de n8n. No hace peticiones, no usa credenciales y no borra nada.`, [0, -300]),
+    { parameters: { resource: 'table', operation: 'create', tableName: cfg.seguimiento.tabla, columns: { column: COLUMNAS_INSTANTANEAS.map((name) => ({ name, type: 'string' })) }, options: { createIfNotExists: true } }, name: 'Crear tabla de instantáneas', type: TIPO_DT, typeVersion: VERSION_DT, position: [260, 0] },
+  ];
+  return { name: 'Treidilor AI · Calidad · crear tabla de instantáneas', nodes: nodos, connections: cadena(['Ejecutar a mano', 'Crear tabla de instantáneas']), active: false, settings: AJUSTES, tags: [] };
+}
+
 function investigador(entorno) {
   const cfg = leerConfig(entorno);
   if (cfg.modo !== 'completo') throw new Error('El investigador necesita el feed del catálogo (modo completo)');
@@ -253,6 +321,38 @@ function diagnosticoAuditorProduccion() {
   return { name: 'Treidilor AI · Diagnóstico del entorno (Auditor, sin red)', nodes: nodos, connections: cadena(['Ejecutar a mano', 'Diagnóstico']), active: false, settings: AJUSTES, tags: [] };
 }
 
+/**
+ * LECTOR COMPARTIDO de instantáneas (puente Director ↔ n8n). SÓLO CONSULTA: cada agente (04, 12) tiene su propio Webhook POST protegido con credencial Header Auth (por nombre) que
+ * valida la solicitud con la función COMPARTIDA con el Director (`lectorPuente.mjs`), lee con un nodo Data table `row/get` de UNA tabla fija y responde con las filas. No escribe,
+ * no hace peticiones salientes, no decide ni aprueba nada. Sólo variante LOCAL (datos de prueba): no hay variante de producción autorizada.
+ */
+const CREDENCIAL_LECTOR = 'Treidilor — Lector puente (solo lectura)';
+const TABLAS_LECTOR_WF = { '04': 'calidad_catalogo_instantaneas', '12': 'auditor_general_instantaneas' };
+function codigoLector(config, adaptador) {
+  return `${empaquetar('lector', adaptador)}\n\n// ── adaptador del nodo ──\nconst LECTOR = ${JSON.stringify(config, null, 2)};\n${AYUDA}\n${adaptador}\n`;
+}
+function lectorInstantaneas(entorno) {
+  if (entorno !== 'local') throw new Error('El lector compartido sólo existe en la variante local (datos de prueba)');
+  const nodos = [nota('TREIDILOR AI · LECTOR COMPARTIDO DE INSTANTÁNEAS (puente Director ↔ n8n). SÓLO CONSULTA.\nDos Webhooks POST (tai-lector-04 y tai-lector-12), cada uno con credencial «' + CREDENCIAL_LECTOR + '» (Header Auth, creada a mano en n8n: el valor NUNCA va en este archivo).\nLee UNA tabla fija por agente con Data table «Get». No escribe, no hace peticiones salientes y NO aprueba ni decide nada: las autorizaciones permanecen en el Director.\nNo se publica en Internet: n8n sólo escucha en la red interna y el Director lo consulta desde la misma máquina. Variante LOCAL (datos de prueba).\nSe genera con scripts/automation/build-workflows.mjs: no se edita a mano. Se activa SÓLO a mano y con autorización.', [0, -420])];
+  const conexiones = {};
+  let fila = 0;
+  for (const agente of ['04', '12']) {
+    const config = { agente, tabla: TABLAS_LECTOR_WF[agente], entornos: [entorno], sintetico: true };
+    const y = 260 * fila;
+    const r = `Recibir (${agente})`; const v = `Validar solicitud (${agente})`; const l = `Leer instantáneas (${agente})`; const a = `Armar respuesta (${agente})`; const o = `Responder (${agente})`;
+    nodos.push(
+      { parameters: { httpMethod: 'POST', path: `tai-lector-${agente}`, authentication: 'headerAuth', responseMode: 'responseNode', options: {} }, name: r, type: 'n8n-nodes-base.webhook', typeVersion: 2, position: [0, y], credentials: { httpHeaderAuth: { id: 'REEMPLAZAR_AL_IMPORTAR', name: CREDENCIAL_LECTOR } } },
+      nodoCode(v, codigoLector(config, "const entrada = $input.first().json;\nconst r = validarSolicitudLector(entrada.body, { agentes: [LECTOR.agente], entornos: LECTOR.entornos });\nif (!r.ok) throw new Error('SOLICITUD NO VÁLIDA: ' + r.errores.join('; '));\nreturn [{ json: r.solicitud }];"), [260, y]),
+      { parameters: { resource: 'row', operation: 'get', dataTableId: refTabla(config.tabla), matchType: 'allConditions', filters: { conditions: [{ keyName: 'entorno', condition: 'eq', keyValue: '={{ $json.entorno }}' }] }, returnAll: false, limit: 60, orderBy: true, orderByColumn: 'generadoEn', orderByDirection: 'DESC' }, name: l, type: TIPO_DT, typeVersion: VERSION_DT, position: [520, y], onError: 'continueRegularOutput', alwaysOutputData: true, retryOnFail: false },
+      nodoCode(a, codigoLector(config, `const solicitud = nodo('${v}')[0];\nconst crudas = $input.all().map((i) => i.json);\nif (crudas.some((f) => f && f.error)) throw new Error('LECTURA FALLIDA: la tabla no se pudo leer');\nreturn [{ json: armarRespuestaLector({ solicitud, filas: crudas, ahoraIso: new Date().toISOString(), sintetico: LECTOR.sintetico }) }];`), [780, y]),
+      { parameters: { respondWith: 'json', responseBody: '={{ JSON.stringify($json) }}', options: { responseCode: 200 } }, name: o, type: 'n8n-nodes-base.respondToWebhook', typeVersion: 1.1, position: [1040, y] },
+    );
+    Object.assign(conexiones, cadena([r, v, l, a, o]));
+    fila += 1;
+  }
+  return { name: `Treidilor AI · Lector compartido de instantáneas (${entorno})`, nodes: nodos, connections: conexiones, active: false, settings: { ...AJUSTES, executionTimeout: 60, saveManualExecutions: false, saveDataErrorExecution: 'none', saveDataSuccessExecution: 'none' }, tags: [] };
+}
+
 export const DIAGNOSTICOS = { 'diagnostico-auditor-produccion.json': () => diagnosticoAuditorProduccion() };
 export const construirDiagnosticos = () => Object.fromEntries(Object.entries(DIAGNOSTICOS).map(([f, fn]) => [f, serializar(normalizarWorkflow(fn()))]));
 
@@ -261,7 +361,22 @@ export const FABRICA = {
   'auditor-general.produccion.json': () => auditor('produccion'),
   'investigador-comercial.local.json': () => investigador('local'),
   'auditor-instantaneas-crear-tabla.json': () => crearTablaInstantaneas(),
+  'calidad-catalogo.local.json': () => calidad('local'),
+  'calidad-catalogo.produccion.json': () => calidad('produccion'),
+  'calidad-instantaneas-crear-tabla.json': () => crearTablaCalidad(),
 };
+
+/** Workflows del PUENTE Director ↔ n8n: carpeta PROPIA (`automation/workflows-puente`) para no alterar el conjunto controlado de los siete workflows de `automation/workflows`. */
+export const SALIDA_PUENTE = path.join(RAIZ, 'automation', 'workflows-puente');
+export const FABRICA_PUENTE = {
+  'lector-instantaneas.local.json': () => lectorInstantaneas('local'),
+};
+/**
+ * El normalizador quita `webhookId` de todos los nodos; sin él n8n registra la ruta como «<idWorkflow>/<nodo>/<path>» (distinta en cada instalación) y el Director no podría
+ * llamar a `tai-lector-XX`. Se restaura SÓLO en los nodos Webhook del lector, con un UUID determinista (así la ruta de producción es exactamente el `path` fijado).
+ */
+const conWebhookId = (wf) => ({ ...wf, nodes: wf.nodes.map((n) => (n.type === 'n8n-nodes-base.webhook' ? { ...n, webhookId: idNodo(`${wf.name} webhook`, n.name) } : n)) });
+export const construirPuente = () => Object.fromEntries(Object.entries(FABRICA_PUENTE).map(([f, fn]) => [f, serializar(conWebhookId(normalizarWorkflow(fn())))]));
 
 export function construirTodo() {
   return Object.fromEntries(Object.entries(FABRICA).map(([f, fn]) => [f, serializar(normalizarWorkflow(fn()))]));
@@ -283,6 +398,17 @@ if (process.argv[1]?.endsWith('build-workflows.mjs')) {
     } else {
       console.error('Uso: build-workflows.mjs --write | --check');
       process.exit(2);
+    }
+  }
+  if (modo === '--write') fs.mkdirSync(SALIDA_PUENTE, { recursive: true });
+  for (const [f, texto] of Object.entries(construirPuente())) {
+    const destino = path.join(SALIDA_PUENTE, f);
+    if (modo === '--write') {
+      fs.writeFileSync(destino, texto);
+      console.log(`escrito ${path.relative(RAIZ, destino)} (${texto.length} bytes)`);
+    } else {
+      const actual = fs.existsSync(destino) ? fs.readFileSync(destino, 'utf8').replace(/\r\n/g, '\n') : null;
+      if (actual !== texto) { console.error(`✖ ${f}: desincronizado con automation/lib (ejecuta --write)`); fallos++; } else console.log(`✔ ${f}`);
     }
   }
   const SALIDA_DEV = path.join(RAIZ, 'automation', 'dev');

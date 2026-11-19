@@ -2,6 +2,8 @@
 
 **Misión.** Interfaz del administrador con el coordinador: consulta estado real, solicita investigaciones y gestiona aprobaciones.
 
+> **Decisión D1 aprobada (13/11/2026):** pasa a ser el **canal** (texto y voz, PC y móvil) del Agente 00 — Director, sin lógica propia. No confundir con el widget público `/api/asistente-ia`. Ver `automation/docs/AGENTE-00-DIRECTOR-DISENO.md`.
+
 ## Entradas
 - Registro de tareas, cola de propuestas, auditoría, estado de n8n
 

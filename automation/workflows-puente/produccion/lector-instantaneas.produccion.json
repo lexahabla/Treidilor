@@ -1,0 +1,329 @@
+{
+  "active": false,
+  "connections": {
+    "Armar respuesta (04)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Responder (04)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Armar respuesta (12)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Responder (12)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Leer instantáneas (04)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Armar respuesta (04)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Leer instantáneas (12)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Armar respuesta (12)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Recibir (04)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Validar solicitud (04)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Recibir (12)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Validar solicitud (12)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Validar solicitud (04)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Leer instantáneas (04)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Validar solicitud (12)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Leer instantáneas (12)",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "name": "Treidilor AI · Lector de PRODUCCIÓN de instantáneas (solo lectura)",
+  "nodes": [
+    {
+      "id": "8b9b498e-fb5a-43d8-a301-fa8dfd93e15e",
+      "name": "Aviso",
+      "parameters": {
+        "content": "TREIDILOR AI · LECTOR DE PRODUCCIÓN DE INSTANTÁNEAS (puente Director ↔ n8n). SÓLO CONSULTA.\nDos Webhooks POST (tai-lector-prod-04 y tai-lector-prod-12), cada uno con la credencial EXCLUSIVA «Treidilor — Lector puente PRODUCCIÓN (solo lectura)» (Header Auth con cabecera x-treidilor-lector-prod, creada a mano en n8n: el valor NUNCA va en este archivo ni se reutiliza la del lector de pruebas).\nLee UNA tabla fija por agente (Data table «Get», entorno «produccion») y responde sólo la instantánea más reciente por generadoEn. No escribe, no hace peticiones salientes, no guarda datos de ejecución y NO aprueba ni decide nada.\nNO debe ser alcanzable desde Internet: ver automation/docs/LECTOR-PRODUCCION-DESPLIEGUE.md antes de publicarlo. Se genera con scripts/automation/build-lector-produccion.mjs: no se edita a mano. Se importa y se activa SÓLO a mano y con autorización.",
+        "height": 260,
+        "width": 460
+      },
+      "position": [
+        0,
+        -460
+      ],
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Treidilor — Lector puente PRODUCCIÓN (solo lectura)"
+        }
+      },
+      "id": "f50788ef-d6bc-495a-a516-b96d79026df3",
+      "name": "Recibir (04)",
+      "parameters": {
+        "authentication": "headerAuth",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "tai-lector-prod-04",
+        "responseMode": "responseNode"
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "04d0f03c-90bf-4282-ad29-404b0024fb46"
+    },
+    {
+      "id": "95629a33-a597-47e3-ab31-f1cc56570388",
+      "name": "Validar solicitud (04)",
+      "parameters": {
+        "jsCode": "const ESQUEMA_SOLICITUD_LECTOR = 'tai-lector/1';\nconst TABLAS_LECTOR = { '04': 'calidad_catalogo_instantaneas', '12': 'auditor_general_instantaneas' };\nconst MAX_FILAS_LECTOR = 60;\nconst esObjetoL = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);\nconst sinClavesExtra = (obj, permitidas) => Object.keys(obj).filter((k) => !permitidas.includes(k));\nfunction validarSolicitudLector(s, opts = {}) {\nconst errores = [];\nconst agentes = opts.agentes || Object.keys(TABLAS_LECTOR);\nconst entornos = opts.entornos || ['local'];\nif (!esObjetoL(s)) return { ok: false, errores: ['la solicitud debe ser un objeto'], solicitud: null };\nfor (const k of sinClavesExtra(s, ['esquema', 'idSolicitud', 'agente', 'entorno', 'limite'])) errores.push(`campo no admitido: ${k}`);\nif (s.esquema !== ESQUEMA_SOLICITUD_LECTOR) errores.push('esquema no admitido');\nif (typeof s.idSolicitud !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(s.idSolicitud)) errores.push('idSolicitud inválido');\nif (typeof s.agente !== 'string' || !agentes.includes(s.agente) || !TABLAS_LECTOR[s.agente]) errores.push('agente no admitido');\nif (typeof s.entorno !== 'string' || !entornos.includes(s.entorno)) errores.push('entorno no admitido');\nconst limite = s.limite === undefined ? 20 : s.limite;\nif (!Number.isInteger(limite) || limite < 1 || limite > MAX_FILAS_LECTOR) errores.push('limite fuera de rango');\nif (errores.length) return { ok: false, errores, solicitud: null };\nreturn { ok: true, errores: [], solicitud: { esquema: ESQUEMA_SOLICITUD_LECTOR, idSolicitud: s.idSolicitud, agente: s.agente, entorno: s.entorno, limite } };\n}\nconst ENTORNO_PRODUCCION = 'produccion';\nconst VENTANA_SOLICITUD_MS = 120000;\nconst FECHA_ISO = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$/;\nconst fechaIsoValida = (t) => typeof t === 'string' && FECHA_ISO.test(t) && Number.isFinite(Date.parse(t));\nfunction validarSolicitudProduccion(s, { agentes, ahoraMs = Date.now() } = {}) {\nif (s === null || typeof s !== 'object' || Array.isArray(s)) return { ok: false, errores: ['la solicitud debe ser un objeto'], solicitud: null };\nconst { emitidoEn, ...resto } = s;\nconst r = validarSolicitudLector(resto, { agentes, entornos: [ENTORNO_PRODUCCION] });\nconst errores = [...r.errores];\nif (!fechaIsoValida(emitidoEn)) errores.push('emitidoEn ilegible o ausente');\nelse if (Math.abs(ahoraMs - Date.parse(emitidoEn)) > VENTANA_SOLICITUD_MS) errores.push('solicitud fuera de la ventana de validez (posible repetición)');\nif (errores.length) return { ok: false, errores, solicitud: null };\nreturn { ok: true, errores: [], solicitud: r.solicitud };\n}\n\n// ── adaptador del nodo ──\nconst LECTOR = {\n  \"agente\": \"04\",\n  \"tabla\": \"calidad_catalogo_instantaneas\",\n  \"entornos\": [\n    \"produccion\"\n  ],\n  \"sintetico\": false\n};\nconst nodo = (n) => { try { return $(n).all().map((i) => i.json); } catch (e) { return []; } };\nconst entrada = $input.first().json;\nconst r = validarSolicitudProduccion(entrada.body, { agentes: [LECTOR.agente], ahoraMs: Date.now() });\nif (!r.ok) throw new Error('SOLICITUD NO VÁLIDA: ' + r.errores.join('; '));\nreturn [{ json: r.solicitud }];\n"
+      },
+      "position": [
+        260,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "alwaysOutputData": true,
+      "id": "d4b505e3-487f-41fb-ae96-dcfec71d791c",
+      "name": "Leer instantáneas (04)",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "calidad_catalogo_instantaneas"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "entorno",
+              "keyValue": "={{ $json.entorno }}"
+            }
+          ]
+        },
+        "limit": 200,
+        "matchType": "allConditions",
+        "operation": "get",
+        "orderBy": true,
+        "orderByColumn": "generadoEn",
+        "orderByDirection": "DESC",
+        "resource": "row",
+        "returnAll": false
+      },
+      "position": [
+        520,
+        0
+      ],
+      "retryOnFail": false,
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "1f96dacf-9b17-485f-a952-a53ef283289d",
+      "name": "Armar respuesta (04)",
+      "parameters": {
+        "jsCode": "const COLUMNAS_INSTANTANEAS = ['entorno', 'host', 'generadoEn', 'idEjecucion', 'origen', 'calidad', 'huella', 'payload'];\nconst ESQUEMA_RESPUESTA_LECTOR = 'tai-lector-respuesta/1';\nconst TABLAS_LECTOR = { '04': 'calidad_catalogo_instantaneas', '12': 'auditor_general_instantaneas' };\nconst MAX_PAYLOAD_LECTOR = 200000;\nconst esObjetoL = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);\nfunction filaDeTabla(f) {\nif (!esObjetoL(f)) return null;\nconst out = {};\nfor (const c of COLUMNAS_INSTANTANEAS) {\nif (typeof f[c] !== 'string') return null;\nout[c] = f[c];\n}\nif (f.id !== undefined && f.id !== null) out.id = typeof f.id === 'number' || typeof f.id === 'string' ? f.id : null;\nreturn out;\n}\nfunction armarRespuestaLector({ solicitud, filas, ahoraIso, sintetico }) {\nconst validas = [];\nlet descartadas = 0;\nfor (const f of Array.isArray(filas) ? filas : []) {\nconst x = filaDeTabla(f);\nif (x && x.payload.length <= MAX_PAYLOAD_LECTOR) validas.push(x); else if (f && Object.keys(f).length) descartadas += 1;\n}\nreturn {\nesquema: ESQUEMA_RESPUESTA_LECTOR,\nidSolicitud: solicitud.idSolicitud,\nagente: solicitud.agente,\nentorno: solicitud.entorno,\ntabla: TABLAS_LECTOR[solicitud.agente],\nsintetico: sintetico === true,\nexportadoEn: ahoraIso,\nfilas: validas.slice(0, solicitud.limite),\ndescartadasEnOrigen: descartadas,\n};\n}\nconst ENTORNO_PRODUCCION = 'produccion';\nconst MAX_LECTURA_TABLA = 200;\nconst TOLERANCIA_FUTURO_MS = 5 * 60000;\nconst FECHA_ISO = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$/;\nconst fechaIsoValida = (t) => typeof t === 'string' && FECHA_ISO.test(t) && Number.isFinite(Date.parse(t));\nfunction armarRespuestaProduccion({ solicitud, filas, ahoraIso }) {\nconst ahora = Date.parse(ahoraIso);\nconst crudas = (Array.isArray(filas) ? filas : []).filter((f) => f && typeof f === 'object' && Object.keys(f).length);\nif (crudas.length >= MAX_LECTURA_TABLA) throw new Error(`LECTURA INCOMPLETA: la tabla devolvió ${crudas.length} filas (límite de lectura ${MAX_LECTURA_TABLA}); no se puede asegurar que la más reciente esté incluida`);\nconst buenas = [];\nlet descartadas = 0;\nfor (const f of crudas) {\nconst x = filaDeTabla(f);\nif (x && x.entorno === ENTORNO_PRODUCCION && x.idEjecucion && x.payload.length <= MAX_PAYLOAD_LECTOR && fechaIsoValida(x.generadoEn) && Date.parse(x.generadoEn) <= ahora + TOLERANCIA_FUTURO_MS) buenas.push(x);\nelse descartadas += 1;\n}\nbuenas.sort((a, b) => Date.parse(b.generadoEn) - Date.parse(a.generadoEn) || (a.idEjecucion < b.idEjecucion ? 1 : a.idEjecucion > b.idEjecucion ? -1 : 0));\nconst r = armarRespuestaLector({ solicitud, filas: buenas, ahoraIso, sintetico: false });\nreturn { ...r, descartadasEnOrigen: r.descartadasEnOrigen + descartadas };\n}\n\n// ── adaptador del nodo ──\nconst LECTOR = {\n  \"agente\": \"04\",\n  \"tabla\": \"calidad_catalogo_instantaneas\",\n  \"entornos\": [\n    \"produccion\"\n  ],\n  \"sintetico\": false\n};\nconst nodo = (n) => { try { return $(n).all().map((i) => i.json); } catch (e) { return []; } };\nconst solicitud = nodo('Validar solicitud (04)')[0];\nconst crudas = $input.all().map((i) => i.json);\nif (crudas.some((f) => f && f.error)) throw new Error('LECTURA FALLIDA: la tabla no se pudo leer');\nreturn [{ json: armarRespuestaProduccion({ solicitud, filas: crudas, ahoraIso: new Date().toISOString() }) }];\n"
+      },
+      "position": [
+        780,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "1437089c-d673-48c8-ade3-e8ad64fb0389",
+      "name": "Responder (04)",
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "position": [
+        1040,
+        0
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Treidilor — Lector puente PRODUCCIÓN (solo lectura)"
+        }
+      },
+      "id": "2823ca1e-0c53-4c52-aeeb-07553acb710a",
+      "name": "Recibir (12)",
+      "parameters": {
+        "authentication": "headerAuth",
+        "httpMethod": "POST",
+        "options": {},
+        "path": "tai-lector-prod-12",
+        "responseMode": "responseNode"
+      },
+      "position": [
+        0,
+        260
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "192d1293-eeba-4dbd-a4a4-4bd7c1a6cd03"
+    },
+    {
+      "id": "9510a158-dcc5-4ce7-a547-f7e4687d64a3",
+      "name": "Validar solicitud (12)",
+      "parameters": {
+        "jsCode": "const ESQUEMA_SOLICITUD_LECTOR = 'tai-lector/1';\nconst TABLAS_LECTOR = { '04': 'calidad_catalogo_instantaneas', '12': 'auditor_general_instantaneas' };\nconst MAX_FILAS_LECTOR = 60;\nconst esObjetoL = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);\nconst sinClavesExtra = (obj, permitidas) => Object.keys(obj).filter((k) => !permitidas.includes(k));\nfunction validarSolicitudLector(s, opts = {}) {\nconst errores = [];\nconst agentes = opts.agentes || Object.keys(TABLAS_LECTOR);\nconst entornos = opts.entornos || ['local'];\nif (!esObjetoL(s)) return { ok: false, errores: ['la solicitud debe ser un objeto'], solicitud: null };\nfor (const k of sinClavesExtra(s, ['esquema', 'idSolicitud', 'agente', 'entorno', 'limite'])) errores.push(`campo no admitido: ${k}`);\nif (s.esquema !== ESQUEMA_SOLICITUD_LECTOR) errores.push('esquema no admitido');\nif (typeof s.idSolicitud !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(s.idSolicitud)) errores.push('idSolicitud inválido');\nif (typeof s.agente !== 'string' || !agentes.includes(s.agente) || !TABLAS_LECTOR[s.agente]) errores.push('agente no admitido');\nif (typeof s.entorno !== 'string' || !entornos.includes(s.entorno)) errores.push('entorno no admitido');\nconst limite = s.limite === undefined ? 20 : s.limite;\nif (!Number.isInteger(limite) || limite < 1 || limite > MAX_FILAS_LECTOR) errores.push('limite fuera de rango');\nif (errores.length) return { ok: false, errores, solicitud: null };\nreturn { ok: true, errores: [], solicitud: { esquema: ESQUEMA_SOLICITUD_LECTOR, idSolicitud: s.idSolicitud, agente: s.agente, entorno: s.entorno, limite } };\n}\nconst ENTORNO_PRODUCCION = 'produccion';\nconst VENTANA_SOLICITUD_MS = 120000;\nconst FECHA_ISO = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$/;\nconst fechaIsoValida = (t) => typeof t === 'string' && FECHA_ISO.test(t) && Number.isFinite(Date.parse(t));\nfunction validarSolicitudProduccion(s, { agentes, ahoraMs = Date.now() } = {}) {\nif (s === null || typeof s !== 'object' || Array.isArray(s)) return { ok: false, errores: ['la solicitud debe ser un objeto'], solicitud: null };\nconst { emitidoEn, ...resto } = s;\nconst r = validarSolicitudLector(resto, { agentes, entornos: [ENTORNO_PRODUCCION] });\nconst errores = [...r.errores];\nif (!fechaIsoValida(emitidoEn)) errores.push('emitidoEn ilegible o ausente');\nelse if (Math.abs(ahoraMs - Date.parse(emitidoEn)) > VENTANA_SOLICITUD_MS) errores.push('solicitud fuera de la ventana de validez (posible repetición)');\nif (errores.length) return { ok: false, errores, solicitud: null };\nreturn { ok: true, errores: [], solicitud: r.solicitud };\n}\n\n// ── adaptador del nodo ──\nconst LECTOR = {\n  \"agente\": \"12\",\n  \"tabla\": \"auditor_general_instantaneas\",\n  \"entornos\": [\n    \"produccion\"\n  ],\n  \"sintetico\": false\n};\nconst nodo = (n) => { try { return $(n).all().map((i) => i.json); } catch (e) { return []; } };\nconst entrada = $input.first().json;\nconst r = validarSolicitudProduccion(entrada.body, { agentes: [LECTOR.agente], ahoraMs: Date.now() });\nif (!r.ok) throw new Error('SOLICITUD NO VÁLIDA: ' + r.errores.join('; '));\nreturn [{ json: r.solicitud }];\n"
+      },
+      "position": [
+        260,
+        260
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "alwaysOutputData": true,
+      "id": "5ab3bc50-94d9-462c-ad59-2639e1b17678",
+      "name": "Leer instantáneas (12)",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "auditor_general_instantaneas"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "entorno",
+              "keyValue": "={{ $json.entorno }}"
+            }
+          ]
+        },
+        "limit": 200,
+        "matchType": "allConditions",
+        "operation": "get",
+        "orderBy": true,
+        "orderByColumn": "generadoEn",
+        "orderByDirection": "DESC",
+        "resource": "row",
+        "returnAll": false
+      },
+      "position": [
+        520,
+        260
+      ],
+      "retryOnFail": false,
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "360fe41c-e24d-48f8-a9ff-9cd233df904b",
+      "name": "Armar respuesta (12)",
+      "parameters": {
+        "jsCode": "const COLUMNAS_INSTANTANEAS = ['entorno', 'host', 'generadoEn', 'idEjecucion', 'origen', 'calidad', 'huella', 'payload'];\nconst ESQUEMA_RESPUESTA_LECTOR = 'tai-lector-respuesta/1';\nconst TABLAS_LECTOR = { '04': 'calidad_catalogo_instantaneas', '12': 'auditor_general_instantaneas' };\nconst MAX_PAYLOAD_LECTOR = 200000;\nconst esObjetoL = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);\nfunction filaDeTabla(f) {\nif (!esObjetoL(f)) return null;\nconst out = {};\nfor (const c of COLUMNAS_INSTANTANEAS) {\nif (typeof f[c] !== 'string') return null;\nout[c] = f[c];\n}\nif (f.id !== undefined && f.id !== null) out.id = typeof f.id === 'number' || typeof f.id === 'string' ? f.id : null;\nreturn out;\n}\nfunction armarRespuestaLector({ solicitud, filas, ahoraIso, sintetico }) {\nconst validas = [];\nlet descartadas = 0;\nfor (const f of Array.isArray(filas) ? filas : []) {\nconst x = filaDeTabla(f);\nif (x && x.payload.length <= MAX_PAYLOAD_LECTOR) validas.push(x); else if (f && Object.keys(f).length) descartadas += 1;\n}\nreturn {\nesquema: ESQUEMA_RESPUESTA_LECTOR,\nidSolicitud: solicitud.idSolicitud,\nagente: solicitud.agente,\nentorno: solicitud.entorno,\ntabla: TABLAS_LECTOR[solicitud.agente],\nsintetico: sintetico === true,\nexportadoEn: ahoraIso,\nfilas: validas.slice(0, solicitud.limite),\ndescartadasEnOrigen: descartadas,\n};\n}\nconst ENTORNO_PRODUCCION = 'produccion';\nconst MAX_LECTURA_TABLA = 200;\nconst TOLERANCIA_FUTURO_MS = 5 * 60000;\nconst FECHA_ISO = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$/;\nconst fechaIsoValida = (t) => typeof t === 'string' && FECHA_ISO.test(t) && Number.isFinite(Date.parse(t));\nfunction armarRespuestaProduccion({ solicitud, filas, ahoraIso }) {\nconst ahora = Date.parse(ahoraIso);\nconst crudas = (Array.isArray(filas) ? filas : []).filter((f) => f && typeof f === 'object' && Object.keys(f).length);\nif (crudas.length >= MAX_LECTURA_TABLA) throw new Error(`LECTURA INCOMPLETA: la tabla devolvió ${crudas.length} filas (límite de lectura ${MAX_LECTURA_TABLA}); no se puede asegurar que la más reciente esté incluida`);\nconst buenas = [];\nlet descartadas = 0;\nfor (const f of crudas) {\nconst x = filaDeTabla(f);\nif (x && x.entorno === ENTORNO_PRODUCCION && x.idEjecucion && x.payload.length <= MAX_PAYLOAD_LECTOR && fechaIsoValida(x.generadoEn) && Date.parse(x.generadoEn) <= ahora + TOLERANCIA_FUTURO_MS) buenas.push(x);\nelse descartadas += 1;\n}\nbuenas.sort((a, b) => Date.parse(b.generadoEn) - Date.parse(a.generadoEn) || (a.idEjecucion < b.idEjecucion ? 1 : a.idEjecucion > b.idEjecucion ? -1 : 0));\nconst r = armarRespuestaLector({ solicitud, filas: buenas, ahoraIso, sintetico: false });\nreturn { ...r, descartadasEnOrigen: r.descartadasEnOrigen + descartadas };\n}\n\n// ── adaptador del nodo ──\nconst LECTOR = {\n  \"agente\": \"12\",\n  \"tabla\": \"auditor_general_instantaneas\",\n  \"entornos\": [\n    \"produccion\"\n  ],\n  \"sintetico\": false\n};\nconst nodo = (n) => { try { return $(n).all().map((i) => i.json); } catch (e) { return []; } };\nconst solicitud = nodo('Validar solicitud (12)')[0];\nconst crudas = $input.all().map((i) => i.json);\nif (crudas.some((f) => f && f.error)) throw new Error('LECTURA FALLIDA: la tabla no se pudo leer');\nreturn [{ json: armarRespuestaProduccion({ solicitud, filas: crudas, ahoraIso: new Date().toISOString() }) }];\n"
+      },
+      "position": [
+        780,
+        260
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "912b140c-a8f4-48f2-a63e-5b3a4d3e6683",
+      "name": "Responder (12)",
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "position": [
+        1040,
+        260
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 60,
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "timezone": "Europe/Madrid"
+  },
+  "tags": []
+}

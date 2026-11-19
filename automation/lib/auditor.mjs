@@ -9,7 +9,7 @@ import { ejecutarSeguimiento, ejecutarSeguimientoConHistorial, estadoDeTabla, es
 
 export const VERSION_AUDITOR = '0.2.0';
 
-const incidencia = (area, codigo, gravedad, titulo, detalle, evidencia, accionSugerida, clave = '') => ({
+export const incidencia = (area, codigo, gravedad, titulo, detalle, evidencia, accionSugerida, clave = '') => ({
   id: `${area}:${codigo}${clave ? `:${clave}` : ''}`.slice(0, 200),
   gravedad,
   area,
@@ -279,7 +279,7 @@ export function analizarFichas(objetivos, respuestas) {
   return { incidencias: inc, revisadas };
 }
 
-const imagenAceptable = (u) => typeof u === 'string' && (/^https:\/\//i.test(u) || /^\/[^/]/.test(u));
+export const imagenAceptable = (u) => typeof u === 'string' && (/^https:\/\//i.test(u) || /^\/[^/]/.test(u));
 
 /** Integridad básica del catálogo a partir del feed de lectura. Agrupa por código (un aviso por problema, con ejemplos). */
 export function analizarCatalogo(catalogo, cfg, ahoraIso) {
@@ -524,7 +524,7 @@ const MOTIVOS_SEGUIMIENTO = {
 };
 
 /** Apartado «Seguimiento» (los informes anteriores no lo tienen: sólo se pinta si existe). Muestra claves estables, no textos. */
-function markdownSeguimiento(s, p) {
+export function markdownSeguimiento(s, p) {
   const l = ['## Seguimiento'];
   const fecha = (iso) => String(iso).slice(0, 16).replace('T', ' ');
   const motivo = (m) => MOTIVOS_SEGUIMIENTO[m] ?? m;

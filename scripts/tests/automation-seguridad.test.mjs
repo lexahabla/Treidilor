@@ -22,7 +22,7 @@ const nodo = (wf, nombre) => wf.nodes.find((n) => n.name === nombre);
 const hay = (r, re) => r.errores.some((e) => re.test(e));
 
 test('los workflows del repositorio pasan el comprobador y están normalizados y sincronizados con automation/lib', () => {
-  assert.deepEqual(FICHEROS, ['auditor-general.local.json', 'auditor-general.produccion.json', 'auditor-instantaneas-crear-tabla.json', 'investigador-comercial.local.json']);
+  assert.deepEqual(FICHEROS, ['auditor-general.local.json', 'auditor-general.produccion.json', 'auditor-instantaneas-crear-tabla.json', 'calidad-catalogo.local.json', 'calidad-catalogo.produccion.json', 'calidad-instantaneas-crear-tabla.json', 'investigador-comercial.local.json']);
   const esperado = construirTodo();
   for (const f of FICHEROS) {
     const texto = leer(`automation/workflows/${f}`);

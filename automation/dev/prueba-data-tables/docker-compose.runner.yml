@@ -1,0 +1,49 @@
+# VARIANTE de validación con RUNNER EXTERNO de tareas (Code) en `tai-prueba-dt`. Se aplica ENCIMA del compose base y de la variante `docker-compose.calidad.yml`:
+#
+#   docker compose -p tai-prueba-dt --env-file <env fuera del repo> \
+#     -f automation/dev/prueba-data-tables/docker-compose.yml -f automation/dev/prueba-data-tables/docker-compose.calidad.yml -f automation/dev/prueba-data-tables/docker-compose.runner.yml up -d --pull never
+#
+# Por qué: el n8n de producción ejecuta los nodos Code en un runner EXTERNO (`n8n-runner`, imagen `n8nio/runners:2.38.6`, `N8N_RUNNERS_MODE=external`), no en el proceso de n8n.
+# QUÉ SE REPRODUCE y qué NO (límite honesto, ver AGENTE-04-CALIDAD.md):
+#   · SÍ: n8n 2.38.6 en modo externo + un proceso APARTE (otro contenedor) con el paquete `@n8n/task-runner` (el ejecutor JavaScript que usa también `n8nio/runners`) que se autentica en el
+#     task broker (puerto 5679, red aislada) con un token SÓLO de pruebas. Los nodos Code se ejecutan en ese proceso, no en n8n.
+#   · El handshake (token → grant token) lo hace `lanzador-runner-prueba.mjs`, un lanzador MÍNIMO escrito para esta prueba que sustituye al `task-runner-launcher` oficial.
+#   · NO: la imagen oficial `n8nio/runners:2.38.6` (no está en este PC y no se ha descargado), su lanzador (`task-runner-launcher`) ni su configuración de permisos/variables. Aquí no se permite
+#     ningún módulo externo ni builtin (el código del Agente 04 no usa `require`).
+# No cambia: la red `tai-dt-aislada` (`internal: true`), el único puerto publicado (127.0.0.1:5689), ni ningún volumen. El runner no publica puertos.
+services:
+  n8n:
+    environment:
+      N8N_RUNNERS_MODE: external
+      N8N_RUNNERS_AUTH_TOKEN: ${PRUEBA_DT_RUNNER_TOKEN:?define un token SOLO de pruebas (aleatorio) en el .env fuera del repo}
+      N8N_RUNNERS_BROKER_LISTEN_ADDRESS: 0.0.0.0
+
+  runner:
+    image: n8nio/n8n:${PRUEBA_DT_N8N_VERSION:-2.38.6}
+    container_name: tai-dt-runner
+    restart: "no"
+    entrypoint: ["node", "/app/lanzador-runner-prueba.mjs"]
+    command: []
+    volumes:
+      - ./lanzador-runner-prueba.mjs:/app/lanzador-runner-prueba.mjs:ro
+    user: node
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.5
+    labels:
+      com.treidilor.prueba: data-tables
+    networks: [aislada]
+    environment:
+      N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
+      N8N_RUNNERS_AUTH_TOKEN: ${PRUEBA_DT_RUNNER_TOKEN:?define un token SOLO de pruebas (aleatorio) en el .env fuera del repo}
+      N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT: "0"
+      GENERIC_TIMEZONE: Europe/Madrid
+      TZ: Europe/Madrid
+    depends_on:
+      n8n:
+        condition: service_healthy

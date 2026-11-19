@@ -168,7 +168,7 @@ test('Endpoint: sin autenticación sigue devolviendo 401 aunque lleve destino', 
 
 test('La asignación de destino no usa IA (sin módulos de IA en el importador)', () => {
   for (const f of ['src/lib/jsonImport/engine.ts', 'src/lib/jsonImport/categoryResolver.ts']) {
-    const text = fs.readFileSync(path.join('d:/AXEL/WEBS/TRADYLOR/tradylor_web', f), 'utf8');
+    const text = fs.readFileSync(path.join(import.meta.dirname, '../..', f), 'utf8');
     assert.ok(!/from '\.\.\/ai'|openai|anthropic/i.test(text), f);
   }
 });

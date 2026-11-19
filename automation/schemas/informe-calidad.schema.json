@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Informe del Agente 04 — Calidad del catálogo (Treidilor AI), informe-calidad/1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["esquema", "agente", "version", "entorno", "modo", "generadoEn", "soloLectura", "fuente", "resumen", "incidencias", "pares", "alcance", "cobertura", "markdown"],
+  "properties": {
+    "esquema": { "enum": ["informe-calidad/1"] },
+    "agente": { "enum": ["calidad-catalogo"] },
+    "version": { "type": "string", "pattern": "^[0-9]+[.][0-9]+[.][0-9]+$" },
+    "entorno": { "enum": ["local", "produccion"] },
+    "modo": { "enum": ["lectura_catalogo"] },
+    "generadoEn": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T" },
+    "soloLectura": { "enum": [true] },
+    "fuente": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["esquemaFeed", "paginasPedidas", "paginasLeidas", "totalPaginas", "total", "productosLeidos", "completo", "errores", "inconsistencias"],
+      "properties": {
+        "esquemaFeed": { "enum": ["automation-catalog/1"] },
+        "paginasPedidas": { "type": "integer", "minimum": 0 },
+        "paginasLeidas": { "type": "integer", "minimum": 0 },
+        "totalPaginas": { "type": ["integer", "null"] },
+        "total": { "type": ["integer", "null"] },
+        "productosLeidos": { "type": "integer", "minimum": 0 },
+        "completo": { "type": "boolean" },
+        "errores": { "type": "array", "items": { "type": "string" } },
+        "inconsistencias": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "resumen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "peticiones", "productos", "productosConIncidencias", "incidencias", "confirmados", "advertencias", "noVerificables", "porPrioridad", "porRegla", "porRed", "incidenciasMostradas", "incidenciasOmitidas"],
+      "properties": {
+        "estado": { "enum": ["ok", "atencion", "critico", "incompleto"] },
+        "peticiones": { "type": "integer", "minimum": 0 },
+        "productos": { "type": "integer", "minimum": 0 },
+        "productosConIncidencias": { "type": "integer", "minimum": 0 },
+        "incidencias": { "type": "object" },
+        "confirmados": { "type": "integer", "minimum": 0 },
+        "advertencias": { "type": "integer", "minimum": 0 },
+        "noVerificables": { "type": "integer", "minimum": 0 },
+        "porPrioridad": { "type": "object" },
+        "porRegla": { "type": "object" },
+        "porRed": { "type": "object" },
+        "incidenciasMostradas": { "type": "integer", "minimum": 0 },
+        "incidenciasOmitidas": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "incidencias": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "gravedad", "area", "titulo", "detalle", "evidencia", "accionSugerida", "clase", "ambito", "certeza", "regla", "prioridad", "puntuacion"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "gravedad": { "enum": ["critica", "alta", "media", "baja", "info"] },
+          "area": { "enum": ["ficha", "catalogo"] },
+          "titulo": { "type": "string" },
+          "detalle": { "type": "string" },
+          "evidencia": { "type": "object" },
+          "accionSugerida": { "type": "string" },
+          "clase": { "enum": ["integridad_datos", "calidad_datos", "honestidad_comercial", "monetizacion", "actualidad", "disponibilidad", "seguridad"] },
+          "ambito": { "enum": ["datos"] },
+          "certeza": { "enum": ["confirmado", "advertencia", "no_verificable"] },
+          "regla": { "type": "string" },
+          "prioridad": { "type": ["string", "null"] },
+          "puntuacion": { "type": "integer", "minimum": 0 },
+          "persistente": { "type": "boolean" },
+          "producto": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "titulo", "red", "comercio", "categoria"],
+            "properties": {
+              "id": { "type": "string" },
+              "titulo": { "type": "string" },
+              "red": { "type": ["string", "null"] },
+              "comercio": { "type": ["string", "null"] },
+              "categoria": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "pares": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tipo", "a", "b", "similitud", "motivo"],
+        "properties": {
+          "tipo": { "enum": ["titulo_igual_mismo_comercio", "titulo_mismos_terminos", "titulo_similar_mismo_comercio"] },
+          "a": { "type": "object", "additionalProperties": false, "required": ["id", "titulo", "precio"], "properties": { "id": { "type": "string" }, "titulo": { "type": "string" }, "precio": { "type": ["number", "null"] } } },
+          "b": { "type": "object", "additionalProperties": false, "required": ["id", "titulo", "precio"], "properties": { "id": { "type": "string" }, "titulo": { "type": "string" }, "precio": { "type": ["number", "null"] } } },
+          "similitud": { "type": "number", "minimum": 0, "maximum": 1 },
+          "motivo": { "type": "string" }
+        }
+      }
+    },
+    "alcance": { "type": "object" },
+    "cobertura": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revisado", "noRevisado"],
+      "properties": {
+        "revisado": { "type": "array", "items": { "type": "string" } },
+        "noRevisado": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "seguimiento": { "type": "object" },
+    "persistencia": { "type": "object" },
+    "markdown": { "type": "string", "minLength": 1 }
+  }
+}

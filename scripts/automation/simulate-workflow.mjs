@@ -12,9 +12,9 @@
 import vm from 'node:vm';
 
 /** Almacén en memoria para los nodos «Data table» simulados. `tablas`: nombres de tablas que ya existen. Las banderas simulan fallos de la tabla. */
-export function crearAlmacenSimulado(tablas = []) {
+export function crearAlmacenSimulado(tablas = [], columnasPorTabla = {}) {
   const almacen = { tablas: {}, operaciones: [], falloInsert: false, falloLectura: false, seq: 0 };
-  for (const nombre of tablas) almacen.tablas[nombre] = { id: `tabla-${Object.keys(almacen.tablas).length + 1}`, nombre, filas: [] };
+  for (const nombre of tablas) almacen.tablas[nombre] = { id: `tabla-${Object.keys(almacen.tablas).length + 1}`, nombre, filas: [], ...(columnasPorTabla[nombre] ? { columnas: columnasPorTabla[nombre] } : {}) };
   return almacen;
 }
 
@@ -55,7 +55,9 @@ function simularDataTable(nodo, entrada, almacen) {
   if (p.operation === 'insert') {
     if (alm.falloInsert === 'tabla' || !tabla) throw new Error(`Data table with name "${ref.value}" not found`);
     // Validación fallida (columna desconocida): n8n NO da error; devuelve el elemento de entrada envuelto y no guarda nada.
-    if (alm.falloInsert) return entrada.map((it, i) => ({ json: { json: it.json, pairedItem: { item: i } }, pairedItem: { item: i } }));
+    // Si se conocen las columnas de la tabla (creada por el nodo o declaradas en `columnasPorTabla`), una columna desconocida también es «validación fallida» (comprobado en n8n 2.38.6).
+    const desconocidas = Array.isArray(tabla.columnas) ? Object.keys(p.columns?.value ?? {}).filter((k) => !tabla.columnas.includes(k)) : [];
+    if (alm.falloInsert || desconocidas.length) return entrada.map((it, i) => ({ json: { json: it.json, pairedItem: { item: i } }, pairedItem: { item: i } }));
     const salida = [];
     for (const it of entrada) {
       const valores = Object.fromEntries(Object.entries(p.columns.value).map(([k, v]) => [k, evaluar(v, it.json)]));
@@ -71,6 +73,7 @@ function simularDataTable(nodo, entrada, almacen) {
 export function simularWorkflow(wf, { fetchSimulado, ahora = '2026-11-12T10:00:00.000Z', hostsPermitidos, almacen = null, ejecucion = {} } = {}) {
   const salidas = new Map(); // nombre → items
   const peticiones = [];
+  let relojVirtual = 0; // ms virtuales desde el inicio: los nodos HTTP respetan su pausa entre lotes (batching) y el siguiente nodo empieza al terminar el último lote
   const porNombre = new Map(wf.nodes.map((n) => [n.name, n]));
   const entradas = new Map(wf.nodes.map((n) => [n.name, []])); // nombre → [{ de, idx }]: nodo de origen y nº de salida
   const porSalida = new Map(); // nombre → [items de la salida 0, items de la salida 1…] (sólo nodos con varias salidas)
@@ -120,23 +123,36 @@ export function simularWorkflow(wf, { fetchSimulado, ahora = '2026-11-12T10:00:0
       continue;
     }
 
+    if (nodo.type === 'n8n-nodes-base.wait') { // pausa por intervalo: los elementos pasan intactos y el reloj virtual avanza
+      const p = nodo.parameters ?? {};
+      const mult = { seconds: 1000, minutes: 60000, hours: 3600000, days: 86400000 }[p.unit ?? 'hours'] ?? 3600000;
+      relojVirtual += (Number(p.amount) || 0) * mult;
+      salidas.set(nombre, entrada);
+      continue;
+    }
     if (nodo.type === 'n8n-nodes-base.httpRequest') {
       const p = nodo.parameters;
       if (p.url !== '={{ $json.url }}') throw new Error(`URL no soportada por el simulador en «${nombre}»`);
       const metodo = String(p.method ?? 'GET').toUpperCase();
       const out = [];
-      for (const it of entrada) {
+      const lote = p.options?.batching?.batch ?? {};
+      const tamLote = Math.max(1, Number(lote.batchSize) || 1);
+      const pausaLote = Number(lote.batchInterval) || 0;
+      const cabeceras = Object.fromEntries((p.headerParameters?.parameters ?? []).map((h) => [String(h.name).toLowerCase(), h.value]));
+      for (const [k, it] of entrada.entries()) {
         const url = it.json.url;
-        peticiones.push({ nodo: nombre, metodo, url, credencial: Object.keys(nodo.credentials ?? {}).length > 0 });
+        const tVirtual = relojVirtual + Math.floor(k / tamLote) * pausaLote;
+        peticiones.push({ nodo: nombre, metodo, url, credencial: Object.keys(nodo.credentials ?? {}).length > 0, t: tVirtual });
         if (metodo !== 'GET') throw new Error(`El simulador rechaza ${metodo} (sólo lectura)`);
         if (hostsPermitidos && !hostsPermitidos.includes(new URL(url).host)) throw new Error(`Host no permitido en la simulación: ${new URL(url).host}`);
         try {
-          const r = fetchSimulado({ url, metodo, nodo: nombre, credencial: Object.keys(nodo.credentials ?? {}).length > 0 });
+          const r = fetchSimulado({ url, metodo, nodo: nombre, credencial: Object.keys(nodo.credentials ?? {}).length > 0, cabeceras, t: tVirtual, redirecciones: p.options?.redirect?.redirect?.followRedirects !== false });
           out.push({ json: { statusCode: r.statusCode ?? 200, headers: r.headers ?? { 'content-type': 'text/html' }, data: typeof r.body === 'string' ? r.body : JSON.stringify(r.body ?? ''), ...(r.error ? { error: r.error } : {}) } });
         } catch (e) {
           out.push({ json: { error: e.message } });
         }
       }
+      if (entrada.length) relojVirtual += (Math.ceil(entrada.length / tamLote) - 1) * pausaLote;
       salidas.set(nombre, out);
       continue;
     }
@@ -159,5 +175,5 @@ export function simularWorkflow(wf, { fetchSimulado, ahora = '2026-11-12T10:00:0
   }
   // El resultado es la salida del nodo «Informe» si existe (en 2c el último nodo es el que guarda la instantánea); si no, la del último nodo.
   const ultimo = porNombre.has('Informe') ? 'Informe' : orden.filter((n) => porNombre.get(n).type !== 'n8n-nodes-base.stickyNote' && !porNombre.get(n).disabled).pop();
-  return { salida: salidas.get(ultimo) ?? [], salidas, peticiones };
+  return { salida: salidas.get(ultimo) ?? [], salidas, peticiones, virtualMs: relojVirtual };
 }
