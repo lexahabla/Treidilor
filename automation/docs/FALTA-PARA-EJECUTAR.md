@@ -17,8 +17,8 @@ Estado (12/11/2026): los dos agentes **funcionan en un n8n real de pruebas (2.46
 | 2 | Ejecutar allí `automation/dev/diagnostico-entorno-code.json` (mismas globales que en 2.46.6: sin `URL`) | Axel / con autorización |
 | 3 | Salida del n8n del VPS a `https://treidilor.com` (o URL interna) y, si cambia, ajustar `config/produccion.json` | Axel + Claude |
 | 4 | **Copia y restauración probadas** (volumen de Treidilor y datos de n8n incl. clave de cifrado) | Axel + Claude |
-| 5 | Importar `auditor-general.produccion.json` **desactivado**, ejecutar a mano, revisar el informe y las ejecuciones (solo GET a páginas públicas) | con autorización (C6) |
-| 6 | Programación diaria fuera de horas punta, primera semana con revisión diaria | con autorización (C9) |
+| 5 | Importar `auditor-general.produccion.json` **desactivado**, ejecutar a mano, revisar el informe y las ejecuciones (solo GET a páginas públicas) | con autorización (C6) — **hecho: dos ejecuciones manuales `ex-13` y `ex-17` (comunicado 14/11/2026)** |
+| 6 | Programación diaria fuera de horas punta, primera semana con revisión diaria | con autorización (C9) — **pendiente**; requisitos previos en `AGENTE-12-VALIDACION-PRODUCCION.md` §6 |
 | 7 | **Investigador en producción**: desplegar la API de automatización con `AUTOMATION_API_ENABLED=true` (decisión aparte), crear un cliente `catalog:read` desde el panel (token mostrado una vez), crearlo como credencial en el n8n del VPS y crear la variante `investigador-comercial.produccion` | con autorización aparte |
 | 8 | Decidir canal de avisos del Auditor (correo/Telegram): credenciales nuevas | Axel |
 
