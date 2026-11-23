@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR, dataFile } from '../paths';
 import { readJsonArrayFile, writeJsonArrayFile } from '../jsonStore';
-import { DATA_FILE_PATH, readProductsFromFile, writeProductsToFile } from '../productStore';
+import { DATA_FILE_PATH, readProductsFromFile, updateCatalog } from '../productStore';
 import { loadDeletedSnapshot, matchDeletedOffer, matchDeletedProduct } from '../deletedIdentity';
 import { invalidateCatalogCache } from '../catalog';
 import { runImport } from './engine';
@@ -84,8 +84,6 @@ export function processChunk(input: {
   onlyNew?: boolean;
 }): ChunkOutput & { backup?: string } {
   const nowIso = new Date().toISOString();
-  // ── Sección crítica síncrona: leer → aplicar → escribir una sola vez. ──
-  const catalog = readProductsFromFile();
   const snapshot = loadDeletedSnapshot();
   // Elementos crudos del actor de Amazon de Apify (pegados o subidos): se adaptan al modelo antes de importar.
   const records = input.records.map((r) =>
@@ -95,25 +93,46 @@ export function processChunk(input: {
         ? adaptApifyTemuItem(r, { resolveCategory: resolveCatalogCategory })
         : r,
   );
-  const out = runImport(catalog, records, input.defaults, {
-    batchId: input.batchId,
-    nowIso,
-    deletedIds: new Set(snapshot.ids),
-    deleted: {
-      product: (candidate, includeGtin) => matchDeletedProduct(candidate as never, { includeGtin, snapshot }),
-      offer: (offerKey) => matchDeletedOffer(offerKey, snapshot),
-    },
-    indexOffset: input.indexOffset,
-    target: input.target,
-    onlyNew: input.onlyNew === true,
-  });
+
+  // Copia de seguridad del estado ANTERIOR, idempotente por lote. Se materializa
+  // dentro de `updateCatalog` sólo si el bloque realmente modifica el catálogo.
   let backup: string | undefined;
-  if (out.changed && !input.dryRun) {
-    // Copia de seguridad del estado ANTERIOR, sólo si este bloque va a modificar el catálogo.
-    backup = startBatch(input.batchId, false).backup;
-    if (!writeProductsToFile(out.products)) {
-      throw new Error('No se pudo escribir products.json; no se ha aplicado ningún cambio de este bloque.');
+  const reserveBackup = () => {
+    if (!input.dryRun && fs.existsSync(DATA_FILE_PATH)) {
+      backup = startBatch(input.batchId, false).backup;
     }
+  };
+
+  // ── Sección crítica síncrona: leer → aplicar → escribir una sola vez. ──
+  // `updateCatalog` relee el catálogo ACTUAL dentro de la sección, de modo que
+  // `runImport` siempre parte del estado más reciente del disco.
+  const written = updateCatalog<ChunkOutput>((current) => {
+    const out = runImport(current, records, input.defaults, {
+      batchId: input.batchId,
+      nowIso,
+      deletedIds: new Set(snapshot.ids),
+      deleted: {
+        product: (candidate, includeGtin) => matchDeletedProduct(candidate as never, { includeGtin, snapshot }),
+        offer: (offerKey) => matchDeletedOffer(offerKey, snapshot),
+      },
+      indexOffset: input.indexOffset,
+      target: input.target,
+      onlyNew: input.onlyNew === true,
+    });
+    // Materializar la copia de seguridad sólo si el bloque realmente modifica el catálogo.
+    if (out.changed && !input.dryRun) reserveBackup();
+    // En dryRun no se persiste nada: se devuelve changed:false para que
+    // `updateCatalog` no escriba en disco.
+    if (input.dryRun) return { changed: false, result: out };
+    // `updateCatalog` escribe el array `current` in-place, así que volcamos
+    // el resultado de `runImport` sobre él para que se persistan los cambios.
+    current.length = 0;
+    for (const p of out.products) current.push(p);
+    return { changed: out.changed, result: out };
+  });
+
+  const out = written.result;
+  if (!input.dryRun && out.changed) {
     invalidateCatalogCache();
   }
   // ── Fin de la sección crítica ──
