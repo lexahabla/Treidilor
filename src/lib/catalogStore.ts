@@ -16,17 +16,13 @@ import { dataFile } from './paths';
 import { readJsonArrayFile, writeJsonArrayFile } from './jsonStore';
 import { readDeletedIds } from './deletedProducts';
 import { extractAsinFromUrl, getAmazonAddToCartUrl } from '../utils/amazon';
+import { updateCatalog } from './productStore';
 
 const DATA_FILE_PATH = dataFile('products.json');
 
 /** Lee el catálogo (tolerante a un JSON truncado: nunca devuelve `[]` en seco). */
 export function readCatalogFromFile(): Product[] {
   return readJsonArrayFile<Product>(DATA_FILE_PATH);
-}
-
-/** Escribe el catálogo de forma atómica (temporal + rename). */
-function writeCatalogToFile(products: Product[]): boolean {
-  return writeJsonArrayFile(DATA_FILE_PATH, products);
 }
 
 export function slugifyProduct(text: string): string {
@@ -101,76 +97,88 @@ export function upsertCatalogProduct(raw: N8nContractPayload): CatalogSaveResult
     return { ok: false, message: 'Los campos "title" y "affiliateUrl" (o "affiliateDeepLink") son obligatorios.' };
   }
 
-  const products = readCatalogFromFile();
-  const productId = data.id || slugifyProduct(data.title);
-  const existing = products.find((p) => p.id === productId);
+  // Escritura PROTEGIDA por el bloqueo existente (`updateCatalog`): lectura,
+  // mutación y escritura en una sola sección síncrona. El comportamiento del
+  // importador n8n se preserva: siempre escribe (alta o actualización) y
+  // devuelve { ok, message, product, updated }.
+  let result: CatalogSaveResult;
+  try {
+    const written = updateCatalog<CatalogSaveResult>((products) => {
+      const productId = data.id || slugifyProduct(data.title);
+      const existing = products.find((p) => p.id === productId);
 
-  const product: Product = {
-    id: productId,
-    slug: data.slug ?? existing?.slug,
-    title: String(data.title).trim(),
-    description: String(data.description ?? '').trim(),
-    price: Number(data.price) || 0,
-    originalPrice: data.originalPrice ? Number(data.originalPrice) : undefined,
-    image: String(data.image ?? 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop').trim(),
-    category: String(data.category ?? 'Tecnología').trim(),
-    merchant: String(data.merchant ?? 'Comercio Externo').trim(),
-    affiliateUrl: String(data.affiliateUrl).trim(),
-    buyNowUrl: (() => {
-      if (data.buyNowUrl) return String(data.buyNowUrl).trim();
-      // Sin URL manual y con ASIN: se genera la cesta de Amazon con tag
-      // (enlace de compra directa hacia la tramitación del pedido).
-      const asin = data.asin
-        ? String(data.asin).trim().toUpperCase()
-        : extractAsinFromUrl(String(data.affiliateUrl).trim());
-      return asin && /^[A-Z0-9]{10}$/.test(asin) ? getAmazonAddToCartUrl(asin) : existing?.buyNowUrl;
-    })(),
-    asin: data.asin ? String(data.asin).trim().toUpperCase() : existing?.asin,
-    pros: Array.isArray(data.pros) ? data.pros.filter(Boolean) : [],
-    cons: Array.isArray(data.cons) ? data.cons.filter(Boolean) : [],
-    badge: data.badge ? String(data.badge).trim() : undefined,
-    rating: data.rating != null ? Number(data.rating) : undefined,
-    reviewsCount: data.reviewsCount != null ? Number(data.reviewsCount) : undefined,
-    verdict: data.verdict ? String(data.verdict).trim() : undefined,
-    techSheet: data.techSheet ? String(data.techSheet).trim() : existing?.techSheet,
-    specs: data.specs ?? existing?.specs,
-    fulfillmentProvider: data.fulfillmentProvider ?? existing?.fulfillmentProvider,
-    // Envío: si el contrato no los trae, se conservan los ya guardados.
-    shippingInfo: data.shippingInfo ? String(data.shippingInfo).trim() : existing?.shippingInfo,
-    shippingDays:
-      data.shippingDays != null && Number.isFinite(Number(data.shippingDays))
-        ? Math.max(0, Math.round(Number(data.shippingDays)))
-        : existing?.shippingDays,
-    freeShipping:
-      typeof data.freeShipping === 'boolean' ? data.freeShipping : existing?.freeShipping,
-    priceHistory: existing?.priceHistory,
-    // Curación: los campos de catálogo jerárquico/score/alternativas sobreviven
-    // a los re-imports del contrato n8n (sólo se actualizan los campos vivos).
-    sourceId: existing?.sourceId,
-    category_id: existing?.category_id,
-    subcategory_id: existing?.subcategory_id,
-    ia_status: existing?.ia_status,
-    link_status: existing?.link_status,
-    normalized_tags: existing?.normalized_tags,
-    alternative_product_ids: existing?.alternative_product_ids,
-    alternatives: existing?.alternatives,
-    conversion_score: existing?.conversion_score,
-    commissionEstimate: existing?.commissionEstimate,
-    sales30d: existing?.sales30d,
-  };
+      const product: Product = {
+        id: productId,
+        slug: data.slug ?? existing?.slug,
+        title: String(data.title).trim(),
+        description: String(data.description ?? '').trim(),
+        price: Number(data.price) || 0,
+        originalPrice: data.originalPrice ? Number(data.originalPrice) : undefined,
+        image: String(data.image ?? 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=800&auto=format&fit=crop').trim(),
+        category: String(data.category ?? 'Tecnología').trim(),
+        merchant: String(data.merchant ?? 'Comercio Externo').trim(),
+        affiliateUrl: String(data.affiliateUrl).trim(),
+        buyNowUrl: (() => {
+          if (data.buyNowUrl) return String(data.buyNowUrl).trim();
+          // Sin URL manual y con ASIN: se genera la cesta de Amazon con tag
+          // (enlace de compra directa hacia la tramitación del pedido).
+          const asin = data.asin
+            ? String(data.asin).trim().toUpperCase()
+            : extractAsinFromUrl(String(data.affiliateUrl).trim());
+          return asin && /^[A-Z0-9]{10}$/.test(asin) ? getAmazonAddToCartUrl(asin) : existing?.buyNowUrl;
+        })(),
+        asin: data.asin ? String(data.asin).trim().toUpperCase() : existing?.asin,
+        pros: Array.isArray(data.pros) ? data.pros.filter(Boolean) : [],
+        cons: Array.isArray(data.cons) ? data.cons.filter(Boolean) : [],
+        badge: data.badge ? String(data.badge).trim() : undefined,
+        rating: data.rating != null ? Number(data.rating) : undefined,
+        reviewsCount: data.reviewsCount != null ? Number(data.reviewsCount) : undefined,
+        verdict: data.verdict ? String(data.verdict).trim() : undefined,
+        techSheet: data.techSheet ? String(data.techSheet).trim() : existing?.techSheet,
+        specs: data.specs ?? existing?.specs,
+        fulfillmentProvider: data.fulfillmentProvider ?? existing?.fulfillmentProvider,
+        // Envío: si el contrato no los trae, se conservan los ya guardados.
+        shippingInfo: data.shippingInfo ? String(data.shippingInfo).trim() : existing?.shippingInfo,
+        shippingDays:
+          data.shippingDays != null && Number.isFinite(Number(data.shippingDays))
+            ? Math.max(0, Math.round(Number(data.shippingDays)))
+            : existing?.shippingDays,
+        freeShipping:
+          typeof data.freeShipping === 'boolean' ? data.freeShipping : existing?.freeShipping,
+        priceHistory: existing?.priceHistory,
+        // Curación: los campos de catálogo jerárquico/score/alternativas sobreviven
+        // a los re-imports del contrato n8n (sólo se actualizan los campos vivos).
+        sourceId: existing?.sourceId,
+        category_id: existing?.category_id,
+        subcategory_id: existing?.subcategory_id,
+        ia_status: existing?.ia_status,
+        link_status: existing?.link_status,
+        normalized_tags: existing?.normalized_tags,
+        alternative_product_ids: existing?.alternative_product_ids,
+        alternatives: existing?.alternatives,
+        conversion_score: existing?.conversion_score,
+        commissionEstimate: existing?.commissionEstimate,
+        sales30d: existing?.sales30d,
+      };
 
-  const existingIndex = products.findIndex((p) => p.id === productId);
-  if (existingIndex >= 0) products[existingIndex] = product;
-  else products.unshift(product);
+      const existingIndex = products.findIndex((p) => p.id === productId);
+      if (existingIndex >= 0) products[existingIndex] = product;
+      else products.unshift(product);
 
-  if (!writeCatalogToFile(products)) {
-    return { ok: false, message: 'Error de escritura en el servidor de archivos.' };
+      return {
+        changed: true,
+        result: {
+          ok: true,
+          message: existingIndex >= 0 ? 'Producto actualizado con éxito.' : 'Producto guardado con éxito.',
+          product,
+          updated: existingIndex >= 0,
+        },
+      };
+    }, (products) => writeJsonArrayFile(DATA_FILE_PATH, products)); // Escritura sin `withResolvedBrand`: conserva el comportamiento comercial del contrato n8n
+    result = written.result;
+  } catch {
+    result = { ok: false, message: 'Error de escritura en el servidor de archivos.' };
   }
 
-  return {
-    ok: true,
-    message: existingIndex >= 0 ? 'Producto actualizado con éxito.' : 'Producto guardado con éxito.',
-    product,
-    updated: existingIndex >= 0,
-  };
+  return result;
 }

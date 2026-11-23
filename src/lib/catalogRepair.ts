@@ -210,3 +210,4 @@ export function applyRollback(products: AnyRecord[], rollback: RollbackEntry[]):
     return next;
   });
 }
+

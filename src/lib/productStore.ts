@@ -172,18 +172,25 @@ export function slugify(text: string): string {
 /**
  * Inserta o actualiza un producto en products.json (upsert por `id`).
  * Devuelve el producto guardado y si fue una actualización.
+ *
+ * Escritura PROTEGIDA por el bloqueo existente (`updateCatalog`): lectura,
+ * mutación y escritura en una sola sección síncrona, de modo que ningún otro
+ * escritor del mismo proceso puede intercalarse entre la lectura y el guardado.
+ * El comportamiento del importador se preserva: siempre escribe (alta o
+ * actualización) y devuelve `{ product, updated }`.
  */
 export function upsertProduct(product: Product): { product: Product; updated: boolean } {
-  const products = readProductsFromFile();
-  const index = products.findIndex((item) => item.id === product.id);
-  const updated = index >= 0;
-  if (updated) {
-    products[index] = product;
-  } else {
-    products.unshift(product);
-  }
-  writeProductsToFile(products);
-  return { product, updated };
+  const { result } = updateCatalog<{ product: Product; updated: boolean }>((products) => {
+    const index = products.findIndex((item) => item.id === product.id);
+    const updated = index >= 0;
+    if (updated) {
+      products[index] = product;
+    } else {
+      products.unshift(product);
+    }
+    return { changed: true, result: { product, updated } };
+  });
+  return result;
 }
 
 /**
@@ -352,11 +359,14 @@ export function threeWayMerge<T extends object>(
  */
 export function updateCatalog<T>(
   mutate: (products: Product[]) => { changed: boolean; result: T },
+  /** Función de escritura opcional. Por defecto `writeProductsToFile` (aplica `withResolvedBrand`).
+   *  Pasa `writeJsonArrayFile` para escribir sin resolver marca (contrato n8n). */
+  writeFn: (products: Product[]) => boolean = writeProductsToFile,
 ): { result: T; written: boolean } {
   const products = readProductsFromFile();
   const outcome = mutate(products);
   if (!outcome.changed) return { result: outcome.result, written: false };
-  if (!writeProductsToFile(products)) throw new Error('No se pudo escribir products.json');
+  if (!writeFn(products)) throw new Error('No se pudo escribir products.json');
   return { result: outcome.result, written: true };
 }
 
