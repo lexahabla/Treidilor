@@ -349,3 +349,75 @@ Admitad, Tradedoubler, Kwanko, Etsy) y enlaza a los programas de afiliación.
 - **Verificación**: indicar qué se comprobó (`npm run check:inline`, `npm run build`,
   prueba visual) y qué quedó pendiente; si no se puede renderizar la web, decirlo
   expresamente en vez de darlo por verificado.
+
+## Inicialización de sesión de OpenCode (al comenzar cada tarea)
+
+Al abrir el proyecto, OpenCode carga automáticamente este `AGENTS.md`.
+Antes de procesar la primera instrucción del usuario, el agente DEBE:
+
+1. **Identificar el repositorio y el worktree activos:**
+   - `git branch --show-current` (rama activa)
+   - `git rev-parse --show-toplevel` (raíz del repositorio de trabajo)
+   - `git worktree list` (listar worktrees existentes)
+
+2. **Consultar el estado dinámico directamente con Git (sin asumir que el HEAD del worktree activo es el último desarrollo global):**
+   - `git status --short` (modificaciones pendientes en el worktree actual)
+   - `git worktree list` (qué worktrees existen y en qué commit está cada uno)
+   - `git log --all --date-order --oneline -10` (últimos commits de todas las ramas; el último desarrollo global puede estar en otra rama/worktree)
+   - Examinar los HEAD recientes de las ramas relevantes y compararlos con el worktree activo.
+   - Nunca confiar en un resumen copiado de una sesión anterior; el estado dinámico se obtiene en tiempo real.
+   - No fijar permanentemente ningún commit como referencia más reciente.
+
+3. **Recuperar informes de forma selectiva (contraste con commits):**
+   - `INFORMES/` del repositorio.
+   - `D:\AXEL\WEBS\TREIDILOR\informes\` (donde Claude guarda informes recientes).
+   - Priorizar los documentos más actuales y contrastarlos con los commits correspondientes.
+   - No considerar una tarea terminada únicamente porque aparezca en un informe.
+   - No releer cientos de informes en cada petición; solo lo necesario para la tarea actual.
+
+4. **Localizar y consultar `CLAUDE.md`:**
+   - Ruta: `D:\AXEL\WEBS\TREIDILOR\CLAUDE.md` (norma permanente de organización de archivos, tabla de ubicaciones, reglas 1-14).
+   - Aplicar las normas de clasificación de archivos y rutas protegidas.
+
+5. **Identificar la continuidad entre modelos (antes de desarrollar):**
+   - Último trabajo relevante por módulo.
+   - Tareas completadas.
+   - Tareas en curso.
+   - Tareas realmente pendientes.
+   - Decisiones consolidadas.
+   - Información contradictoria o no verificada.
+   - Distinguir claramente el estado del worktree activo del estado global de Treidilor.
+   - Las comprobaciones deben ser ligeras; usar una auditoría profunda únicamente cuando sea necesario.
+
+6. **Respetar las decisiones técnicas consolidadas:**
+   - Reglas de AGENTS.md y CLAUDE.md (flujo de trabajo, despliegue, seguridad, nombres históricos, estructura de archivos).
+
+7. **Distinguir lo verificado de lo documentado y no comprobado:**
+   - Estado operativo de Director 1.2.1 en producción: **no verificado**.
+   - Firma operativa del paquete 1.2.1: **no verificada**.
+   - Contador de consumo de Tavily: **discrepancia abierta, no verificada**.
+   - Servicios de producción: **no accesibles desde esta sesión**.
+
+8. **No repetir desarrollos terminados:**
+   - Director 1.1.0 está intacto; no volver a implementar lo ya completado.
+
+9. **Desarrollo paralelo con Claude (mientras Claude siga trabajando):**
+   - No modificar su worktree.
+   - No alterar sus procesos.
+   - No repetir tareas terminadas.
+   - No realizar merges ni cambios de rama.
+   - No ejecutar operaciones de Git de escritura sin autorización.
+   - No acceder a producción sin autorización expresa.
+
+10. **No ejecutar modificaciones, commits, merges, push ni despliegues sin autorización expresa del usuario.** Las reglas de AGENTS.md que mencionan `git add -A` o `push origin main` no constituyen autorización automática.
+
+11. **Selección inteligente del worktree de trabajo (antes de desarrollar):**
+   a) **Identificar los módulos afectados** por la solicitud (web, agente 04, agentes, director 00, centro de agentes, integración, propuestas, etc.).
+   b) **Localizar los worktrees existentes y sus ramas** con `git worktree list`.
+   c) **Examinar commits recientes, cambios sin confirmar y documentación relevante** de cada worktree candidato (`git log`, `git status --short`).
+   d) **Determinar dónde está el código más actualizado** de cada módulo afectado, sin asumir que el repositorio principal es siempre el correcto.
+   e) **Comprobar dependencias entre ramas y posibles conflictos** antes de seleccionar.
+   f) **Seleccionar el worktree más adecuado** y usar el mapa de módulos como referencia orientativa, nunca como asignación rígida.
+   g) **Informar al usuario de la selección** y esperar autorización antes de realizar modificaciones.
+   h) Cuando una implementación esté autorizada, dirigir las operaciones al worktree seleccionado sin cambiar la rama activa del repositorio principal.
+   i) Mientras Claude continúe trabajando: no modificar archivos de sus worktrees, no interferir con pruebas ni procesos activos, no sobrescribir cambios sin commit, no fusionar ramas automáticamente, no asumir que el último commit representa todo el trabajo realizado, no crear worktrees nuevos sin autorización.

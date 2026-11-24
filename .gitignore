@@ -28,6 +28,8 @@ opencode.json.bak
 # credenciales de redes de afiliación (panel admin)
 src/data/credentials.json
 src/data/ai-keys.json
+# credenciales privadas de proveedores de investigación (Tavily y similares)
+src/data/tavily-*
 
 # usuarios y avatares del backend (se generan en el volumen, nunca en el repo)
 src/data/users.json

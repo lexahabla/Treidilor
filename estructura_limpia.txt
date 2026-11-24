@@ -262,6 +262,7 @@ scripts/tests/import-corrections.test.mjs
 scripts/tests/import-legacy.test.mjs
 scripts/tests/import-safety.test.mjs
 scripts/tests/import-target.test.mjs
+scripts/tests/catalog-write-protection.test.mjs
 scripts/tests/json-import-limits.test.mjs
 scripts/tests/json-import.test.mjs
 scripts/tests/listing.test.mjs
@@ -470,6 +471,7 @@ src/lib/radarStore.ts
 src/lib/rateLimit.ts
 src/lib/refreshAlertGuard.ts
 src/lib/refreshPlatforms.ts
+src/lib/repairCounter.ts
 src/lib/reimportMerge.ts
 src/lib/reminders.ts
 src/lib/salesLedger.ts
