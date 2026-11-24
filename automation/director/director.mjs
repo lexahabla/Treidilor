@@ -8,7 +8,7 @@
  *   · L2–L4: tarea `esperando_aprobacion` → aprobación simulada → `delegacion_simulada` → tarea `cancelada` («simulación F1»).
  * Honestidad: sin dato «no consta»; lo comunicado se rotula; los datos de prueba se rotulan; nada de lo que dice el modelo (no hay) autoriza.
  */
-import { LectorInstantaneas, TEXTO_SANEADO, TEXTO_PRODUCCION, textoCopia, huellaInforme } from './lectores.mjs';
+import { LectorInstantaneas, TEXTO_SANEADO, TEXTO_PRODUCCION, textoCopia, huellaInforme, leerPropuestasReparacion } from './lectores.mjs';
 import { ErrorLedger, detectarSecreto } from './ledger.mjs';
 import { aprobacionPendientePorHuella, delegacionesDe, listarTareas, proyectar, tareaActivaConHuella, tareaActivaDeCapacidad } from './proyecciones.mjs';
 import { PROTOCOLO, ErrorProtocolo, sha256, canonico, calcularHuella, claveIdempotencia, crearError, crearGeneradorIds, esTerminal, validarSobreTarea } from './protocolo.mjs';
@@ -32,7 +32,7 @@ import { construirFuentes as construirFuentesPortada, planDeshacerBorradorSimula
 import { borrarUndo, dirSandbox, escribirPlan, guardarUndo, leerEstado as leerEstadoSandbox, leerUndo } from './agentes/portada/sandbox.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
-import { CONFIG_DEFECTO } from './config.mjs';
+import { CONFIG_DEFECTO, directorioDatos } from './config.mjs';
 
 /** En F1 la «delegación» es una simulación: no hay red ni llamada alguna. */
 export class DespachadorSimulado {
@@ -45,12 +45,13 @@ const ETIQUETA_AGENTE = { '04': 'Calidad del catálogo (04)', '12': 'Auditor Gen
 const ISO = (ms) => new Date(ms).toISOString();
 
 export class Director {
-  constructor({ ledger, registro, lector, config = CONFIG_DEFECTO, reloj = () => Date.now(), ids = null, despachador = new DespachadorSimulado(), dirInstantaneas = null, cerebro = null, indice = null, inventarioIA = null, rutaAfiliacion = null, motorImportacion = null, rutaCatalogoImportacion = null, motorPrecios = null, rutaCatalogoPrecios = null, motorPortada = null, rutaDatosPortada = null, motorAnalitica = null, rutaAnalitica = null, motorMarketing = null, rutaFuentesMarketing = null, motorContenido = null, rutaFuentesContenido = null, motorCompetencia = null, rutaObservaciones = null, motorNichos = null, rutaNichos = null, rutaFeedInvestigador = null }) {
+  constructor({ ledger, registro, lector, config = CONFIG_DEFECTO, reloj = () => Date.now(), ids = null, despachador = new DespachadorSimulado(), dirInstantaneas = null, dirDatos = null, cerebro = null, indice = null, inventarioIA = null, rutaAfiliacion = null, motorImportacion = null, rutaCatalogoImportacion = null, motorPrecios = null, rutaCatalogoPrecios = null, motorPortada = null, rutaDatosPortada = null, motorAnalitica = null, rutaAnalitica = null, motorMarketing = null, rutaFuentesMarketing = null, motorContenido = null, rutaFuentesContenido = null, motorCompetencia = null, rutaObservaciones = null, motorNichos = null, rutaNichos = null, rutaFeedInvestigador = null }) {
     if (despachador.real === true && config.permitirDespachoReal !== true) throw new ErrorProtocolo('permiso_denegado', 'F1 no admite un despachador real: las aprobaciones son simuladas.');
     this.ledger = ledger;
     this.registro = registro;
     this.lector = lector;
     this.dirInstantaneas = dirInstantaneas || (lector && lector.dir) || null;
+    this.dirDatos = dirDatos || directorioDatos();
     this.config = config;
     this.reloj = reloj;
     this.ids = ids || crearGeneradorIds({ reloj });
@@ -215,8 +216,58 @@ export class Director {
         return { informe: r.informe, datos: { actual: r.informe, anterior: r.anterior }, carga: r.carga, ids: r.informe ? [r.informe.idEjecucion, r.informe.seguimiento.comparadoCon] : [], motivo: r.motivo };
       },
     }[sufijo];
+    if (sufijo === 'leer-propuestas-reparacion') return this._leerPropuestasReparacion(capId, parametros, c);
     if (!leer) throw new ErrorProtocolo('capacidad_desconocida', `Sin lector para ${capId}.`);
     return this._consulta(cap, parametros, c, leer);
+  }
+
+  /** Lectura L0 de propuestas de reparación del Agente 04 (almacén automation-proposals.json).
+   * Crea tarea en el ledger, lee las propuestas, verifica por relectura y retorna el resultado.
+   * No modifica ningún dato comercial. */
+  _leerPropuestasReparacion(capId, parametros, ctx) {
+    const cap = this.registro.buscarCapacidad(capId);
+    if (!cap) throw new ErrorProtocolo('capacidad_desconocida', `La capacidad «${capId}» no está en el registro.`);
+    if (!this.dirDatos) throw new ErrorProtocolo('origen_no_disponible', 'No hay un directorio de datos del catálogo configurado (TAI_DIRECTOR_DATOS o <raiz>/src/data).');
+    this._validarParametros(cap, parametros);
+    const sobre = this._sobre(cap, parametros, ctx);
+    const v = validarSobreTarea(sobre, { registro: this.registro, ahora: this.ahora(), exigirAprobacion: false });
+    if (!v.ok) throw new ErrorProtocolo(v.errores[0].codigo, v.errores[0].mensaje);
+    const huella = calcularHuella({ capacidad: cap.id, version: cap.version, parametros, entorno: (parametros.entorno ?? '') });
+    const refs = { idTarea: sobre.idTarea, idCorrelacion: sobre.idCorrelacion, idSolicitud: ctx.idSolicitud };
+    const version = { capacidad: cap.version };
+    this._emitir('tarea_creada', 'director', refs, { sobre, nivel: cap.nivelRiesgo, capacidadVersion: cap.version, registroVersion: this.registro.version, huella }, version);
+    this._emitir('tarea_estado', 'director', { idTarea: sobre.idTarea }, { estado: 'aceptada' }, version);
+    this._emitir('tarea_estado', 'director', { idTarea: sobre.idTarea }, { estado: 'en_curso' }, version);
+    const rutaPropuestas = path.join(this.dirDatos, 'automation-proposals.json');
+    let lectura;
+    try {
+      lectura = leerPropuestasReparacion(rutaPropuestas, { estado: parametros.estado, limite: parametros.limite ? Number(parametros.limite) : 50 });
+    } catch (e) {
+      const error = e instanceof ErrorProtocolo ? e.error : crearError('interno', 'Fallo no clasificado al leer las propuestas de reparación.');
+      this._emitir('tarea_estado', 'director', { idTarea: sobre.idTarea }, { estado: 'fallida', detalle: error.mensaje, error }, version);
+      return { idTarea: sobre.idTarea, estado: 'fallida', error, cap };
+    }
+    if (lectura.mensaje) {
+      this._emitir('respuesta_recibida', `agente:${cap.agente}`, { idTarea: sobre.idTarea }, { estado: 'completada', hayDatos: false, motivo: lectura.mensaje, carga: null }, version);
+      this._emitir('tarea_estado', 'director', { idTarea: sobre.idTarea }, { estado: 'completada', detalle: 'sin_datos' }, version);
+      return { idTarea: sobre.idTarea, estado: 'completada', sinDatos: true, motivo: lectura.mensaje, lectura, cap };
+    }
+    const hash = huellaInforme({ propuestas: lectura.propuestas, total: lectura.total });
+    this._emitir('respuesta_recibida', `agente:${cap.agente}`, { idTarea: sobre.idTarea }, { estado: 'completada', hayDatos: true, referencias: lectura.ids, huella: hash, consumo: { llamadasApi: 0, ia: 0 } }, version);
+    const idEvidencia = this.ids.nuevo('v');
+    const refEv = { idTarea: sobre.idTarea, idEvidencia };
+    this._emitir('evidencia', 'director', refEv, { tipo: 'informe', referencia: `automation-proposals.json#${cap.agente}`, hash, capturadaEn: new Date().toISOString(), origen: 'almacen_propuestas' }, version);
+    // Verificación independiente: segunda lectura del mismo almacén.
+    let segunda = null;
+    try { segunda = leerPropuestasReparacion(this.dirDatos, { estado: parametros.estado, limite: parametros.limite ? Number(parametros.limite) : 50 }); } catch { segunda = null; }
+    const confirmada = Boolean(segunda && !segunda.mensaje && segunda.total === lectura.total && segunda.propuestas.length === lectura.propuestas.length && segunda.propuestas.every((p, i) => p.id === lectura.propuestas[i].id));
+    this._emitir('verificacion', 'director', refEv, { metodo: 'releer_fila', resultado: confirmada ? 'confirmada' : 'no_confirmada', en: new Date().toISOString(), por: 'director' }, version);
+    if (confirmada) this._emitir('tarea_estado', 'director', { idTarea: sobre.idTarea }, { estado: 'completada' }, version);
+    else {
+      const error = crearError('resultado_no_confirmado', 'Terminó, pero no consta confirmación: la segunda lectura no coincide.');
+      this._emitir('tarea_estado', 'director', { idTarea: sobre.idTarea }, { estado: 'parcial', detalle: error.mensaje, error }, version);
+    }
+    return { idTarea: sobre.idTarea, estado: confirmada ? 'completada' : 'parcial', confirmada, huella: hash, idEvidencia, lectura, cap };
   }
 
   // ── propuestas L1 (Agente 02): tarea registrada, informe del agente, evidencia y verificación por recálculo independiente ─────────────────────
@@ -1405,6 +1456,7 @@ export class Director {
         return { categoria: 'consulta', texto: `Canceladas (sin aprobación, constan en el ledger): ${activas.map((t) => t.idTarea).join(', ')}. En F1 no hay ejecuciones reales: no consta ningún efecto ya producido.`, tareas: activas.map((t) => t.idTarea), aprobaciones: [], avisos: [], afirmaciones: [] };
       }
       case 'resumen_general': return this._respResumenGeneral(ctx, sinLedger);
+      case 'consultar_propuestas_reparacion': return this._respPropuestasReparacion(this._leerPropuestasReparacion('04.leer-propuestas-reparacion', intencion.parametros || {}, ctx), intencion);
       case 'desconocida': return { categoria: 'consulta', estado: 'sin_entender', texto: intencion.aclaracion || 'No he entendido la instrucción. Escribe «ayuda».' };
       default: break;
     }
@@ -1645,6 +1697,29 @@ export class Director {
     const ofrecer = regla.ofrecerActualizar ? `\nPuedo solicitar una auditoría nueva (L2, con tu aprobación; en F1 sería simulada).` : '';
     const texto = `${regla.tono === 'no_consta' ? `NO CONSTA un dato actual. ` : ''}${cuerpo}\n${avisos.map((a) => `⚠ ${a}`).join('\n')}\n${verif}${ofrecer}`.replace(/\n{2,}/g, '\n');
     return { categoria: 'consulta', estado: 'respondida', texto, tareas, avisos, afirmaciones: afirm, frescura: clasif.estado, confirmada: res.confirmada };
+  }
+
+  /** Presenta las propuestas de reparación del Agente 04 leídas del almacén de propuestas. */
+  _respPropuestasReparacion(res, intencion) {
+    const tareas = res.idTarea ? [res.idTarea] : [];
+    const afirm = [];
+    const avisos = [];
+    if (res.estado === 'fallida') return { categoria: 'consulta', estado: 'fallida', texto: `No he podido leer las propuestas de reparación del Agente 04: ${res.error.mensaje} [${res.error.codigo}]. No consta el dato.`, tareas, avisos, afirmaciones: afirm };
+    if (res.sinDatos) return { categoria: 'consulta', estado: 'sin_datos', texto: `No consta ninguna propuesta de reparación del Agente 04${res.motivo ? ` (${res.motivo})` : ''}.`, tareas, avisos, afirmaciones: afirm };
+    const { propuestas, total } = res.lectura;
+    if (!total) {
+      return { categoria: 'consulta', estado: 'respondida', texto: 'No consta ninguna propuesta de reparación pendiente del Agente 04 en el almacén de propuestas. Todas las correcciones detectadas ya están aplicadas o no hay ninguna registrada.', tareas, avisos, afirmaciones: [{ texto: 'Propuestas de reparación del Agente 04', procedencia: 'almacén de propuestas (automation-proposals.json)' }] };
+    }
+    const l = [];
+    l.push(`Propuestas de reparación del Agente 04 (calidad del catálogo): ${total} pendiente(s).`);
+    for (const p of propuestas.slice(0, 10)) {
+      l.push(`· ${p.id} · ${p.titulo} · producto ${p.productoId} · campo «${p.campo}» · ${p.valorAntes} → ${p.valorDespues} · riesgo ${p.riesgo} · creado ${p.creadoEn ? p.creadoEn.slice(0, 10) : '—'}`);
+    }
+    if (total > 10) l.push(`…y ${total - 10} más.`);
+    l.push('Para aplicar una corrección es necesario tu aprobación en la interfaz autenticada (nivel L4, ejecuta una persona en el panel); el Director solo lee y propone, no modifica el catálogo.');
+    afirm.push({ texto: `Propuestas de reparación pendientes: ${total}`, procedencia: `almacén de propuestas (automation-proposals.json) ${res.lectura.archivo}` });
+    const verif = res.confirmada ? 'Consistencia comprobada: la segunda lectura del almacén coincide.' : 'TERMINÓ, PERO NO CONSTA CONFIRMACIÓN: la segunda lectura no coincide.';
+    return { categoria: 'consulta', estado: res.estado, texto: `${l.join('\n')}\n${verif}`, tareas, avisos, afirmaciones: afirm, confirmada: res.confirmada };
   }
 }
 

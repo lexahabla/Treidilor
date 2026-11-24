@@ -49,7 +49,7 @@ export class DespachadorQueFalla { constructor() { this.real = false; } enviar()
 
 let contador = 0;
 /** Crea un entorno aislado. `modo`: modo del proveedor simulado; `proveedores`: sustituye la lista; `registro`: registro alternativo. */
-export function crearEntorno({ fix = fixtures(), registro = cargarRegistro(), modo = 'normal', proveedores = null, presupuesto = null, configCerebro = {}, despachador = new DespachadorSimulado(), ahora = AHORA, sinCerebro = false, motorImportacion = null, rutaCatalogoImportacion = null, motorPrecios = null, rutaCatalogoPrecios = null, motorPortada = null, rutaDatosPortada = null, motorAnalitica = null, rutaAnalitica = null, inventarioIA = null, motorMarketing = null, rutaFuentesMarketing = null, motorContenido = null, rutaFuentesContenido = null, motorCompetencia = null, rutaObservaciones = null, motorNichos = null, rutaNichos = null, rutaFeedInvestigador = null } = {}) {
+export function crearEntorno({ fix = fixtures(), registro = cargarRegistro(), modo = 'normal', proveedores = null, presupuesto = null, configCerebro = {}, despachador = new DespachadorSimulado(), ahora = AHORA, sinCerebro = false, motorImportacion = null, rutaCatalogoImportacion = null, motorPrecios = null, rutaCatalogoPrecios = null, motorPortada = null, rutaDatosPortada = null, motorAnalitica = null, rutaAnalitica = null, inventarioIA = null, motorMarketing = null, rutaFuentesMarketing = null, motorContenido = null, rutaFuentesContenido = null, motorCompetencia = null, rutaObservaciones = null, motorNichos = null, rutaNichos = null, rutaFeedInvestigador = null, dirDatos = null } = {}) {
   contador += 1;
   const reloj = { ms: ahora };
   const ledgerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tai-ev-led-'));
@@ -59,10 +59,11 @@ export function crearEntorno({ fix = fixtures(), registro = cargarRegistro(), mo
   const lector = new LectorInstantaneas({ dir: instDir });
   const proveedor = new ProveedorSimulado({ modo });
   const cerebro = sinCerebro ? null : new CerebroLLM({ registro, proveedores: proveedores || [{ proveedor }], presupuesto: presupuesto || new Presupuesto({ reloj: () => reloj.ms }), config: configCerebro, reloj: () => reloj.ms });
-  const mk = () => new Director({ ledger, registro, lector, reloj: () => reloj.ms, despachador, cerebro, rutaAfiliacion: RUTA_PROGRAMAS_SIMULADO, motorImportacion, rutaCatalogoImportacion, motorPrecios, rutaCatalogoPrecios, motorPortada, rutaDatosPortada, motorAnalitica, rutaAnalitica, inventarioIA, motorMarketing, rutaFuentesMarketing, motorContenido, rutaFuentesContenido, motorCompetencia, rutaObservaciones, motorNichos, rutaNichos, rutaFeedInvestigador });
+  const datosDir = dirDatos || fs.mkdtempSync(path.join(os.tmpdir(), 'tai-ev-dat-'));
+  const mk = () => new Director({ ledger, registro, lector, reloj: () => reloj.ms, despachador, cerebro, dirDatos: datosDir, rutaAfiliacion: RUTA_PROGRAMAS_SIMULADO, motorImportacion, rutaCatalogoImportacion, motorPrecios, rutaCatalogoPrecios, motorPortada, rutaDatosPortada, motorAnalitica, rutaAnalitica, inventarioIA, motorMarketing, rutaFuentesMarketing, motorContenido, rutaFuentesContenido, motorCompetencia, rutaObservaciones, motorNichos, rutaNichos, rutaFeedInvestigador });
   const d = mk();
   const E = {
-    d, ledger, lector, reloj, registro, proveedor, cerebro, ledgerDir, instDir, reiniciar: mk,
+    d, ledger, lector, reloj, registro, proveedor, cerebro, ledgerDir, instDir, datosDir, reiniciar: mk,
     pregunta: (texto, opciones) => d.procesarSolicitudAsync(texto, opciones),
     tipos: () => ledger.leer().map((e) => e.tipo),
     eventos: (tipo) => ledger.leer({ tipo }),
@@ -70,7 +71,7 @@ export function crearEntorno({ fix = fixtures(), registro = cargarRegistro(), mo
     tareas: () => [...E.proy().tareas.values()],
     aprobaciones: () => [...E.proy().aprobaciones.values()],
     avanzar: (ms) => { reloj.ms += ms; },
-    limpiar: () => { fs.rmSync(ledgerDir, { recursive: true, force: true }); fs.rmSync(instDir, { recursive: true, force: true }); },
+    limpiar: () => { fs.rmSync(ledgerDir, { recursive: true, force: true }); fs.rmSync(instDir, { recursive: true, force: true }); fs.rmSync(datosDir, { recursive: true, force: true }); },
   };
   return E;
 }

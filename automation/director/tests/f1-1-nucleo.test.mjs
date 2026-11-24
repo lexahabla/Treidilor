@@ -284,5 +284,5 @@ test('asignación: solo agentes operativos/construidos y capacidades existentes;
   assert.equal(R.evaluarAsignacion(registro, '04.proponer-correcciones').codigo, 'agente_no_operativo', 'planificada');
   assert.equal(R.evaluarAsignacion(registro, '77.x').codigo, 'capacidad_desconocida');
   const ids = R.candidatas(registro, { agente: '04', soloEjecutablesF1: true }).map((c) => c.id);
-  assert.deepEqual(ids, ['04.comparar-informes', '04.leer-historial', '04.leer-ultimo-informe']);
+  assert.deepEqual(ids, ['04.comparar-informes', '04.leer-historial', '04.leer-propuestas-reparacion', '04.leer-ultimo-informe']);
 });

@@ -58,6 +58,14 @@
       "costeEstimado": { "llamadasApi": 8, "ia": 0 }, "verificacion": "releer la fila guardada (id numérico + idEjecucion propio)", "tabla": "calidad_catalogo_instantaneas"
     },
     {
+      "id": "04.leer-propuestas-reparacion", "agente": "04", "version": "1.0.0", "descripcion": "Lee las propuestas de reparación pendientes del Agente 04 desde el almacén de propuestas (solo lectura, no aplica nada)",
+      "modo": "consulta", "nivelRiesgo": "L0", "alcances": [], "efectos": "ninguno", "requiereAprobacion": false,
+      "disponibilidad": "lectura_f1", "plazoMs": 10000,
+      "entrada": { "estado": "pendiente|aprobada|rechazada (opcional)", "limite": "entero 1-100 (opcional)" }, "salida": { "sobre": "informe-agente/1" },
+      "limites": { "concurrencia": 1 }, "frescura": { "vigenteHasta": "7d", "actualizarHasta": "30d", "invalidadoPor": ["importacion", "publicacion"] },
+      "verificacion": "releer el almacén de propuestas y comparar la lista de ids", "almacen": "automation-proposals.json"
+    },
+    {
       "id": "04.proponer-correcciones", "agente": "04", "version": "0.1.0", "descripcion": "Propone correcciones de fichas con datos reales (aplicarlas es L4 y lo hace una persona en el panel)",
       "modo": "propuesta", "nivelRiesgo": "L1", "alcances": ["proposals:create"], "efectos": "ninguno", "requiereAprobacion": false,
       "disponibilidad": "planificada", "motivoNoDisponible": "Previsto para 2.5.", "plazoMs": 60000,

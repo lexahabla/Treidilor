@@ -1,5 +1,6 @@
 /**
- * Agente 00 · F1.3 · LECTORES DE SOLO LECTURA de las instantáneas de los Agentes 04 y 12 (D5, parte de lectura).
+ * Agente 00 · F1.3 · LECTORES DE SOLO LECTURA de las instantáneas de los Agentes 04 y 12 (D5, parte de lectura)
+ * y de las propuestas de reparación del Agente 04 (almacén `automation-proposals.json`).
  * Leen EXPORTACIONES de las tablas `calidad_catalogo_instantaneas` / `auditor_general_instantaneas` (archivo `<agente>.json` con
  * `formato: "instantaneas-exportadas/1"`), nunca n8n en vivo, y construyen el informe normalizado `informe-agente/1`.
  * Reutiliza el motor de seguimiento existente (`automation/lib/seguimiento.mjs`) para deduplicar filas y comparar instantáneas.
@@ -219,4 +220,41 @@ export class LectorInstantaneas {
   _meta(c) {
     return { agente: c.agente, tabla: c.tabla, archivo: c.archivo, sintetico: c.sintetico, saneado: c.saneado, produccion: c.produccion === true, copia: c.copia ?? null, exportadoEn: c.exportadoEn, leidas: c.leidas, duplicadas: c.duplicadas, descartadas: c.descartadas };
   }
+}
+
+/**
+ * Lee propuestas de reparación del Agente 04 desde el almacén de propuestas
+ * (`automation-proposals.json`, escrito por `src/lib/automationProposals.ts` del catálogo web).
+ * Solo lectura: no escribe nada. Filtra por agente y tipo `correccion_catalogo`.
+ *
+ * @param rutaPropuestas - Ruta absoluta al archivo `automation-proposals.json`
+ * @param opts - { agente, tipo, estado, limite }
+ * @returns { propuestas, total, mensaje, archivo }
+ */
+export function leerPropuestasReparacion(rutaPropuestas, { agente = '04', tipo = 'correccion_catalogo', estado = 'pendiente', limite = 50 } = {}) {
+  if (!rutaPropuestas) throw new ErrorProtocolo('solicitud_invalida', 'Falta la ruta del almacén de propuestas.');
+  if (!fs.existsSync(rutaPropuestas)) return { propuestas: [], total: 0, mensaje: 'No hay almacén de propuestas.', archivo: rutaPropuestas };
+  let datos;
+  try { datos = JSON.parse(fs.readFileSync(rutaPropuestas, 'utf8')); } catch { throw new ErrorProtocolo('origen_no_disponible', 'El almacén de propuestas no es un JSON legible.'); }
+  if (!datos || !Array.isArray(datos.proposals)) return { propuestas: [], total: 0, mensaje: 'El almacén de propuestas no tiene filas.', archivo: rutaPropuestas };
+  const filtradas = datos.proposals.filter((p) => p.agent === agente && p.type === tipo && (!estado || p.state === estado));
+  const propuestas = filtradas.slice(0, limite).map((p) => {
+    const payload = p.payload || {};
+    return {
+      id: p.id,
+      titulo: p.title || '(sin título)',
+      estado: p.state,
+      riesgo: p.risk,
+      creadoEn: p.createdAt,
+      expiraEn: p.expiresAt,
+      tipo: p.type,
+      productoId: payload.productoId || payload.id || '(no especificado)',
+      campo: payload.campo || '(no especificado)',
+      valorAntes: payload.antes ?? (payload.changes && payload.changes[0] ? payload.changes[0].antes : null),
+      valorDespues: payload.despues ?? (payload.changes && payload.changes[0] ? payload.changes[0].despues : null),
+      aplicada: Boolean(p.applied),
+      decision: p.decision ? p.decision.state : null,
+    };
+  });
+  return { propuestas, total: propuestas.length, mensaje: null, archivo: rutaPropuestas };
 }

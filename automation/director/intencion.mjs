@@ -10,7 +10,7 @@
 const plano = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 export const TIPOS_INTENCION = Object.freeze([
-  'ayuda', 'estado_agentes', 'estado_agente', 'listar_tareas', 'estado_tarea', 'consultar_informe', 'listar_informes', 'comparar_informes', 'resumen_general', 'balance',
+  'ayuda', 'estado_agentes', 'estado_agente', 'listar_tareas', 'estado_tarea', 'consultar_informe', 'consultar_propuestas_reparacion', 'listar_informes', 'comparar_informes', 'resumen_general', 'balance',
   'lanzar_auditoria', 'detener', 'parada_total', 'conversacion', 'agente_no_operativo', 'accion_humana', 'accion_ambigua', 'confirmacion_vaga', 'cambio_nivel', 'pide_credencial',
   'peticion_desproporcionada', 'consultar_suscripciones', 'recomendar_suscripciones', 'estudiar_afiliacion', 'comparar_afiliacion', 'analizar_importacion', 'simular_importacion', 'analizar_precios', 'proponer_portada', 'guardar_borrador_portada', 'analizar_analitica', 'listar_aprobaciones', 'proponer_plan_campanas', 'redactar_brief', 'auditar_seo', 'revisar_texto_publicitario', 'proponer_borrador_ficha', 'proponer_recursos_visuales', 'proponer_borrador_historia', 'proponer_borrador_redes', 'revisar_pieza', 'validar_observaciones', 'detectar_huecos', 'comparar_precios_observados', 'informe_competencia', 'analizar_oportunidades_nicho', 'estudiar_viabilidad_nicho', 'investigar_candidatos', 'ejecucion_autonoma', 'desconocida',
 ]);
@@ -19,7 +19,7 @@ const NIVEL = { L0: 0, L1: 1, L2: 2, L3: 3, L4: 4 };
 
 /** Riesgo máximo por tipo de intención: lo fija el CÓDIGO, nunca el modelo. */
 export const RIESGO_POR_TIPO = Object.freeze({
-  ayuda: 'L0', estado_agentes: 'L0', estado_agente: 'L0', listar_tareas: 'L0', estado_tarea: 'L0', consultar_informe: 'L0', listar_informes: 'L0', comparar_informes: 'L0', resumen_general: 'L0', balance: 'L0',
+  ayuda: 'L0', estado_agentes: 'L0', estado_agente: 'L0', listar_tareas: 'L0', estado_tarea: 'L0', consultar_informe: 'L0', consultar_propuestas_reparacion: 'L0', listar_informes: 'L0', comparar_informes: 'L0', resumen_general: 'L0', balance: 'L0',
   peticion_desproporcionada: 'L0', consultar_suscripciones: 'L0', recomendar_suscripciones: 'L1', estudiar_afiliacion: 'L1', comparar_afiliacion: 'L1', analizar_importacion: 'L1', simular_importacion: 'L2', analizar_precios: 'L1', proponer_portada: 'L1', guardar_borrador_portada: 'L3', analizar_analitica: 'L0', listar_aprobaciones: 'L0', proponer_plan_campanas: 'L1', redactar_brief: 'L1', auditar_seo: 'L1', revisar_texto_publicitario: 'L0', proponer_borrador_ficha: 'L1', proponer_recursos_visuales: 'L1', proponer_borrador_historia: 'L1', proponer_borrador_redes: 'L1', revisar_pieza: 'L0', validar_observaciones: 'L0', detectar_huecos: 'L1', comparar_precios_observados: 'L1', informe_competencia: 'L1', analizar_oportunidades_nicho: 'L1', estudiar_viabilidad_nicho: 'L1', investigar_candidatos: 'L1', desconocida: 'L0', conversacion: 'L1', agente_no_operativo: 'L1', lanzar_auditoria: 'L2', detener: 'L2', parada_total: 'L2', confirmacion_vaga: 'L2',
   cambio_nivel: 'L3', accion_humana: 'L4', accion_ambigua: 'L4', pide_credencial: 'L4', ejecucion_autonoma: 'L4',
 });
@@ -38,6 +38,7 @@ const RX = {
   agentes: /\b(agentes?|capacidades|registro de agentes|quien esta operativo|que agentes)\b/,
   tareas: /\b(tareas?|pendientes|en curso|cola)\b/,
   calidad: /\b(calidad|catalogo|fichas?|productos?|comercio|categorias?|duplicados?|hallazgos?|problemas?)\b/,
+  propuestas04: /\b(propuestas? de (reparaci[oó]n|correcci[oó]n)|correcciones? pendientes?|reparaciones? (del )?(agente )?04|propuestas (de )?(04|calidad))\b/,
   auditor: /\b(auditor|auditoria general|salud|sitio|web|rutas?|enlaces?|disponibilidad|despliegue|caida)\b/,
   informe: /\b(informe|informes|resultado|resultados|ultima|ultimo|auditoria|estado)\b/,
   historial: /\b(historial|historico|historicos|anteriores|todos los informes|lista(r)? los informes|ejecuciones)\b/,
@@ -278,6 +279,10 @@ export function interpretar(texto) {
   const plan = PLANIFICADOS.find(([id, rx]) => rx.test(t) && !(id === '05' && agentes.length && /calidad/.test(t)));
   if (plan && agentes.length === 0) return con('agente_no_operativo', { agentes: [plan[0]] });
   if (plan && agentes.length && /\b(precios?|afiliacion|analitica|conversion(es)?|competencia|seo|marketing|campanas?|publicidad)\b/.test(t) && !/\b(calidad|catalogo|salud|sitio|web)\b/.test(t)) return con('agente_no_operativo', { agentes: [plan[0]] });
+  if (RX.propuestas04.test(t)) {
+    if (!agentes.includes('04')) agentes.push('04');
+    return con('consultar_propuestas_reparacion', { agentes });
+  }
   if (RX.informe.test(t) || agentes.length) {
     const tema = RX.repartoComercio.test(t) ? 'reparto_comercio' : RX.numeroProductos.test(t) ? 'numero_productos' : null;
     const ambiguo = agentes.length !== 1;

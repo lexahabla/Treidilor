@@ -29,3 +29,10 @@ export function directorioLedger(env = process.env) {
 export function directorioInstantaneas(env = process.env) {
   return env.TAI_DIRECTOR_INSTANTANEAS && env.TAI_DIRECTOR_INSTANTANEAS.trim() ? path.resolve(env.TAI_DIRECTOR_INSTANTANEAS) : path.join(AQUI, 'fixtures');
 }
+
+/** Directorio con los datos del catálogo web (automation-proposals.json, products.json, etc.).
+ * Variable `TAI_DIRECTOR_DATOS` o, por defecto, <raiz>/src/data. */
+export function directorioDatos(env = process.env) {
+  if (env.TAI_DIRECTOR_DATOS && env.TAI_DIRECTOR_DATOS.trim()) return path.resolve(env.TAI_DIRECTOR_DATOS);
+  return path.resolve(RAIZ_REPOSITORIO, 'src', 'data');
+}
