@@ -50,24 +50,20 @@ export const GET: APIRoute = async ({ request }) => {
 
   const salud = await cliente.salud();
   if (!salud) {
-    const info = cliente.obtenerInfoConfig();
     return json({
       success: true,
       conectado: false,
       motivo: 'no_responde',
-      detalle: `No se pudo contactar con el puente en ${info.host}:${info.puerto}.`,
-      configuracion: info,
+      detalle: 'No se pudo contactar con el puente del Director. Compruebe TAI_PUENTE_HOST, TAI_PUENTE_PORT y TAI_PUENTE_TOKEN.',
     });
   }
 
-  const info = cliente.obtenerInfoConfig();
   return json({
     success: true,
     conectado: true,
     servicio: 'tai-puente',
     version: salud.version ?? null,
     lector: salud.lector ?? [],
-    configuracion: info,
   });
 };
 

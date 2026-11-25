@@ -80,7 +80,7 @@ export const GET: APIRoute = async ({ request }) => {
   } catch (e) {
     const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
     return json(
-      { success: false, code: errorPuente.codigo, message: errorPuente.message, detalle: errorPuente.detalle },
+      { success: false, code: errorPuente.codigo, message: errorPuente.message },
       errorPuente.status === 500 ? 503 : errorPuente.status,
     );
   }
@@ -91,7 +91,7 @@ export const GET: APIRoute = async ({ request }) => {
   } catch (e) {
     const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
     return json(
-      { success: false, code: errorPuente.codigo, message: errorPuente.message, detalle: errorPuente.detalle },
+      { success: false, code: errorPuente.codigo, message: errorPuente.message },
       errorPuente.status === 500 ? 503 : errorPuente.status,
     );
   }
@@ -189,7 +189,7 @@ export const POST: APIRoute = async ({ request }) => {
   } catch (e) {
     const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
     return json(
-      { success: false, code: errorPuente.codigo, message: errorPuente.message, detalle: errorPuente.detalle },
+      { success: false, code: errorPuente.codigo, message: errorPuente.message },
       errorPuente.status === 500 ? 503 : errorPuente.status,
     );
   }
@@ -209,7 +209,6 @@ export const POST: APIRoute = async ({ request }) => {
         code: errorPuente.codigo,
         message: errorPuente.message,
         conversacion: { id: principal.conversacion, conversacionDirector: principal.conversacion, principal: true },
-        detalle: errorPuente.detalle,
       },
       errorPuente.status === 500 ? 503 : errorPuente.status,
     );

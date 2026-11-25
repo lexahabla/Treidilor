@@ -14,13 +14,13 @@
  */
 
 import type { APIRoute } from 'astro';
-import { requireAdminAuth, getSessionUser } from '../../../../lib/adminAuth';
-import { findUserById } from '../../../../lib/userStore';
-import { sameOrigin } from '../../../../lib/alertsHttp';
-import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
+import { requireAdminAuth, getSessionUser } from '../../../../../lib/adminAuth';
+import { findUserById } from '../../../../../lib/userStore';
+import { sameOrigin } from '../../../../../lib/alertsHttp';
+import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../../lib/taiPuente';
 import {
   obtenerConversacionMeta, guardarConversacionPrincipal,
-} from '../../../../lib/directorIaStore';
+} from '../../../../../lib/directorIaStore';
 
 const MAX_TEXTO = 2000;
 const CABECERA_ESCRITURA = 'X-Director-IA';
@@ -86,7 +86,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   } catch (e) {
     const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
     return json(
-      { success: false, code: errorPuente.codigo, message: errorPuente.message, detalle: errorPuente.detalle },
+      { success: false, code: errorPuente.codigo, message: errorPuente.message },
       errorPuente.status === 500 ? 503 : errorPuente.status,
     );
   }
@@ -223,7 +223,6 @@ export const POST: APIRoute = async ({ params, request }) => {
         code: errorPuente.codigo,
         message: errorPuente.message,
         conversacion: { id: idConversacion, titulo: meta.titulo, creadoEn: meta.creadoEn, actualizadoEn: meta.actualizadoEn },
-        detalle: errorPuente.detalle,
       },
       errorPuente.status === 500 ? 503 : errorPuente.status,
     );
