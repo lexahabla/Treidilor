@@ -1,0 +1,709 @@
+---
+/**
+ * TREIDILOR — /upayp1b4/director-ia  (apartado «Director IA» del panel).
+ *
+ * Chat conversacional con el Director 00 a través del puente persistente
+ * (Canal 13). Reusa AdminNav, autenticación administrativa, estilos del
+ * panel y el almacén persistente de conversaciones.
+ */
+import Layout from '../../layouts/Layout.astro';
+import AdminNav from '../../components/AdminNav.astro';
+import AdminSectionHeader from '../../components/admin/AdminSectionHeader.astro';
+import AdminUserMenu from '../../components/AdminUserMenu.astro';
+import { getSessionUser } from '../../lib/adminAuth';
+
+const sessionUser = getSessionUser(Astro.request);
+if (!sessionUser) return Astro.redirect('/upayp1b4');
+if (!sessionUser.master) return Astro.redirect('/upayp1b4/perfil');
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+
+const activeSection = 'director-ia';
+---
+
+<Layout title="Director IA | Panel Treidilor" description="Conversa con el Director IA de Treidilor (Agente 00). Historial persistente por usuario.">
+  <Fragment slot="header-end">
+    <AdminUserMenu user={sessionUser} active={activeSection} />
+  </Fragment>
+  <div class="admin-wrapper">
+    <AdminSectionHeader
+      eyebrow="Director IA"
+      titulo="Asistente conversacional"
+      subtitle="Habla con el Director 00 en lenguaje natural. El historial se guarda en el servidor y se recupera al volver."
+      ids={{ eyebrow: 'directorIaHeaderPill', title: 'directorIaHeaderTitle', subtitle: 'directorIaHeaderSubtitle' }}
+    />
+    <AdminNav context="catalogo" active={activeSection} user={sessionUser} />
+
+    <main class="director-ia-page">
+      <aside class="director-ia-sidebar" aria-label="Conversaciones">
+        <div class="director-ia-sidebar-head">
+          <h2 class="director-ia-sidebar-title">Conversaciones</h2>
+          <button type="button" id="btnNuevaConversacion" class="btn-primary btn-sm">+ Nueva</button>
+        </div>
+        <div id="listaConversaciones" class="director-ia-lista" role="list">
+          <div class="director-ia-vacio">No hay conversaciones todavía. Crea una para empezar.</div>
+        </div>
+        <div id="estadoConexion" class="director-ia-estado" role="status" aria-live="polite">
+          <span class="punto punto--desconectado" aria-hidden="true"></span>
+          <span id="textoEstado">Comprobando conexión…</span>
+        </div>
+      </aside>
+
+      <section class="director-ia-chat" aria-label="Chat">
+        <div class="director-ia-chat-header">
+          <h1 id="tituloConversacion">Director IA</h1>
+          <p id="subtituloConversacion" class="director-ia-chat-sub"></p>
+          <div class="director-ia-chat-actions">
+            <button type="button" id="btnEliminarConversacion" class="btn-danger-ghost btn-sm" hidden title="Eliminar esta conversación">🗑️ Eliminar</button>
+          </div>
+        </div>
+
+        <div class="director-ia-mensajes" id="contenedorMensajes" role="log" aria-live="polite">
+          <div class="director-ia-vacio-centrado">Selecciona o crea una conversación para empezar a hablar con el Director.</div>
+        </div>
+
+        <form id="formMensaje" class="director-ia-form">
+          <div class="director-ia-input-wrap">
+            <input
+              type="text"
+              id="inputMensaje"
+              placeholder="Escribe tu mensaje al Director…"
+              aria-label="Mensaje al Director IA"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="2000"
+            />
+            <button type="button" id="btnAdjuntar" class="btn-secondary btn-sm" title="Opciones de la conversación">⋮</button>
+            <button type="submit" id="btnEnviar" class="btn-primary btn-sm" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+          <div id="alertaForm" class="director-ia-alerta" hidden role="alert" aria-live="assertive"></div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script is:inline>
+    (function () {
+      const API_BASE = '/api/admin/director-ia';
+      const MAX_REINTENTOS = 3;
+
+      const els = {
+        lista: document.getElementById('listaConversaciones'),
+        contenedor: document.getElementById('contenedorMensajes'),
+        form: document.getElementById('formMensaje'),
+        input: document.getElementById('inputMensaje'),
+        btnEnviar: document.getElementById('btnEnviar'),
+        btnNueva: document.getElementById('btnNuevaConversacion'),
+        btnEliminar: document.getElementById('btnEliminarConversacion'),
+        btnAdjuntar: document.getElementById('btnAdjuntar'),
+        titulo: document.getElementById('tituloConversacion'),
+        subtitulo: document.getElementById('subtituloConversacion'),
+        estado: document.getElementById('estadoConexion'),
+        textoEstado: document.getElementById('textoEstado'),
+        alerta: document.getElementById('alertaForm'),
+      };
+
+      let idConversacion = null;
+      let enVuelo = false;
+
+      // ── estado de conexión ──
+      async function comprobarEstado() {
+        try {
+          const res = await fetch(`${API_BASE}/status`, { headers: { 'cache-control': 'no-store' } });
+          const j = await res.json();
+          if (j.success && j.conectado) {
+            ponerEstado('conectado', 'Conectado con el Director.');
+          } else {
+            ponerEstado('desconectado', j.motivo === 'no_configurado'
+              ? 'Servicio no configurado (pendiente de despliegue local).'
+              : 'No se pudo contactar con el servicio del Director.');
+          }
+        } catch {
+          ponerEstado('desconectado', 'Servicio no disponible.');
+        }
+      }
+
+      function ponerEstado(tipo, texto) {
+        if (!els.estado || !els.textoEstado) return;
+        const punto = els.estado.querySelector('.punto');
+        els.textoEstado.textContent = texto;
+        els.estado.className = 'director-ia-estado director-ia-estado--' + tipo;
+        if (punto) punto.className = 'punto punto--' + tipo;
+      }
+
+      // ── lista de conversaciones ──
+      async function cargarConversaciones() {
+        if (!els.lista) return;
+        try {
+          const res = await fetch(API_BASE, { headers: { 'cache-control': 'no-store' } });
+          const j = await res.json();
+          if (!j.success) throw new Error(j.message || 'No se pudo cargar');
+          renderizarLista(j.conversaciones || []);
+        } catch (e) {
+          els.lista.innerHTML = '<div class="director-ia-error">No se pudieron cargar las conversaciones.</div>';
+          console.error(e);
+        }
+      }
+
+      function renderizarLista(conversaciones) {
+        els.lista.innerHTML = '';
+        if (!conversaciones.length) {
+          els.lista.innerHTML = '<div class="director-ia-vacio">Sin conversaciones aún.</div>';
+          return;
+        }
+        for (const c of conversaciones) {
+          const item = document.createElement('div');
+          item.className = 'director-ia-item' + (idConversacion === c.id ? ' director-ia-item--activo' : '');
+          item.setAttribute('role', 'button');
+          item.setAttribute('tabindex', '0');
+          item.setAttribute('aria-label', 'Conversación: ' + c.titulo);
+          item.dataset.id = c.id;
+          item.innerHTML =
+            '<div class="director-ia-item-titulo">' + escaparHtml(c.titulo) + '</div>' +
+            '<div class="director-ia-item-fecha">' + fechaLegera(c.actualizadoEn) + '</div>';
+          els.lista.appendChild(item);
+        }
+        vincularLista();
+      }
+
+      function vincularLista() {
+        els.lista.querySelectorAll('.director-ia-item').forEach((item) => {
+          const abrir = () => {
+            idConversacion = item.dataset.id;
+            els.lista.querySelectorAll('.director-ia-item--activo').forEach((x) => x.classList.remove('director-ia-item--activo'));
+            item.classList.add('director-ia-item--activo');
+            cargarConversacion(idConversacion);
+            if (els.btnEliminar) els.btnEliminar.hidden = false;
+          };
+          item.addEventListener('click', abrir);
+          item.addEventListener('keydown', (e) => { if (e.key === 'Enter') abrir(); });
+        });
+      }
+
+      async function cargarConversacion(id) {
+        if (!els.contenedor) return;
+        els.contenedor.innerHTML = '<div class="director-ia-cargando">Cargando…</div>';
+        try {
+          const res = await fetch(`${API_BASE}/${encodeURIComponent(id)}`, { headers: { 'cache-control': 'no-store' } });
+          if (res.status === 404) {
+            els.contenedor.innerHTML = '<div class="director-ia-error">Conversación no encontrada.</div>';
+            return;
+          }
+          const j = await res.json();
+          if (!j.success) throw new Error(j.message || 'Error');
+          renderizarMensajes(j.conversacion);
+        } catch (e) {
+          els.contenedor.innerHTML = '<div class="director-ia-error">No se pudo cargar la conversación.</div>';
+          console.error(e);
+        }
+      }
+
+      function renderizarMensajes(conversacion) {
+        if (!els.contenedor) return;
+        els.titulo.textContent = conversacion.titulo || 'Director IA';
+        els.subtitulo.textContent = conversacion.mensajes.length
+          ? conversacion.mensajes.length + ' mensaje' + (conversacion.mensajes.length === 1 ? '' : 's') + ' · ' + fechaLegera(conversacion.actualizadoEn)
+          : 'Sin mensajes aún.';
+        els.contenedor.innerHTML = '';
+        for (const m of conversacion.mensajes) {
+          els.contenedor.appendChild(crearNodoMensaje(m));
+        }
+        scrollFinal();
+      }
+
+      function crearNodoMensaje(m) {
+        const div = document.createElement('div');
+        div.className = 'director-ia-burbuja director-ia-burbuja--' + m.rol;
+        const hora = m.en ? fechaHora(m.en) : '';
+        const meta = [];
+        if (m.rol === 'director') {
+          if (m.estado) meta.push(m.estado);
+          if (!m.controles || m.controles.registrada === false) meta.push('no registrada');
+          if (m.tipoIntencion) meta.push('intención: ' + m.tipoIntencion);
+        }
+        const metaHtml = meta.length ? '<span class="director-ia-meta">' + meta.join(' · ') + '</span>' : '';
+        div.innerHTML =
+          '<div class="director-ia-burbuja-cabecera">' +
+          (m.rol === 'usuario' ? 'Tú' : 'Director IA') + ' <span class="director-ia-burbuja-hora">' + hora + '</span>' +
+          metaHtml +
+          '</div>' +
+          '<div class="director-ia-burbuja-cuerpo">' + formatearTexto(m.contenido) + '</div>' +
+          (m.rol === 'director' ? renderizarExtrasDirector(m) : '');
+        return div;
+      }
+
+      function renderizarExtrasDirector(m) {
+        const partes = [];
+        if (m.naturalezaDatos && m.naturalezaDatos.length) {
+          partes.push('<div class="director-ia-dato">Naturaleza: ' + m.naturalezaDatos.map((n) => n.etiqueta).join(', ') + '</div>');
+        }
+        if (m.fuentes && m.fuentes.length) {
+          partes.push('<div class="director-ia-fuentes">Fuentes: ' + m.fuentes.map((f) => escaparHtml(f.texto) + (f.procedencia ? ' (' + escaparHtml(f.procedencia) + ')' : '')).join('; ') + '</div>');
+        }
+        if (m.tareas && m.tareas.length) {
+          partes.push('<div class="director-ia-tareas">Tareas: ' + m.tareas.map((t) => t.idTarea + ' (' + t.estado + ')').join(', ') + '</div>');
+        }
+        if (m.solicitudesAutorizacion && m.solicitudesAutorizacion.length) {
+          partes.push('<div class="director-ia-auth">Pendientes de tu aprobación: ' + m.solicitudesAutorizacion.map((s) => s.idAprobacion + ' ' + s.nivel).join(', ') + '</div>');
+        }
+        if (m.limitaciones && m.limitaciones.length) {
+          partes.push('<div class="director-ia-limites">⚠ ' + m.limitaciones.join('; ') + '</div>');
+        }
+        if (m.avisos && m.avisos.length) {
+          partes.push('<div class="director-ia-avisos">' + m.avisos.map((a) => '⚠ ' + escaparHtml(a)).join('<br>') + '</div>');
+        }
+        return partes.join('');
+      }
+
+      // ── enviar mensaje ──
+      async function enviarMensaje(e) {
+        e.preventDefault();
+        if (enVuelo) return;
+        const texto = els.input.value.trim();
+        if (!texto) return;
+        if (!idConversacion) {
+          mostrarAlerta('Selecciona o crea una conversación primero.');
+          return;
+        }
+        enVuelo = true;
+        els.btnEnviar.disabled = true;
+        els.input.disabled = true;
+        mostrarAlerta(null);
+
+        // mensaje de usuario optimista
+        const ahora = new Date().toISOString();
+        const nodoUsuario = crearNodoMensaje({ rol: 'usuario', contenido: texto, en: ahora });
+        els.contenedor.appendChild(nodoUsuario);
+        els.input.value = '';
+        scrollFinal();
+
+        try {
+          const res = await fetch(`${API_BASE}/${encodeURIComponent(idConversacion)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ texto }),
+          });
+          const j = await res.json();
+          if (!j.success) throw new Error(j.message || 'Error del servidor');
+
+          const nodoDirector = crearNodoMensaje({
+            rol: 'director',
+            contenido: j.respuesta.textoClaro,
+            en: j.respuesta.generadoEn || ahora,
+            estado: j.respuesta.estado,
+            categoria: j.respuesta.categoria,
+            tipoIntencion: j.respuesta.tipoIntencion,
+            naturalezaDatos: j.respuesta.naturalezaDatos,
+            fuentes: j.respuesta.fuentes,
+            tareas: j.respuesta.tareas,
+            solicitudesAutorizacion: j.respuesta.solicitudesAutorizacion,
+            limitaciones: j.respuesta.limitaciones,
+            avisos: j.respuesta.avisos,
+            controles: j.respuesta.controles,
+            registrada: j.respuesta.registrada,
+            generadoEn: j.respuesta.generadoEn,
+          });
+          els.contenedor.appendChild(nodoDirector);
+          renderizarLista(await (await fetch(API_BASE)).json().then((x) => x.conversaciones || []));
+          scrollFinal();
+        } catch (err) {
+          mostrarAlerta(err instanceof Error ? err.message : 'No se pudo enviar el mensaje.');
+          // quitar el mensaje de usuario optimista si falló
+          if (nodoUsuario.parentNode) nodoUsuario.parentNode.removeChild(nodoUsuario);
+        } finally {
+          enVuelo = false;
+          els.btnEnviar.disabled = false;
+          els.input.disabled = false;
+          els.input.focus();
+        }
+      }
+
+      // ── nueva conversación ──
+      async function crearNuevaConversacion() {
+        const texto = els.input.value.trim();
+        if (!texto) {
+          mostrarAlerta('Escribe un mensaje para iniciar la conversación.');
+          return;
+        }
+        enVuelo = true;
+        els.btnEnviar.disabled = true;
+        els.input.disabled = true;
+        mostrarAlerta(null);
+
+        try {
+          const res = await fetch(API_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ texto }),
+          });
+          const j = await res.json();
+          if (!j.success) throw new Error(j.message || 'No se pudo crear la conversación');
+
+          idConversacion = j.conversacion.id;
+          cargarConversaciones();
+          cargarConversacion(idConversacion);
+          if (els.btnEliminar) els.btnEliminar.hidden = false;
+          els.input.value = '';
+          scrollFinal();
+        } catch (err) {
+          mostrarAlerta(err instanceof Error ? err.message : 'No se pudo iniciar la conversación.');
+        } finally {
+          enVuelo = false;
+          els.btnEnviar.disabled = false;
+          els.input.disabled = false;
+          els.input.focus();
+        }
+      }
+
+      function mostrarAlerta(texto) {
+        if (!els.alerta) return;
+        els.alerta.hidden = !texto;
+        if (texto) els.alerta.textContent = texto;
+      }
+
+      function fechaLegera(iso) {
+        if (!iso) return '';
+        try {
+          const d = new Date(iso);
+          return d.toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        } catch { return iso; }
+      }
+
+      function fechaHora(iso) {
+        if (!iso) return '';
+        try {
+          const d = new Date(iso);
+          return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        } catch { return iso; }
+      }
+
+      function escaparHtml(texto) {
+        return String(texto ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
+      function formatearTexto(texto) {
+        return String(texto ?? '').replace(/\n/g, '<br>');
+      }
+
+      function scrollFinal() {
+        if (els.contenedor) els.contenedor.scrollTop = els.contenedor.scrollHeight;
+      }
+
+      // ── eventos ──
+      if (els.form) els.form.addEventListener('submit', enviarMensaje);
+      if (els.btnNueva) {
+        els.btnNueva.addEventListener('click', () => {
+          if (!els.input.value.trim()) { mostrarAlerta('Escribe un mensaje para iniciar la conversación.'); return; }
+          crearNuevaConversacion();
+        });
+      }
+      if (els.input) {
+        els.input.addEventListener('input', () => {
+          els.btnEnviar.disabled = !els.input.value.trim() || enVuelo;
+          if (idConversacion) mostrarAlerta(null);
+        });
+      }
+
+      if (els.btnAdjuntar) {
+        els.btnAdjuntar.addEventListener('click', () => {
+          mostrarAlerta('Funciones adicionales pendientes (adjuntar contexto de ficha/categoría).');
+        });
+      }
+
+      // iniciar
+      comprobarEstado();
+      cargarConversaciones();
+      setInterval(comprobarEstado, 60000);
+    })();
+  </script>
+
+  <style>
+    .director-ia-page {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem 1.5rem 2rem;
+      max-width: 100%;
+    }
+    .director-ia-sidebar {
+      flex: 0 0 320px;
+      max-width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .director-ia-sidebar-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .director-ia-sidebar-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--color-text-main, #f3f4f6);
+    }
+    .director-ia-lista {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid var(--color-border, #1f2937);
+      border-radius: var(--border-radius-md, 12px);
+      padding: 0.5rem;
+      background: rgba(17, 24, 39, 0.4);
+    }
+    .director-ia-item {
+      padding: 0.6rem 0.8rem;
+      border-radius: var(--border-radius-sm, 8px);
+      cursor: pointer;
+      border: 1px solid transparent;
+      font-size: 0.88rem;
+      transition: background .15s, border-color .15s;
+    }
+    .director-ia-item:hover {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: rgba(96, 165, 250, 0.3);
+    }
+    .director-ia-item--activo {
+      background: rgba(59, 130, 246, 0.18);
+      border-color: rgba(96, 165, 250, 0.5);
+    }
+    .director-ia-item-titulo {
+      display: block;
+      font-weight: 700;
+      color: var(--color-text-main, #f3f4f6);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 0.15rem;
+    }
+    .director-ia-item-fecha {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--color-text-muted, #9ca3af);
+    }
+    .director-ia-vacio, .director-ia-vacio-centrado, .director-ia-error, .director-ia-cargando {
+      text-align: center;
+      color: var(--color-text-muted, #9ca3af);
+      font-size: 0.88rem;
+      padding: 1rem;
+    }
+    .director-ia-vacio-centrado {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--color-text-muted, #9ca3af);
+    }
+    .director-ia-error {
+      color: var(--color-error, #f87171);
+      font-size: 0.82rem;
+      padding: 0.85rem;
+      border: 1px solid rgba(248, 113, 113, 0.2);
+      border-radius: var(--border-radius-sm, 8px);
+      background: rgba(248, 113, 113, 0.05);
+    }
+    .director-ia-cargando {
+      font-size: 0.85rem;
+      color: var(--color-text-muted, #9ca3af);
+    }
+    .director-ia-estado {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.55rem 0.8rem;
+      border-radius: var(--border-radius-sm, 8px);
+      font-size: 0.82rem;
+      border: 1px solid transparent;
+      background: rgba(17, 24, 39, 0.4);
+    }
+    .director-ia-estado--conectado {
+      border-color: rgba(34, 197, 94, 0.35);
+      background: rgba(34, 197, 94, 0.08);
+      color: var(--color-ok, #86efac);
+    }
+    .director-ia-estado--desconectado {
+      border-color: rgba(248, 113, 113, 0.35);
+      background: rgba(248, 113, 113, 0.08);
+      color: var(--color-error, #f87171);
+    }
+    .punto {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .punto--conectado { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
+    .punto--desconectado { background: var(--color-error, #f87171); box-shadow: 0 0 6px var(--color-error, #f87171); }
+    .btn-danger-ghost {
+      background: transparent;
+      border: 1px solid rgba(248, 113, 113, 0.35);
+      color: var(--color-error, #f87171);
+      padding: 0.45rem 0.75rem;
+      border-radius: var(--border-radius-sm, 8px);
+      cursor: pointer;
+      font-size: 0.82rem;
+    }
+    .btn-danger-ghost:hover { background: rgba(248, 113, 113, 0.12); }
+
+    .director-ia-chat {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .director-ia-chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .director-ia-chat-header h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      color: var(--color-text-main, #f3f4f6);
+    }
+    .director-ia-chat-sub {
+      margin: 0;
+      font-size: 0.82rem;
+      color: var(--color-text-muted, #9ca3af);
+    }
+    .director-ia-chat-actions {
+      display: flex;
+      gap: 0.4rem;
+    }
+    .director-ia-mensajes {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid var(--color-border, #1f2937);
+      border-radius: var(--border-radius-md, 12px);
+      padding: 1rem;
+      background: #0b1120;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      min-height: 0;
+    }
+    .director-ia-burbuja {
+      max-width: 82%;
+      border-radius: var(--border-radius-md, 12px);
+      padding: 0.75rem 1rem;
+      font-size: 0.92rem;
+      line-height: 1.5;
+      position: relative;
+    }
+    .director-ia-burbuja--usuario {
+      align-self: flex-end;
+      background: var(--color-primary, #2563eb);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .director-ia-burbuja--director {
+      align-self: flex-start;
+      background: rgba(17, 24, 39, 0.6);
+      border: 1px solid var(--color-border, #1f2937);
+      color: var(--color-text-main, #f3f4f6);
+      border-bottom-left-radius: 4px;
+    }
+    .director-ia-burbuja-cabecera {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.5rem;
+      margin-bottom: 0.35rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--color-text-muted, #9ca3af);
+    }
+    .director-ia-burbuja--usuario .director-ia-burbuja-cabecera { color: rgba(255,255,255,0.85); }
+    .director-ia-burbuja-hora { font-weight: 400; opacity: 0.8; }
+    .director-ia-burbuja-cuerpo { white-space: pre-wrap; word-wrap: break-word; }
+    .director-ia-burbuja--director .director-ia-burbuja-cuerpo a {
+      color: #60a5fa; text-decoration: underline;
+    }
+    .director-ia-meta {
+      font-size: 0.72rem;
+      opacity: 0.75;
+      margin-top: 0.25rem;
+      display: block;
+    }
+    .director-ia-dato, .director-ia-fuentes, .director-ia-tareas, .director-ia-auth, .director-ia-limites, .director-ia-avisos {
+      margin-top: 0.55rem;
+      padding: 0.55rem 0.75rem;
+      border-radius: var(--border-radius-sm, 8px);
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+    .director-ia-dato { background: rgba(99, 102, 241, 0.1); border-left: 3px solid #6366f1; color: #a5b4fc; }
+    .director-ia-fuentes { background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10b981; color: #86efac; }
+    .director-ia-tareas { background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; color: #93c5fd; }
+    .director-ia-auth { background: rgba(234, 179, 8, 0.1); border-left: 3px solid #ca8a04; color: #fcd34d; }
+    .director-ia-limites, .director-ia-avisos { background: rgba(248, 113, 113, 0.1); border-left: 3px solid #f87171; color: #fca5a5; }
+
+    .director-ia-form {
+      margin-top: 0.5rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-end;
+    }
+    .director-ia-input-wrap {
+      flex: 1;
+      position: relative;
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+    .director-ia-input-wrap input {
+      flex: 1;
+      min-width: 0;
+      padding: 0.62rem 0.9rem;
+      border: 1px solid var(--color-border, #1f2937);
+      border-radius: var(--border-radius-md, 12px);
+      background: #0b1120;
+      color: var(--color-text-main, #f3f4f6);
+      font: inherit;
+      font-size: 0.92rem;
+    }
+    .director-ia-input-wrap input:focus {
+      outline: none;
+      border-color: var(--color-primary, #2563eb);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    }
+    .director-ia-input-wrap input:disabled { opacity: 0.6; cursor: not-allowed; }
+    .director-ia-btn, .btn-primary, .btn-secondary, .btn-danger-ghost {
+      padding: 0.62rem 0.85rem;
+      border-radius: var(--border-radius-sm, 8px);
+      border: 1px solid transparent;
+      font: inherit;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--color-primary, #2563eb); color: #fff; }
+    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-secondary { background: rgba(255,255,255,0.06); color: var(--color-text-main, #f3f4f6); border-color: var(--color-border, #1f2937); }
+    .btn-secondary:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+    .btn-sm { padding: 0.5rem 0.65rem; font-size: 0.8rem; }
+
+    .director-ia-alerta {
+      margin-top: 0.5rem;
+      font-size: 0.82rem;
+      color: var(--color-error, #f87171);
+      padding: 0.55rem 0.8rem;
+      border: 1px solid rgba(248, 113, 113, 0.2);
+      border-radius: var(--border-radius-sm, 8px);
+      background: rgba(248, 113, 113, 0.05);
+    }
+
+    @media (max-width: 900px) {
+      .director-ia-page { flex-direction: column; padding: 0.75rem; }
+      .director-ia-sidebar { flex: 0 0 auto; max-width: 100%; }
+      .director-ia-burbuja { max-width: 90%; }
+    }
+  </style>
+</Layout>
