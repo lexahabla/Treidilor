@@ -16,12 +16,14 @@
 import type { APIRoute } from 'astro';
 import { requireAdminAuth, getSessionUser } from '../../../../lib/adminAuth';
 import { findUserById } from '../../../../lib/userStore';
+import { sameOrigin } from '../../../../lib/alertsHttp';
 import {
   listarConversaciones, crearConversacion, contarConversaciones, obtenerConversacionMeta, guardarConversacionPrincipal,
 } from '../../../../lib/directorIaStore';
 import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
 
 const MAX_TEXTO = 2000;
+const CABECERA_ESCRITURA = 'X-Director-IA';
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
@@ -70,7 +72,7 @@ export const GET: APIRoute = async ({ request }) => {
 
   // Persiste metadatos auxiliares en el caché (no duplica mensajes).
   if (principal) {
-    try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
+    try { guardarConversacionMeta(user.id, principal.conversacion, 'Director IA'); } catch {}
   }
 
   if (errorPuente && !principal) {
@@ -98,6 +100,14 @@ export const POST: APIRoute = async ({ request }) => {
 
   if (!esPropietario(user.id)) {
     return json({ success: false, code: 'no_autorizado', message: 'Solo el propietario puede abrir la conversación principal del Director.' }, 403);
+  }
+
+  // Protección contra solicitudes cruzadas (CSRF).
+  if (!sameOrigin(request) || request.headers.get(CABECERA_ESCRITURA) !== '1') {
+    return json(
+      { success: false, code: 'origen_no_permitido', message: 'No se pudo verificar el origen de la petición.' },
+      403,
+    );
   }
 
   const cliente = clientePuente();

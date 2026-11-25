@@ -432,3 +432,19 @@ export class TaiPuenteClient {
 export function huellaTexto(texto: string): string {
   return createHash('sha256').update(texto.trim()).digest('hex').slice(0, 12);
 }
+
+/**
+ * Escapa HTML para prevenir XSS. Convierte los caracteres que pueden abrir
+ * etiquetas o atributos en entidades. Se aplica a todo texto de usuario,
+ * Director, fuentes, avisos, limitaciones y metadatos antes de insertarlo en
+ * el DOM. Los saltos de línea se conservan: el llamante los convierte a <br>
+ * después del escape, o confía en CSS `white-space: pre-wrap`.
+ */
+export function escapeHtml(texto: unknown): string {
+  return String(texto ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}

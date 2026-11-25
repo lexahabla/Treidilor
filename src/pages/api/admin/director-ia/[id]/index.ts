@@ -14,14 +14,16 @@
  */
 
 import type { APIRoute } from 'astro';
-import { requireAdminAuth, getSessionUser } from '../../../../../lib/adminAuth';
-import { findUserById } from '../../../../../lib/userStore';
-import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../../lib/taiPuente';
+import { requireAdminAuth, getSessionUser } from '../../../../lib/adminAuth';
+import { findUserById } from '../../../../lib/userStore';
+import { sameOrigin } from '../../../../lib/alertsHttp';
+import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
 import {
   obtenerConversacionMeta, guardarConversacionPrincipal,
-} from '../../../../../lib/directorIaStore';
+} from '../../../../lib/directorIaStore';
 
 const MAX_TEXTO = 2000;
+const CABECERA_ESCRITURA = 'X-Director-IA';
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
@@ -156,6 +158,14 @@ export const POST: APIRoute = async ({ params, request }) => {
 
   if (!esPropietario(user.id)) {
     return json({ success: false, code: 'no_autorizado', message: 'Solo el propietario puede enviar mensajes al Director.' }, 403);
+  }
+
+  // Protección contra solicitudes cruzadas (CSRF).
+  if (!sameOrigin(request) || request.headers.get(CABECERA_ESCRITURA) !== '1') {
+    return json(
+      { success: false, code: 'origen_no_permitido', message: 'No se pudo verificar el origen de la petición.' },
+      403,
+    );
   }
 
   const idConversacion = String(params.id ?? '');

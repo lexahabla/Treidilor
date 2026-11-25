@@ -5,6 +5,11 @@
  * Chat conversacional con el Director 00 a través del puente persistente
  * (Canal 13). Reusa AdminNav, autenticación administrativa, estilos del
  * panel y el almacén persistente de conversaciones.
+ *
+ * La conversación del Director es ÚNICA y COMPARTIDA con Telegram
+ * (conversación principal, fuente de verdad del historial). El panel no
+ * crea conversaciones independientes ni permite eliminar el historial
+ * compartido por error.
  */
 import Layout from '../../layouts/Layout.astro';
 import AdminNav from '../../components/AdminNav.astro';
@@ -21,7 +26,7 @@ Astro.response.headers.set('Cache-Control', 'no-store');
 const activeSection = 'director-ia';
 ---
 
-<Layout title="Director IA | Panel Treidilor" description="Conversa con el Director IA de Treidilor (Agente 00). Historial persistente por usuario.">
+<Layout title="Director IA | Panel Treidilor" description="Conversa con el Director IA de Treidilor (Agente 00). Historial persistente compartido con Telegram.">
   <Fragment slot="header-end">
     <AdminUserMenu user={sessionUser} active={activeSection} />
   </Fragment>
@@ -35,13 +40,13 @@ const activeSection = 'director-ia';
     <AdminNav context="catalogo" active={activeSection} user={sessionUser} />
 
     <main class="director-ia-page">
-      <aside class="director-ia-sidebar" aria-label="Conversaciones">
+      <aside class="director-ia-sidebar" aria-label="Conversación del Director">
         <div class="director-ia-sidebar-head">
-          <h2 class="director-ia-sidebar-title">Conversaciones</h2>
-          <button type="button" id="btnNuevaConversacion" class="btn-primary btn-sm">+ Nueva</button>
+          <h2 class="director-ia-sidebar-title">Conversación</h2>
+          <div class="director-ia-sidebar-tipo">Principal · compartida con Telegram</div>
         </div>
-        <div id="listaConversaciones" class="director-ia-lista" role="list">
-          <div class="director-ia-vacio">No hay conversaciones todavía. Crea una para empezar.</div>
+        <div id="listaConversaciones" class="director-ia-lista" role="list" aria-hidden="true">
+          <div class="director-ia-vacio">Una sola conversación principal (compartida con Telegram).</div>
         </div>
         <div id="estadoConexion" class="director-ia-estado" role="status" aria-live="polite">
           <span class="punto punto--desconectado" aria-hidden="true"></span>
@@ -52,10 +57,7 @@ const activeSection = 'director-ia';
       <section class="director-ia-chat" aria-label="Chat">
         <div class="director-ia-chat-header">
           <h1 id="tituloConversacion">Director IA</h1>
-          <p id="subtituloConversacion" class="director-ia-chat-sub"></p>
-          <div class="director-ia-chat-actions">
-            <button type="button" id="btnEliminarConversacion" class="btn-danger-ghost btn-sm" hidden title="Eliminar esta conversación">🗑️ Eliminar</button>
-          </div>
+          <p id="subtituloConversacion" class="director-ia-chat-sub">Conversación principal compartida con Telegram.</p>
         </div>
 
         <div class="director-ia-mensajes" id="contenedorMensajes" role="log" aria-live="polite">
@@ -90,16 +92,12 @@ const activeSection = 'director-ia';
   <script is:inline>
     (function () {
       const API_BASE = '/api/admin/director-ia';
-      const MAX_REINTENTOS = 3;
 
       const els = {
-        lista: document.getElementById('listaConversaciones'),
         contenedor: document.getElementById('contenedorMensajes'),
         form: document.getElementById('formMensaje'),
         input: document.getElementById('inputMensaje'),
         btnEnviar: document.getElementById('btnEnviar'),
-        btnNueva: document.getElementById('btnNuevaConversacion'),
-        btnEliminar: document.getElementById('btnEliminarConversacion'),
         btnAdjuntar: document.getElementById('btnAdjuntar'),
         titulo: document.getElementById('tituloConversacion'),
         subtitulo: document.getElementById('subtituloConversacion'),
@@ -108,7 +106,6 @@ const activeSection = 'director-ia';
         alerta: document.getElementById('alertaForm'),
       };
 
-      let idConversacion = null;
       let enVuelo = false;
 
       // ── estado de conexión ──
@@ -120,7 +117,7 @@ const activeSection = 'director-ia';
             ponerEstado('conectado', 'Conectado con el Director.');
           } else {
             ponerEstado('desconectado', j.motivo === 'no_configurado'
-              ? 'Servicio no configurado (pendiente de despliegue local).'
+              ? 'Servicio no configurado en el servidor.'
               : 'No se pudo contactar con el servicio del Director.');
           }
         } catch {
@@ -136,82 +133,31 @@ const activeSection = 'director-ia';
         if (punto) punto.className = 'punto punto--' + tipo;
       }
 
-      // ── lista de conversaciones ──
-      async function cargarConversaciones() {
-        if (!els.lista) return;
-        try {
-          const res = await fetch(API_BASE, { headers: { 'cache-control': 'no-store' } });
-          const j = await res.json();
-          if (!j.success) throw new Error(j.message || 'No se pudo cargar');
-          renderizarLista(j.conversaciones || []);
-        } catch (e) {
-          els.lista.innerHTML = '<div class="director-ia-error">No se pudieron cargar las conversaciones.</div>';
-          console.error(e);
-        }
-      }
-
-      function renderizarLista(conversaciones) {
-        els.lista.innerHTML = '';
-        if (!conversaciones.length) {
-          els.lista.innerHTML = '<div class="director-ia-vacio">Sin conversaciones aún.</div>';
-          return;
-        }
-        for (const c of conversaciones) {
-          const item = document.createElement('div');
-          item.className = 'director-ia-item' + (idConversacion === c.id ? ' director-ia-item--activo' : '');
-          item.setAttribute('role', 'button');
-          item.setAttribute('tabindex', '0');
-          item.setAttribute('aria-label', 'Conversación: ' + c.titulo);
-          item.dataset.id = c.id;
-          item.innerHTML =
-            '<div class="director-ia-item-titulo">' + escaparHtml(c.titulo) + '</div>' +
-            '<div class="director-ia-item-fecha">' + fechaLegera(c.actualizadoEn) + '</div>';
-          els.lista.appendChild(item);
-        }
-        vincularLista();
-      }
-
-      function vincularLista() {
-        els.lista.querySelectorAll('.director-ia-item').forEach((item) => {
-          const abrir = () => {
-            idConversacion = item.dataset.id;
-            els.lista.querySelectorAll('.director-ia-item--activo').forEach((x) => x.classList.remove('director-ia-item--activo'));
-            item.classList.add('director-ia-item--activo');
-            cargarConversacion(idConversacion);
-            if (els.btnEliminar) els.btnEliminar.hidden = false;
-          };
-          item.addEventListener('click', abrir);
-          item.addEventListener('keydown', (e) => { if (e.key === 'Enter') abrir(); });
-        });
-      }
-
-      async function cargarConversacion(id) {
+      async function cargarConversacionPrincipal() {
         if (!els.contenedor) return;
-        els.contenedor.innerHTML = '<div class="director-ia-cargando">Cargando…</div>';
+        els.contenedor.innerHTML = '<div class="director-ia-cargando">Cargando historial…</div>';
         try {
-          const res = await fetch(`${API_BASE}/${encodeURIComponent(id)}`, { headers: { 'cache-control': 'no-store' } });
-          if (res.status === 404) {
-            els.contenedor.innerHTML = '<div class="director-ia-error">Conversación no encontrada.</div>';
-            return;
-          }
+          const res = await fetch(`${API_BASE}/principal`, { headers: { 'cache-control': 'no-store' } });
           const j = await res.json();
-          if (!j.success) throw new Error(j.message || 'Error');
+          if (!j.success) throw new Error(j.message || 'No se pudo cargar el historial');
           renderizarMensajes(j.conversacion);
         } catch (e) {
-          els.contenedor.innerHTML = '<div class="director-ia-error">No se pudo cargar la conversación.</div>';
+          els.contenedor.innerHTML = '<div class="director-ia-error">No se pudo cargar la conversación principal.</div>';
           console.error(e);
         }
       }
 
       function renderizarMensajes(conversacion) {
-        if (!els.contenedor) return;
+        if (!els.contenedor || !els.titulo || !els.subtitulo) return;
         els.titulo.textContent = conversacion.titulo || 'Director IA';
-        els.subtitulo.textContent = conversacion.mensajes.length
+        els.subtitulo.textContent = conversacion.mensajes && conversacion.mensajes.length
           ? conversacion.mensajes.length + ' mensaje' + (conversacion.mensajes.length === 1 ? '' : 's') + ' · ' + fechaLegera(conversacion.actualizadoEn)
           : 'Sin mensajes aún.';
         els.contenedor.innerHTML = '';
-        for (const m of conversacion.mensajes) {
-          els.contenedor.appendChild(crearNodoMensaje(m));
+        if (conversacion.mensajes && conversacion.mensajes.length) {
+          for (const m of conversacion.mensajes) {
+            els.contenedor.appendChild(crearNodoMensaje(m));
+          }
         }
         scrollFinal();
       }
@@ -226,38 +172,53 @@ const activeSection = 'director-ia';
           if (!m.controles || m.controles.registrada === false) meta.push('no registrada');
           if (m.tipoIntencion) meta.push('intención: ' + m.tipoIntencion);
         }
-        const metaHtml = meta.length ? '<span class="director-ia-meta">' + meta.join(' · ') + '</span>' : '';
+        const metaHtml = meta.length ? '<span class="director-ia-meta">' + escapeHtml(meta.join(' · ')) + '</span>' : '';
+        const cuerpo = document.createElement('div');
+        cuerpo.className = 'director-ia-burbuja-cuerpo';
+        cuerpo.textContent = m.contenido ?? '';
         div.innerHTML =
           '<div class="director-ia-burbuja-cabecera">' +
-          (m.rol === 'usuario' ? 'Tú' : 'Director IA') + ' <span class="director-ia-burbuja-hora">' + hora + '</span>' +
+          (m.rol === 'usuario' ? 'Tú' : 'Director IA') + ' <span class="director-ia-burbuja-hora">' + escapeHtml(hora) + '</span>' +
           metaHtml +
-          '</div>' +
-          '<div class="director-ia-burbuja-cuerpo">' + formatearTexto(m.contenido) + '</div>' +
-          (m.rol === 'director' ? renderizarExtrasDirector(m) : '');
+          '</div>';
+        div.appendChild(cuerpo);
+        if (m.rol === 'director') {
+          const extras = document.createElement('div');
+          extras.innerHTML = renderizarExtrasDirector(m);
+          div.appendChild(extras);
+        }
         return div;
       }
 
       function renderizarExtrasDirector(m) {
         const partes = [];
         if (m.naturalezaDatos && m.naturalezaDatos.length) {
-          partes.push('<div class="director-ia-dato">Naturaleza: ' + m.naturalezaDatos.map((n) => n.etiqueta).join(', ') + '</div>');
+          partes.push('<div class="director-ia-dato">Naturaleza: ' + m.naturalezaDatos.map((n) => escapeHtml(n.etiqueta)).join(', ') + '</div>');
         }
         if (m.fuentes && m.fuentes.length) {
-          partes.push('<div class="director-ia-fuentes">Fuentes: ' + m.fuentes.map((f) => escaparHtml(f.texto) + (f.procedencia ? ' (' + escaparHtml(f.procedencia) + ')' : '')).join('; ') + '</div>');
+          partes.push('<div class="director-ia-fuentes">Fuentes: ' + m.fuentes.map((f) => escapeHtml(f.texto) + (f.procedencia ? ' (' + escapeHtml(f.procedencia) + ')' : '')).join('; ') + '</div>');
         }
         if (m.tareas && m.tareas.length) {
-          partes.push('<div class="director-ia-tareas">Tareas: ' + m.tareas.map((t) => t.idTarea + ' (' + t.estado + ')').join(', ') + '</div>');
+          partes.push('<div class="director-ia-tareas">Tareas: ' + m.tareas.map((t) => escapeHtml(t.idTarea) + ' (' + escapeHtml(t.estado) + ')').join(', ') + '</div>');
         }
         if (m.solicitudesAutorizacion && m.solicitudesAutorizacion.length) {
-          partes.push('<div class="director-ia-auth">Pendientes de tu aprobación: ' + m.solicitudesAutorizacion.map((s) => s.idAprobacion + ' ' + s.nivel).join(', ') + '</div>');
+          partes.push('<div class="director-ia-auth">Pendientes de tu aprobación: ' + m.solicitudesAutorizacion.map((s) => escapeHtml(s.idAprobacion) + ' ' + escapeHtml(s.nivel)).join(', ') + '</div>');
         }
         if (m.limitaciones && m.limitaciones.length) {
-          partes.push('<div class="director-ia-limites">⚠ ' + m.limitaciones.join('; ') + '</div>');
+          partes.push('<div class="director-ia-limites">⚠ ' + m.limitaciones.map(escapeHtml).join('; ') + '</div>');
         }
         if (m.avisos && m.avisos.length) {
-          partes.push('<div class="director-ia-avisos">' + m.avisos.map((a) => '⚠ ' + escaparHtml(a)).join('<br>') + '</div>');
+          partes.push('<div class="director-ia-avisos">' + m.avisos.map((a) => '⚠ ' + escapeHtml(a)).join('<br>') + '</div>');
         }
         return partes.join('');
+      }
+
+      async function enviarConCabeceraSegura(url, init) {
+        const cabeceras = { 'Content-Type': 'application/json; charset=utf-8', ...(init.headers || {}) };
+        if (init.method && (init.method.toUpperCase() === 'POST' || init.method.toUpperCase() === 'PUT' || init.method.toUpperCase() === 'DELETE' || init.method.toUpperCase() === 'PATCH')) {
+          cabeceras['X-Director-IA'] = '1';
+        }
+        return fetch(url, { ...init, headers: cabeceras });
       }
 
       // ── enviar mensaje ──
@@ -266,10 +227,6 @@ const activeSection = 'director-ia';
         if (enVuelo) return;
         const texto = els.input.value.trim();
         if (!texto) return;
-        if (!idConversacion) {
-          mostrarAlerta('Selecciona o crea una conversación primero.');
-          return;
-        }
         enVuelo = true;
         els.btnEnviar.disabled = true;
         els.input.disabled = true;
@@ -283,9 +240,8 @@ const activeSection = 'director-ia';
         scrollFinal();
 
         try {
-          const res = await fetch(`${API_BASE}/${encodeURIComponent(idConversacion)}`, {
+          const res = await enviarConCabeceraSegura(`${API_BASE}/principal`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json; charset=utf-8' },
             body: JSON.stringify({ texto }),
           });
           const j = await res.json();
@@ -309,49 +265,10 @@ const activeSection = 'director-ia';
             generadoEn: j.respuesta.generadoEn,
           });
           els.contenedor.appendChild(nodoDirector);
-          renderizarLista(await (await fetch(API_BASE)).json().then((x) => x.conversaciones || []));
           scrollFinal();
         } catch (err) {
           mostrarAlerta(err instanceof Error ? err.message : 'No se pudo enviar el mensaje.');
-          // quitar el mensaje de usuario optimista si falló
           if (nodoUsuario.parentNode) nodoUsuario.parentNode.removeChild(nodoUsuario);
-        } finally {
-          enVuelo = false;
-          els.btnEnviar.disabled = false;
-          els.input.disabled = false;
-          els.input.focus();
-        }
-      }
-
-      // ── nueva conversación ──
-      async function crearNuevaConversacion() {
-        const texto = els.input.value.trim();
-        if (!texto) {
-          mostrarAlerta('Escribe un mensaje para iniciar la conversación.');
-          return;
-        }
-        enVuelo = true;
-        els.btnEnviar.disabled = true;
-        els.input.disabled = true;
-        mostrarAlerta(null);
-
-        try {
-          const res = await fetch(API_BASE, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({ texto }),
-          });
-          const j = await res.json();
-          if (!j.success) throw new Error(j.message || 'No se pudo crear la conversación');
-
-          idConversacion = j.conversacion.id;
-          cargarConversaciones();
-          cargarConversacion(idConversacion);
-          if (els.btnEliminar) els.btnEliminar.hidden = false;
-          els.input.value = '';
-          scrollFinal();
-        } catch (err) {
-          mostrarAlerta(err instanceof Error ? err.message : 'No se pudo iniciar la conversación.');
         } finally {
           enVuelo = false;
           els.btnEnviar.disabled = false;
@@ -382,12 +299,13 @@ const activeSection = 'director-ia';
         } catch { return iso; }
       }
 
-      function escaparHtml(texto) {
-        return String(texto ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      }
-
-      function formatearTexto(texto) {
-        return String(texto ?? '').replace(/\n/g, '<br>');
+      function escapeHtml(texto) {
+        return String(texto ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
       }
 
       function scrollFinal() {
@@ -396,16 +314,10 @@ const activeSection = 'director-ia';
 
       // ── eventos ──
       if (els.form) els.form.addEventListener('submit', enviarMensaje);
-      if (els.btnNueva) {
-        els.btnNueva.addEventListener('click', () => {
-          if (!els.input.value.trim()) { mostrarAlerta('Escribe un mensaje para iniciar la conversación.'); return; }
-          crearNuevaConversacion();
-        });
-      }
       if (els.input) {
         els.input.addEventListener('input', () => {
           els.btnEnviar.disabled = !els.input.value.trim() || enVuelo;
-          if (idConversacion) mostrarAlerta(null);
+          mostrarAlerta(null);
         });
       }
 
@@ -417,7 +329,7 @@ const activeSection = 'director-ia';
 
       // iniciar
       comprobarEstado();
-      cargarConversaciones();
+      cargarConversacionPrincipal();
       setInterval(comprobarEstado, 60000);
     })();
   </script>
@@ -439,14 +351,19 @@ const activeSection = 'director-ia';
     .director-ia-sidebar-head {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 0.5rem;
+      flex-direction: column;
     }
     .director-ia-sidebar-title {
       margin: 0;
       font-size: 1rem;
       font-weight: 700;
       color: var(--color-text-main, #f3f4f6);
+    }
+    .director-ia-sidebar-tipo {
+      font-size: 0.72rem;
+      color: var(--color-text-muted, #9ca3af);
+      margin-top: 0.15rem;
     }
     .director-ia-lista {
       flex: 1;
@@ -455,36 +372,7 @@ const activeSection = 'director-ia';
       border-radius: var(--border-radius-md, 12px);
       padding: 0.5rem;
       background: rgba(17, 24, 39, 0.4);
-    }
-    .director-ia-item {
-      padding: 0.6rem 0.8rem;
-      border-radius: var(--border-radius-sm, 8px);
-      cursor: pointer;
-      border: 1px solid transparent;
-      font-size: 0.88rem;
-      transition: background .15s, border-color .15s;
-    }
-    .director-ia-item:hover {
-      background: rgba(59, 130, 246, 0.1);
-      border-color: rgba(96, 165, 250, 0.3);
-    }
-    .director-ia-item--activo {
-      background: rgba(59, 130, 246, 0.18);
-      border-color: rgba(96, 165, 250, 0.5);
-    }
-    .director-ia-item-titulo {
-      display: block;
-      font-weight: 700;
-      color: var(--color-text-main, #f3f4f6);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 0.15rem;
-    }
-    .director-ia-item-fecha {
-      display: block;
-      font-size: 0.75rem;
-      color: var(--color-text-muted, #9ca3af);
+      display: none;
     }
     .director-ia-vacio, .director-ia-vacio-centrado, .director-ia-error, .director-ia-cargando {
       text-align: center;
@@ -539,16 +427,6 @@ const activeSection = 'director-ia';
     }
     .punto--conectado { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
     .punto--desconectado { background: var(--color-error, #f87171); box-shadow: 0 0 6px var(--color-error, #f87171); }
-    .btn-danger-ghost {
-      background: transparent;
-      border: 1px solid rgba(248, 113, 113, 0.35);
-      color: var(--color-error, #f87171);
-      padding: 0.45rem 0.75rem;
-      border-radius: var(--border-radius-sm, 8px);
-      cursor: pointer;
-      font-size: 0.82rem;
-    }
-    .btn-danger-ghost:hover { background: rgba(248, 113, 113, 0.12); }
 
     .director-ia-chat {
       flex: 1;
@@ -572,10 +450,6 @@ const activeSection = 'director-ia';
       margin: 0;
       font-size: 0.82rem;
       color: var(--color-text-muted, #9ca3af);
-    }
-    .director-ia-chat-actions {
-      display: flex;
-      gap: 0.4rem;
     }
     .director-ia-mensajes {
       flex: 1;
@@ -675,7 +549,7 @@ const activeSection = 'director-ia';
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
     }
     .director-ia-input-wrap input:disabled { opacity: 0.6; cursor: not-allowed; }
-    .director-ia-btn, .btn-primary, .btn-secondary, .btn-danger-ghost {
+    .btn-primary, .btn-secondary {
       padding: 0.62rem 0.85rem;
       border-radius: var(--border-radius-sm, 8px);
       border: 1px solid transparent;

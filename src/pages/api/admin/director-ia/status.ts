@@ -10,6 +10,7 @@
 
 import type { APIRoute } from 'astro';
 import { requireAdminAuth, getSessionUser } from '../../../../lib/adminAuth';
+import { findUserById } from '../../../../lib/userStore';
 import { resolverConfigPuente, TaiPuenteClient } from '../../../../lib/taiPuente';
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -18,11 +19,21 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers },
   });
 
+function esPropietario(userId: string): boolean {
+  const user = findUserById(userId);
+  return Boolean(user?.master);
+}
+
 export const GET: APIRoute = async ({ request }) => {
   const authError = requireAdminAuth(request);
   if (authError) return authError;
   const user = getSessionUser(request);
   if (!user) return json({ success: false, code: 'no_autenticado', message: 'Sesión no válida.' }, 401);
+
+  // Solo el propietario (master) consulta el estado de conexión del Director.
+  if (!esPropietario(user.id)) {
+    return json({ success: false, code: 'no_autorizado', message: 'Solo el propietario puede consultar el estado del Director.' }, 403);
+  }
 
   let cliente: TaiPuenteClient;
   try {
