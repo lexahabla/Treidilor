@@ -40,6 +40,9 @@ src/data/backups/
 src/data/radar-users.json
 src/data/radar-data.json
 src/data/radar-avatars/
+# Memoria y estado de los motores de IA en desarrollo (datos, no código)
+src/data/ia-motor/
+src/data/agentes/
 
 # afiliados creados/eliminados desde el panel (se generan en local/volumen)
 src/data/networks.json

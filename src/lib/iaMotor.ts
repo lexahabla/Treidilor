@@ -26,6 +26,8 @@
 import { chatComplete, type TextProvider, type ChatMessage, hasTextCredentials } from './ai';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { DATA_DIR } from './paths';
 
 /** Endpoint OpenAI-compatible de Ollama local (sin clave de API, sin facturación). */
 const OLLAMA_BASE_URL = (typeof process !== 'undefined' && process.env.OLLAMA_BASE_URL) || 'http://127.0.0.1:11434';
@@ -69,8 +71,13 @@ export interface IaMensaje {
 }
 
 export interface IaOpcion {
-  /** Proveedor forzado (si no se indica, usa el del entorno o el por defecto). */
+  /** Proveedor forzado (si no se indica, usa IA_PROVEEDOR o, por defecto, Ollama local). */
   proveedor?: IaProvider;
+  /**
+   * Alternativas DECLARADAS por quien llama, en orden, si el principal falla. Nunca se añaden
+   * proveedores por cuenta del motor: no hay fallback oculto. Los de pago siguen exigiendo autorización.
+   */
+  alternativos?: IaProvider[];
   /** Modelo forzado (solo se reenvía al proveedor solicitado). */
   modelo?: string;
   temperatura?: number;
@@ -117,10 +124,7 @@ const MAX_REINTENTOS_DEFECTO = 2;
 const TIEMPO_ESPERA_CUOTA_MS = 60_000;
 
 /** Directorio persistente de la memoria del motor (volumen, no solo proceso). */
-const MEMORIA_DIR = path.join(
-  process.env.TRADYLOR_DATA_DIR ? path.join(process.env.TRADYLOR_DATA_DIR, 'ia-motor') :
-  path.join(process.cwd(), 'src', 'data', 'ia-motor'),
-);
+const MEMORIA_DIR = path.join(DATA_DIR, 'ia-motor');
 
 /** Ruta del índice de consumo persistente. */
 const CONSUMO_FILE = path.join(MEMORIA_DIR, 'consumo.json');
@@ -228,39 +232,32 @@ function esProveedorGratuito(proveedor: IaProvider): boolean {
   return ['groq', 'nvidia', 'openrouter'].includes(proveedor);
 }
 
+/**
+ * Proveedor por defecto: el declarado en IA_PROVEEDOR o, si no hay ninguno, Ollama (local, sin coste).
+ * TEXT_AI_PROVIDER (el del resto de la web) NO se hereda: aquí un proveedor no elegido a propósito
+ * podría generar gasto.
+ */
 function proveedorPorDefecto(): IaProvider {
-  const v = (typeof process !== 'undefined' && process.env.TEXT_AI_PROVIDER) || '';
-  switch (v.toLowerCase()) {
-    case 'anthropic': return 'anthropic';
-    case 'groq': return 'groq';
-    case 'nvidia': return 'nvidia';
-    case 'openrouter': return 'openrouter';
-    case 'gemini': return 'gemini';
-    default: return 'openai';
-  }
+  const v = String((typeof process !== 'undefined' && process.env.IA_PROVEEDOR) || '').toLowerCase();
+  return (PROVEEDORES_AUTORIZADOS as string[]).includes(v) ? (v as IaProvider) : 'ollama';
 }
 
 /**
- * Ordena los candidatos para probar. El principal va primero. Luego se añaden
- * los demás proveedores con credenciales, poniendo los gratuitos antes que los
- * de pago, para evitar cambiar silenciosamente a un proveedor de pago. Si el
- * principal es de pago y falla, se puede caer a un gratuito (no es "cambiar a
- * pago": es lo contrario).
+ * Un proveedor de pago solo se usa si su nombre figura en IA_PROVEEDORES_DE_PAGO_AUTORIZADOS
+ * (lista separada por comas, fijada por el propietario). Sin esa autorización explícita, nunca.
  */
-function ordenCandidatos(principal: IaProvider, envCredenciales: Record<string, boolean>): IaProvider[] {
-  const todos: IaProvider[] = ['openai', 'anthropic', 'groq', 'nvidia', 'openrouter', 'gemini', 'ollama'];
-  const conCredenciales = todos.filter((p) => envCredenciales[p]);
-  // Ollama es local (primero entre los gratuitos), luego el resto de gratuitos remotos, luego los de pago.
-  const gratuitos: IaProvider[] = ['ollama', 'groq', 'nvidia', 'openrouter'];
+export function pagoAutorizado(proveedor: IaProvider, env: Record<string, string | undefined> = process.env): boolean {
+  if (!PROVEEDORES_DE_PAGO.includes(proveedor)) return true;
+  return String(env.IA_PROVEEDORES_DE_PAGO_AUTORIZADOS ?? '').split(',').map((x) => x.trim().toLowerCase()).includes(proveedor);
+}
 
-  // Primero el principal (si tiene credenciales / está disponible).
-  const primero: IaProvider[] = conCredenciales.includes(principal) ? [principal] : [];
-
-  // Resto: locales/gratuitos primero (excepto el principal), luego los de pago (excepto el principal).
-  const restoGratuitos: IaProvider[] = gratuitos.filter((p) => p !== principal && conCredenciales.includes(p));
-  const restoPago: IaProvider[] = (['openai', 'anthropic', 'gemini'] as IaProvider[]).filter((p) => p !== principal && conCredenciales.includes(p));
-
-  return [...primero, ...restoGratuitos, ...restoPago];
+/**
+ * Candidatos a probar: el principal y, después, SOLO las alternativas que declare quien llama.
+ * Se descartan los que no tienen credenciales y los de pago no autorizados. Sin fallback implícito.
+ */
+export function ordenCandidatos(principal: IaProvider, envCredenciales: Record<string, boolean>, alternativos: IaProvider[] = [], env: Record<string, string | undefined> = process.env): IaProvider[] {
+  const lista = [principal, ...alternativos.filter((p) => p !== principal)];
+  return [...new Set(lista)].filter((p) => envCredenciales[p] && pagoAutorizado(p, env));
 }
 
 function registroConsumo(proveedor: IaProvider, exito: boolean): void {
@@ -286,8 +283,7 @@ function estaApagado(proveedor: IaProvider): boolean {
 }
 
 function huellaProveedor(proveedor: IaProvider, modelo: string): string {
-  const crypto = require('node:crypto');
-  return crypto.createHash('sha256').update(`${proveedor}:${modelo}`).digest('hex').slice(0, 12);
+  return createHash('sha256').update(`${proveedor}:${modelo}`).digest('hex').slice(0, 12);
 }
 
 /* ─── Motor ─── */
@@ -326,17 +322,20 @@ export async function inferir(mensajes: IaMensaje[], opcion: IaOpcion = {}): Pro
       envCredenciales[p] = hasTextCredentials(p as TextProvider);
     }
 
-    const candidatos = ordenCandidatos(proveedorBase, envCredenciales).filter(
+    const candidatos = ordenCandidatos(proveedorBase, envCredenciales, opcion.alternativos ?? []).filter(
       (p) => !estaApagado(p)
     );
 
     if (candidatos.length === 0) {
       // Ollama no necesita clave; los demás sí.
+      if (!pagoAutorizado(proveedorBase)) {
+        throw new Error(`El proveedor "${proveedorBase}" es de pago y no está autorizado (IA_PROVEEDORES_DE_PAGO_AUTORIZADOS). No se hace ninguna llamada.`);
+      }
       const hayClave = proveedorBase === 'ollama' || hasTextCredentials(proveedorBase as TextProvider);
       throw new Error(
         hayClave
-          ? `Todos los proveedores de texto están temporalmente apagados por cuota o sin respuesta. Inténtalo de nuevo en unos minutos.`
-          : `No hay credenciales de IA de texto configuradas para el proveedor "${proveedorBase}" ni para ninguno gratuito. Configura al menos una clave (OPENAI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, NVIDIA_API_KEY, OPENROUTER_API_KEY o GEMINI_API_KEY).`
+          ? `El proveedor "${proveedorBase}" está temporalmente apagado por cuota o sin respuesta. Inténtalo de nuevo más tarde.`
+          : `No hay credenciales para el proveedor "${proveedorBase}". No se usa ningún otro proveedor sin declararlo.`
       );
     }
 
@@ -563,9 +562,17 @@ export function leerMemoria(agente: string, conversacion?: string): IaMensaje[] 
   return [...obtenerMemoria(agente, conversacion)];
 }
 
-/** Limpia la memoria de un agente/conversación. */
+/** Limpia la memoria de un agente/conversación (mapa en disco y en proceso). */
 export function olvidar(agente: string, conversacion?: string): void {
-  memorias.delete(claveMemoria(agente, conversacion ?? 'default'));
+  const clave = claveMemoria(agente, conversacion ?? 'default');
+  memorias.delete(clave);
+  // También borrar el archivo de persistencia para que no se recargue en la próxima lectura.
+  try {
+    const archivo = path.join(MEMORIA_DIR, `${clave.replace(/[^a-z0-9_-]/gi, '_')}.json`);
+    if (fs.existsSync(archivo)) fs.unlinkSync(archivo);
+  } catch {
+    /* no bloqueante */
+  }
 }
 
 /** Construye el array de mensajes para inferir: system prompt + historial + usuario. */
