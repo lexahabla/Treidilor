@@ -68,6 +68,11 @@ const activeSection = 'director-ia';
         <div class="director-ia-chat-header">
           <h1 id="tituloConversacion">Director IA</h1>
           <p id="subtituloConversacion" class="director-ia-chat-sub">Conversación principal compartida con Telegram.</p>
+          <section id="confirmacionesPendientes" class="director-ia-confirmaciones" hidden aria-live="polite">
+            <h2>Confirmaciones pendientes</h2>
+            <p class="director-ia-chat-sub">Operaciones que el Director solo aplica con tu confirmación. Se te pedirá la contraseña.</p>
+            <div id="listaConfirmaciones"></div>
+          </section>
         </div>
 
         <div class="director-ia-mensajes" id="contenedorMensajes" role="log" aria-live="polite">
@@ -727,6 +732,40 @@ const activeSection = 'director-ia';
       }
 
       // iniciar
+      // ── confirmaciones pendientes (opción A: reautenticación con contraseña; el token de confirmar NUNCA llega aquí) ──
+      async function cargarConfirmaciones() {
+        const sec = document.getElementById('confirmacionesPendientes'); const lista = document.getElementById('listaConfirmaciones');
+        if (!sec || !lista) return;
+        try {
+          const res = await fetch(`${API_BASE}/panel`, { headers: { 'cache-control': 'no-store' } }); const j = await leerJson(res);
+          const pend = (j && j.success && Array.isArray(j.confirmacionesPendientes)) ? j.confirmacionesPendientes : [];
+          lista.textContent = ''; sec.hidden = pend.length === 0;
+          for (const c of pend) {
+            const fila = document.createElement('div'); fila.className = 'director-ia-confirmacion';
+            const t = document.createElement('div'); t.textContent = `${String(c.tipo || '').replace(/_/g, ' ')} · caduca ${c.caduca ? new Date(c.caduca).toLocaleTimeString('es-ES') : '—'}`; fila.appendChild(t);
+            const clave = document.createElement('input'); clave.type = 'password'; clave.placeholder = 'Tu contraseña'; clave.autocomplete = 'current-password'; fila.appendChild(clave);
+            const aviso = document.createElement('div'); aviso.className = 'director-ia-alerta'; aviso.hidden = true;
+            for (const decision of ['confirmar', 'rechazar']) {
+              const b = document.createElement('button'); b.type = 'button'; b.className = decision === 'confirmar' ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'; b.textContent = decision === 'confirmar' ? 'Confirmar' : 'Rechazar';
+              b.addEventListener('click', async () => {
+                if (!clave.value) { aviso.hidden = false; aviso.textContent = 'Escribe tu contraseña.'; return; }
+                b.disabled = true;
+                try {
+                  const r = await enviarConCabeceraSegura(`${API_BASE}/confirmar`, { method: 'POST', body: JSON.stringify({ idConfirmacion: c.idConfirmacion, decision, password: clave.value }) });
+                  const jr = await leerJson(r); clave.value = '';
+                  aviso.hidden = false; aviso.textContent = jr.success ? (decision === 'confirmar' ? 'Confirmado y aplicado por el Director.' : 'Rechazado.') : (jr.message || 'No se pudo completar.');
+                  if (jr.success) setTimeout(() => { cargarConfirmaciones(); cargarConversacionPrincipal(); }, 800);
+                } catch (e) { aviso.hidden = false; aviso.textContent = e instanceof Error ? e.message : 'No se pudo completar.'; } finally { b.disabled = false; }
+              });
+              fila.appendChild(b);
+            }
+            fila.appendChild(aviso); lista.appendChild(fila);
+          }
+        } catch { /* sin panel: la sección queda oculta */ }
+      }
+      cargarConfirmaciones(); setInterval(cargarConfirmaciones, 60000);
+      if (els.contenedor && typeof MutationObserver === 'function') new MutationObserver(() => cargarConfirmaciones()).observe(els.contenedor, { childList: true });
+
       comprobarEstado();
       cargarConversacionPrincipal();
       setInterval(comprobarEstado, 60000);

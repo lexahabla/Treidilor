@@ -70,6 +70,8 @@ export interface TaiPuenteConfig {
   host: string;
   puerto: number;
   token: string;
+  /** Token de alcance `confirmar` (TAI_PUENTE_TOKEN_CONFIRMAR): SOLO servidor, distinto del de `chat`; vacío = sin confirmaciones desde el panel. */
+  tokenConfirmar?: string;
   timeoutMs: number;
 }
 
@@ -81,11 +83,13 @@ export function resolverConfigPuente(env: Record<string, string | undefined> = p
   const puertoRaw = Number(env.TAI_PUENTE_PORT);
   const puerto = Number.isFinite(puertoRaw) && puertoRaw > 0 && puertoRaw < 65536 ? puertoRaw : PUERTO_DEFECTO;
   const token = String(env.TAI_PUENTE_TOKEN ?? '').trim();
+  const tokenConfirmar = String(env.TAI_PUENTE_TOKEN_CONFIRMAR ?? '').trim();
   const timeoutMs = Number(env.TAI_PUENTE_TIMEOUT);
   return {
     host,
     puerto,
     token,
+    tokenConfirmar,
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : TIMEOUT_DEFECTO,
   };
 }
@@ -295,6 +299,23 @@ export class TaiPuenteClient {
     if (!r || !r.conversacion) throw new TaiPuenteError('respuesta_invalida', 502, 'El servicio no devolvió una conversación principal.');
     this._conversacionPrincipal = String(r.conversacion);
     return { conversacion: this._conversacionPrincipal, principal: Boolean(r.principal) };
+  }
+
+  /**
+   * CONFIRMAR o RECHAZAR una confirmación pendiente del Director en nombre del propietario, ya REAUTENTICADO por el servidor del panel.
+   * Usa SOLO el token de alcance `confirmar` (nunca el de `chat`, nunca en el navegador). El Director comprueba caducidad, un solo uso y
+   * reautenticación reciente, aplica el cambio con su política y registra en el ledger QUIÉN confirmó.
+   */
+  async decidirConfirmacion(idConfirmacion: string, decision: 'confirmar' | 'rechazar', administrador: { id: string; usuario: string; reautenticadoEn: string }): Promise<unknown> {
+    if (!/^cf_[0-9A-HJKMNP-TV-Z]{26}$/i.test(String(idConfirmacion))) throw new TaiPuenteError('confirmacion_invalida', 400, 'Identificador de confirmación no válido.');
+    if (decision !== 'confirmar' && decision !== 'rechazar') throw new TaiPuenteError('decision_invalida', 400, 'La decisión debe ser confirmar o rechazar.');
+    if (!this.config.tokenConfirmar) throw new TaiPuenteError('confirmacion_no_configurada', 503, 'Las confirmaciones desde el panel no están configuradas en el servidor.');
+    const r = await this.peticion<{ resultado?: unknown }>('/tai/v1/chat/confirmar', {
+      method: 'POST',
+      headers: { ...this.authHeaders(), authorization: `Bearer ${this.config.tokenConfirmar}` },
+      body: JSON.stringify({ idConfirmacion, decision, administrador }),
+    });
+    return r?.resultado ?? null;
   }
 
   /** Olvida la conversación recordada (p. ej. si el Director ya no la conoce). */

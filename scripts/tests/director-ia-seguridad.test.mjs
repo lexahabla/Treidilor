@@ -67,11 +67,12 @@ test('seguridad: resolverConfigPuente solo permite bucle local o hosts privados 
   );
 });
 
-test('seguridad: el cliente del puente no expone operaciones de confirmar (alcance chat solo)', () => {
+test('seguridad: confirmar usa SOLO el token de alcance confirmar del servidor (opción A); sin él no hay confirmaciones', async () => {
   const client = new TaiPuenteClient({
     host: '127.0.0.1', puerto: 1, token: 'tai_x_abc', timeoutMs: 1000,
   });
-  assert.equal(typeof client.confirmar, 'undefined', 'no hay alcance confirmar en esta fase');
+  assert.equal(typeof client.confirmar, 'undefined', 'no hay un «confirmar» genérico: solo decidirConfirmacion');
+  await assert.rejects(client.decidirConfirmacion('cf_01M8CJ6KGSB01JRG5RCWR8539Y', 'confirmar', { id: 'u1', usuario: 'p', reautenticadoEn: new Date().toISOString() }), (e) => e.codigo === 'confirmacion_no_configurada', 'sin token confirmar no se confirma nada');
   assert.equal(typeof client.enviarMensaje, 'function');
   assert.equal(typeof client.obtenerHistorial, 'function');
   assert.equal(typeof client.abrirConversacionPrincipal, 'function');
