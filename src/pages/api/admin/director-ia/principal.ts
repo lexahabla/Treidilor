@@ -261,13 +261,51 @@ export const POST: APIRoute = async ({ request }) => {
   const intencion = clasificarIntencion(texto);
 
   if (intencion === 'social') {
+    // Historial real de la conversación (fuente de verdad, compartida con Telegram)
+    // mapeado al formato {rol, contenido} que usa respuestaSocial para dar continuidad.
     const historialReal = await cliente.obtenerHistorial(principal.conversacion, { ultimos: 50 }).catch(() => ({ turnos: [] }));
     const historialTurnos = Array.isArray(historialReal.turnos) ? historialReal.turnos : [];
-    const textoRespuesta = respuestaSocial(texto, { historial: historialTurnos });
+    const historialParaSocial = historialTurnos.flatMap((t) => [
+      { rol: 'usuario', contenido: t.texto },
+      { rol: 'director', contenido: (t.respuesta && typeof t.respuesta === 'object' ? t.respuesta.mensaje : '') ?? '' },
+    ]).filter((m) => m.contenido && String(m.contenido).trim());
+
+    // Registrar el turno social en el servicio conversacional REAL y persistente
+    // del Director (único escritor del ledger: ChatDirector vía puente tai-chat/1).
+    // No se crea otro Director ni otro escritor del JSONL.
+    let respuestaPuente: any = null;
+    let errorPuente: TaiPuenteError | null = null;
+    try {
+      respuestaPuente = await cliente.enviarMensaje(texto, {
+        conversacion: principal.conversacion,
+        via: 'panel',
+        origen,
+        confianza,
+      });
+    } catch (e) {
+      errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
+    }
+
     const generadoEn = new Date().toISOString();
-    // Guarda metadatos del intercambio social (no duplica mensajes en el puente;
-    // el historial de la sesión se muestra en el panel y es fuente de verdad).
-    try { guardarConversacionPrincipal(user.id, principal.conversacion, texto); } catch {}
+    // Respuesta natural para saludos/charla cotidiana. Si el puente entendió y
+    // respondió, se usa su respuesta real; si no entendió un saludo, se responde
+    // con respuestaSocial (sin inventar datos del negocio ni ejecutar acciones).
+    let textoRespuesta: string;
+    let registrada = false;
+    if (!errorPuente && respuestaPuente && respuestaPuente.estado !== 'sin_entender') {
+      textoRespuesta = typeof respuestaPuente.textoClaro === 'string' && respuestaPuente.textoClaro.trim()
+        ? respuestaPuente.textoClaro
+        : (typeof respuestaPuente.detalle === 'string' && respuestaPuente.detalle.trim()
+          ? respuestaPuente.detalle
+          : respuestaSocial(texto, { historial: historialParaSocial }));
+      registrada = Boolean(respuestaPuente.registrada);
+    } else {
+      textoRespuesta = respuestaSocial(texto, { historial: historialParaSocial });
+      // El turno de usuario ya quedó registrado por el puente (enviarMensaje guarda
+      // el turno en el JSONL persistente); solo se muestra la respuesta social al usuario.
+      registrada = !errorPuente;
+    }
+
     return json({
       success: true,
       conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: true },
@@ -287,7 +325,7 @@ export const POST: APIRoute = async ({ request }) => {
         limitaciones: [],
         avisos: [],
         controles: {
-          registrada: true,
+          registrada,
           paradaActiva: null,
           secretoDetectado: false,
           tipoDeControl: null,
@@ -295,7 +333,7 @@ export const POST: APIRoute = async ({ request }) => {
           confirmaPorEsteCanal: false,
           canal: 'panel',
         },
-        registrada: true,
+        registrada,
         resumenHablado: textoRespuesta,
         generadoEn,
       },
