@@ -220,12 +220,12 @@ export class TaiPuenteClient {
     return h;
   }
 
-  async peticion<T>(ruta: string, init: RequestInit): Promise<T> {
+  async peticion<T>(ruta: string, init: RequestInit, timeoutMs: number = this.config.timeoutMs): Promise<T> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl()}${ruta}`, {
         ...init,
-        signal: AbortSignal.timeout(this.config.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (e) {
       const mensaje = e instanceof Error ? e.message : 'Error de red';
@@ -360,6 +360,33 @@ export class TaiPuenteClient {
     const turno = r;
     const resp = turno.respuesta || {};
     return this.mapearRespuesta(turno, resp, idSolicitud);
+  }
+
+  /**
+   * Turno HABLADO del panel: el audio del propietario va al Director (`/tai/v1/chat/voz`), que lo transcribe, responde con su núcleo
+   * (memoria, permisos y ledger únicos) y devuelve el audio con la MISMA voz que en Telegram. Si la respuesta lleva datos reales del
+   * negocio, el Director no la sintetiza fuera y devuelve `vozLocal` (texto breve) para que la lea el navegador. Alcance chat: no confirma nada.
+   */
+  async hablar(audioBase64: string, { conversacion, mime, segundos, id = idMensaje() }: { conversacion: string; mime: string; segundos: number; id?: string }): Promise<{ estado: string; mensaje: string | null; transcripcion: string; respuesta: RespuestaDirector | null; audio: { base64: string; mime: string } | null; vozLocal: string | null; requiereRepeticion: boolean }> {
+    if (!conversacion) throw new TaiPuenteError('conversacion_invalida', 400, 'Se requiere el identificador de la conversación del Director.');
+    if (!this.config.token) throw new TaiPuenteError('token_no_configurado', 500, 'No se ha configurado el token de acceso al puente del Director.');
+    const idSolicitud = idAleatorio();
+    const r = await this.peticion<any>('/tai/v1/chat/voz', {
+      method: 'POST',
+      headers: this.authHeaders(idSolicitud),
+      body: JSON.stringify({ conversacion, id, audio: audioBase64, mime, segundos }),
+    }, Math.max(this.config.timeoutMs, 90_000));
+    const turno = r?.turno ?? null;
+    const audio = r?.audio && typeof r.audio.base64 === 'string' && typeof r.audio.mime === 'string' ? { base64: r.audio.base64, mime: r.audio.mime } : null;
+    return {
+      estado: String(r?.estado ?? 'error'),
+      mensaje: typeof r?.mensaje === 'string' ? r.mensaje : null,
+      transcripcion: turno ? String(turno.textoOriginal ?? turno.texto ?? '') : '',
+      respuesta: turno ? this.mapearRespuesta(turno, turno.respuesta || {}, idSolicitud) : null,
+      audio,
+      vozLocal: typeof r?.vozLocal === 'string' && r.vozLocal ? r.vozLocal : null,
+      requiereRepeticion: Boolean(r?.requiereRepeticion),
+    };
   }
 
   /** Historial conversacional real de una conversación (fuente de verdad del Director). */

@@ -5,6 +5,9 @@
  *                                        principal del Director 00.
  * POST /api/admin/director-ia/principal   envía un mensaje (texto o voz) al
  *                                        Director, identificado como canal panel.
+ *      { audio (base64), mime, segundos } → turno HABLADO: el Director transcribe,
+ *                                        responde y devuelve su voz (la misma que en
+ *                                        Telegram) o `vozLocal` si hay datos reales.
  *
  * EL PANEL ES SOLO UNA VENTANA DEL DIRECTOR 00 (VPS): no genera respuestas
  * propias, no clasifica intenciones ni llama a ningún modelo de lenguaje.
@@ -26,6 +29,10 @@ import { listarConversaciones, guardarConversacionPrincipal } from '../../../../
 import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
 
 const MAX_TEXTO = 2000;
+/** Una frase hablada: hasta 60 s de audio comprimido del navegador (en base64). */
+const MAX_AUDIO_BASE64 = 1_800_000;
+const MAX_SEGUNDOS_VOZ = 60;
+const MIMES_VOZ = new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav']);
 const CABECERA_ESCRITURA = 'X-Director-IA';
 /** Identificador de conversación aceptado desde el navegador (mismo formato que el Director). */
 const ID_CONVERSACION_RE = /^[A-Za-z0-9._:-]{4,120}$/;
@@ -175,12 +182,13 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Validar la entrada ANTES de tocar el Director.
-  let body: { texto?: unknown; origen?: unknown; confianza?: unknown };
+  let body: { texto?: unknown; origen?: unknown; confianza?: unknown; audio?: unknown; mime?: unknown; segundos?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return json({ success: false, code: 'json_no_valido', message: 'Cuerpo JSON no válido.' }, 400);
   }
+  if (body.audio !== undefined) return turnoHablado(request, p.user.id, body);
   const texto = typeof body.texto === 'string' ? body.texto.trim() : '';
   if (!texto) return json({ success: false, code: 'texto_vacio', message: 'El mensaje no puede ir vacío.' }, 400);
   if (texto.length > MAX_TEXTO) {
@@ -237,6 +245,49 @@ export const POST: APIRoute = async ({ request }) => {
     autorizacion: respuesta.autorizacion,
   });
 };
+
+/** Respuesta del Director al formato del panel (lo mostrado = lo registrado). */
+function respuestaPanel(respuesta: Awaited<ReturnType<TaiPuenteClient['enviarMensaje']>>) {
+  return {
+    estado: respuesta.estado, categoria: respuesta.categoria, textoClaro: respuesta.textoClaro, detalle: respuesta.detalle, tipoIntencion: respuesta.tipoIntencion,
+    naturalezaDatos: respuesta.naturalezaDatos, fuentes: respuesta.fuentes, tareas: respuesta.tareas, solicitudesAutorizacion: respuesta.solicitudesAutorizacion,
+    alternativas: respuesta.alternativas, consecuencias: respuesta.consecuencias, limitaciones: respuesta.limitaciones, avisos: respuesta.avisos, controles: respuesta.controles,
+    registrada: respuesta.registrada, resumenHablado: respuesta.resumenHablado, generadoEn: respuesta.generadoEn,
+  };
+}
+
+/** Turno hablado: el audio va al Director por el servidor (el token nunca llega al navegador); vuelve su voz o el texto para la voz local. */
+async function turnoHablado(request: Request, userId: string, body: { audio?: unknown; mime?: unknown; segundos?: unknown }): Promise<Response> {
+  const audio = typeof body.audio === 'string' ? body.audio : '';
+  const mime = String(body.mime ?? '').split(';')[0].trim().toLowerCase();
+  const segundos = Number(body.segundos);
+  if (!audio || audio.length > MAX_AUDIO_BASE64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(audio)) return json({ success: false, code: 'audio_no_valido', message: 'Audio no válido o demasiado largo.' }, 400);
+  if (!MIMES_VOZ.has(mime)) return json({ success: false, code: 'audio_no_valido', message: 'Formato de audio no admitido.' }, 400);
+  if (!Number.isFinite(segundos) || segundos <= 0 || segundos > MAX_SEGUNDOS_VOZ) return json({ success: false, code: 'audio_no_valido', message: `Cada intervención puede durar hasta ${MAX_SEGUNDOS_VOZ} s.` }, 400);
+  const cliente = clientePuente();
+  if (!cliente) return sinPuente();
+  let principal: { conversacion: string; principal: boolean };
+  let r: Awaited<ReturnType<TaiPuenteClient['hablar']>>;
+  try {
+    const res = await resolverConversacion(cliente, userId, request);
+    principal = res.principal;
+    try {
+      r = await cliente.hablar(audio, { conversacion: principal.conversacion, mime, segundos });
+    } catch (e) {
+      if (!(res.deCache && esConversacionDesconocida(e))) throw e;
+      principal = await sustituirConversacionCaducada(cliente, userId);
+      r = await cliente.hablar(audio, { conversacion: principal.conversacion, mime, segundos });
+    }
+  } catch (e) {
+    return errorDePuente(e);
+  }
+  return json({
+    success: true,
+    conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: principal.principal },
+    voz: { estado: r.estado, mensaje: r.mensaje, transcripcion: r.transcripcion, audio: r.audio, vozLocal: r.vozLocal, requiereRepeticion: r.requiereRepeticion },
+    respuesta: r.respuesta ? respuestaPanel(r.respuesta) : null,
+  });
+}
 
 export const ALL: APIRoute = () =>
   json({ success: false, code: 'metodo_no_permitido', message: 'Sólo GET y POST.' }, 405, { Allow: 'GET, POST' });

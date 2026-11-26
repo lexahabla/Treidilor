@@ -685,11 +685,155 @@ const activeSection = 'director-ia';
         };
       })();
 
+      // ── voz del Director (1.3.3): conversación hablada continua con la MISMA voz que Telegram ──
+      // El micrófono se graba en el navegador; un detector de nivel decide cuándo empieza y termina cada intervención;
+      // el audio va al Director por el servidor del panel (el token nunca llega aquí); vuelve su voz. Si la respuesta lleva
+      // datos reales del negocio, el Director no la sintetiza fuera y la lee la voz local del navegador.
+      // Hablar mientras el Director responde lo interrumpe (y se graba lo nuevo). Sin grabación o sin voz en el Director: voz del navegador.
+      const VozDirector = (function () {
+        const nav = window.navigator;
+        const AC = window.AudioContext || window.webkitAudioContext;
+        const disponible = Boolean(window.MediaRecorder && nav && nav.mediaDevices && typeof nav.mediaDevices.getUserMedia === 'function' && AC);
+        const CFG = { umbral: 0.02, umbralRespuesta: 0.07, silencioFinMs: 900, minMs: 350, maxMs: 55000, interrupcionMs: 300, intervaloMs: 50 };
+        let sesion = false; let estado = 'inactivo'; let noDisponible = false;
+        let stream = null; let ctx = null; let analizador = null; let muestras = null; let reloj = null;
+        let grabador = null; let trozos = []; let inicio = 0; let ultimaVoz = 0; let vozDesde = 0; let reproduccion = null; let turno = 0;
+        const elsV = { btn: document.getElementById('btnVoz'), btnDetener: document.getElementById('btnDetenerVoz'), textoBtn: document.getElementById('textoBtnVoz'), estado: document.getElementById('estadoVoz'), textoEstado: document.getElementById('textoEstadoVoz') };
+
+        function poner(nuevo, texto) {
+          estado = nuevo;
+          if (elsV.estado && elsV.textoEstado) {
+            elsV.textoEstado.textContent = texto; elsV.estado.hidden = nuevo === 'inactivo';
+            const p = elsV.estado.querySelector('.punto-voz'); if (p) p.className = 'punto-voz punto-voz--' + (nuevo === 'grabando' ? 'escuchando' : nuevo);
+          }
+          if (elsV.btn) { elsV.btn.disabled = false; elsV.btn.setAttribute('aria-pressed', String(sesion)); if (elsV.textoBtn) elsV.textoBtn.textContent = sesion ? 'Finalizar sesión' : 'Hablar'; }
+          if (elsV.btnDetener) elsV.btnDetener.hidden = !sesion;
+        }
+        function nivel() { analizador.getFloatTimeDomainData(muestras); let s = 0; for (let i = 0; i < muestras.length; i += 1) s += muestras[i] * muestras[i]; return Math.sqrt(s / muestras.length); }
+        function formato() {
+          for (const t of ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm', 'audio/mp4']) {
+            try { if (typeof window.MediaRecorder.isTypeSupported !== 'function' || window.MediaRecorder.isTypeSupported(t)) return t; } catch { /* siguiente */ }
+          }
+          return '';
+        }
+
+        function vigilar() {
+          if (!sesion || !analizador) return;
+          const ahora = Date.now(); const n = nivel();
+          if (estado === 'escuchando' || estado === 'procesando') { if (n > CFG.umbral) grabar(ahora); return; }
+          if (estado === 'grabando') { if (n > CFG.umbral) ultimaVoz = ahora; if (ahora - ultimaVoz >= CFG.silencioFinMs || ahora - inicio >= CFG.maxMs) terminar(); return; }
+          if (estado === 'hablando') {
+            if (n > CFG.umbralRespuesta) { vozDesde = vozDesde || ahora; if (ahora - vozDesde >= CFG.interrupcionMs) { const desde = vozDesde; cortarRespuesta(); grabar(ahora, desde); } }
+            else vozDesde = 0;
+          }
+        }
+
+        /** `desde`: cuándo empezó a hablar (al interrumpir, la voz ya llevaba unos ms). */
+        function grabar(ahora, desde = ahora) {
+          if (estado === 'procesando') turno += 1; // hablar encima de una respuesta en camino la deja sin leer
+          trozos = []; inicio = desde; ultimaVoz = ahora; vozDesde = 0;
+          const tipo = formato();
+          try { grabador = tipo ? new window.MediaRecorder(stream, { mimeType: tipo }) : new window.MediaRecorder(stream); } catch { grabador = new window.MediaRecorder(stream); }
+          grabador.ondataavailable = (e) => { if (e.data && e.data.size) trozos.push(e.data); };
+          grabador.onstop = () => procesarGrabacion(Date.now() - inicio, ultimaVoz - inicio);
+          grabador.start();
+          poner('grabando', 'Te escucho…');
+        }
+        function terminar() { if (grabador && grabador.state !== 'inactive') { poner('procesando', 'Procesando…'); try { grabador.stop(); } catch { /* ya parado */ } } }
+
+        async function aBase64(blob) {
+          const b = new Uint8Array(await blob.arrayBuffer()); let s = '';
+          for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+          return window.btoa(s);
+        }
+
+        async function procesarGrabacion(duracionMs, hablaMs) {
+          const r = grabador; grabador = null;
+          if (!sesion) return;
+          if (hablaMs < CFG.minMs || !trozos.length) { poner('escuchando', 'Escuchando…'); return; } // ruido, no una intervención
+          const mio = (turno += 1);
+          const mime = (r && r.mimeType) || (trozos[0] && trozos[0].type) || 'audio/webm';
+          let j;
+          try {
+            const audio = await aBase64(new window.Blob(trozos, { type: mime }));
+            const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), { method: 'POST', body: JSON.stringify({ audio, mime, segundos: Math.min(60, Math.max(0.5, duracionMs / 1000)) }) });
+            j = await leerJson(res);
+          } catch (e) {
+            if (mio === turno && sesion) { mostrarAlerta(e instanceof Error ? e.message : 'No se pudo enviar tu voz.'); poner('escuchando', 'Escuchando…'); }
+            return;
+          }
+          if (!j.success) {
+            if (j.code === 'voz_no_disponible') { noDisponible = true; finalizar(); mostrarAlerta('La voz del Director no está activa en el servicio: uso la voz del navegador.'); Voz.iniciar(); return; }
+            if (mio === turno && sesion) { mostrarAlerta(j.message || 'No se pudo procesar tu voz.'); poner('escuchando', 'Escuchando…'); }
+            return;
+          }
+          const v = j.voz || {};
+          if (v.transcripcion) els.contenedor.appendChild(crearNodoMensaje({ rol: 'usuario', contenido: v.transcripcion, en: new Date().toISOString() }));
+          if (j.respuesta) {
+            const a = j.respuesta;
+            els.contenedor.appendChild(crearNodoMensaje({ rol: 'director', contenido: a.textoClaro, en: a.generadoEn, estado: a.estado, categoria: a.categoria, tipoIntencion: a.tipoIntencion, naturalezaDatos: a.naturalezaDatos, fuentes: a.fuentes, tareas: a.tareas, solicitudesAutorizacion: a.solicitudesAutorizacion, limitaciones: a.limitaciones, avisos: a.avisos, controles: a.controles, registrada: a.registrada, generadoEn: a.generadoEn }));
+          }
+          scrollFinal();
+          if (mio !== turno || !sesion) return; // ya se habló encima o se cerró la sesión: se muestra, no se lee
+          if (v.audio && v.audio.base64) { reproducir(`data:${v.audio.mime};base64,${v.audio.base64}`); return; }
+          if (v.vozLocal) { hablarLocal(v.vozLocal); return; }
+          if (v.mensaje) mostrarAlerta(v.mensaje);
+          poner('escuchando', 'Escuchando…');
+        }
+
+        function reproducir(url) {
+          poner('hablando', 'El Director responde…'); vozDesde = 0;
+          const a = new window.Audio(url); reproduccion = a;
+          const fin = () => { if (reproduccion === a) { reproduccion = null; if (sesion && estado === 'hablando') poner('escuchando', 'Escuchando…'); } };
+          a.onended = fin; a.onerror = fin;
+          try { const p = a.play(); if (p && typeof p.catch === 'function') p.catch(fin); } catch { fin(); }
+        }
+        function hablarLocal(texto) {
+          const S = window.speechSynthesis;
+          if (!S || !window.SpeechSynthesisUtterance) { poner('escuchando', 'Escuchando…'); return; }
+          poner('hablando', 'El Director responde (voz local: datos del negocio)…'); vozDesde = 0;
+          const u = new window.SpeechSynthesisUtterance(texto); u.lang = 'es-ES'; reproduccion = u;
+          const fin = () => { if (reproduccion === u) { reproduccion = null; if (sesion && estado === 'hablando') poner('escuchando', 'Escuchando…'); } };
+          u.onend = fin; u.onerror = fin;
+          try { S.speak(u); } catch { fin(); }
+        }
+        function cortarRespuesta() {
+          const r = reproduccion; reproduccion = null;
+          if (r && typeof r.pause === 'function') { try { r.pause(); } catch { /* nada */ } }
+          if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch { /* nada */ } }
+        }
+
+        async function iniciar() {
+          if (sesion) { finalizar(); return; }
+          try { stream = await nav.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+          catch { mostrarAlerta('Permiso del micrófono denegado. Concede acceso al micrófono o usa el teclado.'); return; }
+          ctx = new AC(); const fuente = ctx.createMediaStreamSource(stream); analizador = ctx.createAnalyser(); analizador.fftSize = 2048; fuente.connect(analizador); muestras = new Float32Array(analizador.fftSize);
+          sesion = true; turno += 1; poner('escuchando', 'Escuchando…'); mostrarAlerta(null);
+          reloj = setInterval(vigilar, CFG.intervaloMs);
+        }
+        function finalizar() {
+          sesion = false; turno += 1; cortarRespuesta();
+          if (reloj) { clearInterval(reloj); reloj = null; }
+          if (grabador && grabador.state !== 'inactive') { try { grabador.stop(); } catch { /* nada */ } }
+          grabador = null;
+          if (stream) { for (const t of stream.getTracks()) { try { t.stop(); } catch { /* nada */ } } stream = null; }
+          if (ctx) { try { ctx.close(); } catch { /* nada */ } ctx = null; analizador = null; }
+          poner('inactivo', '');
+        }
+        function interrumpir() { if (!sesion) return; cortarRespuesta(); if (estado === 'hablando') poner('escuchando', 'Escuchando…'); }
+
+        return { disponible: () => disponible && !noDisponible, activa: () => sesion, estado: () => estado, iniciar, finalizar, interrumpir, _vigilar: vigilar };
+      })();
+
       // eventos de voz
-      // btnVoz: inicia la sesión (inactivo) o la finaliza inequívocamente (activa).
-      if (els.btnVoz) els.btnVoz.addEventListener('click', () => { if (!Voz.silenciado()) Voz.iniciar(); });
+      // btnVoz: inicia la sesión (inactivo) o la finaliza inequívocamente (activa). Con grabación disponible se usa la voz del Director;
+      // si no, la del navegador (Web Speech).
+      if (els.btnVoz) els.btnVoz.addEventListener('click', () => {
+        if (VozDirector.activa() || (VozDirector.disponible() && !Voz.silenciado())) { VozDirector.iniciar(); return; }
+        if (!Voz.silenciado()) Voz.iniciar();
+      });
       // btnDetenerVoz: interrumpe la respuesta del Director y vuelve a escuchar (no finaliza la sesión).
-      if (els.btnDetenerVoz) els.btnDetenerVoz.addEventListener('click', () => { Voz.interrumpir(); });
+      if (els.btnDetenerVoz) els.btnDetenerVoz.addEventListener('click', () => { if (VozDirector.activa()) VozDirector.interrumpir(); else Voz.interrumpir(); });
 
 
 

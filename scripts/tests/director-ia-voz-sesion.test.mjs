@@ -25,11 +25,12 @@ test('Controles de sesión: btnVoz inicia/finaliza, btnDetenerVoz interrumpe (no
   assert.match(src, /btnVoz\s*:\s*document\.getElementById\('btnVoz'\)/);
   assert.match(src, /btnDetenerVoz\s*:\s*document\.getElementById\('btnDetenerVoz'\)/);
 
-  // btnVoz está ligado a Voz.iniciar (inicia sesión o la finaliza inequívocamente).
-  assert.match(src, /els\.btnVoz\.addEventListener\('click',\s*\(\)\s*=>\s*\{\s*if\s*\(!Voz\.silenciado\(\)\)\s*Voz\.iniciar\(\)/);
+  // btnVoz inicia o finaliza la sesión: con la voz del Director (1.3.3) si el navegador graba; si no, con la del navegador (Voz.iniciar).
+  assert.match(src, /els\.btnVoz\.addEventListener\('click',\s*\(\)\s*=>\s*\{[^}]*VozDirector\.iniciar\(\)/);
+  assert.match(src, /if\s*\(!Voz\.silenciado\(\)\)\s*Voz\.iniciar\(\);\s*\}\);/);
 
-  // btnDetenerVoz está ligado a Voz.interrumpir (NO a Voz.detener/finalizarSesion).
-  assert.match(src, /els\.btnDetenerVoz\.addEventListener\('click',\s*\(\)\s*=>\s*\{\s*Voz\.interrumpir\(\)/);
+  // btnDetenerVoz interrumpe (VozDirector.interrumpir o Voz.interrumpir), NUNCA finaliza la sesión.
+  assert.match(src, /els\.btnDetenerVoz\.addEventListener\('click',\s*\(\)\s*=>\s*\{\s*if\s*\(VozDirector\.activa\(\)\)\s*VozDirector\.interrumpir\(\);\s*else\s*Voz\.interrumpir\(\)/);
 
   // Existe una función interrumpir que cancela la síntesis y vuelve a escuchar.
   assert.match(src, /function interrumpirDirector/);
