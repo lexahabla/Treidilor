@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { setupIsolatedData } from './_helpers.mjs';
+import { setupIsolatedData, adminCookie } from './_helpers.mjs';
 
 const TEST_TOKEN = 'test-token-123';
 
@@ -33,9 +33,10 @@ async function buildEnv(dir) {
   const counter = await import('../../src/lib/repairCounter.ts' + suffix);
   const store = await import('../../src/lib/productStore.ts' + suffix);
 
-  function makeRequest(body, token) {
+  function makeRequest(body, token, cookie) {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
+    if (cookie) headers.Cookie = cookie;
     return new Request('http://localhost/api/admin/catalog/repair', {
       method: 'POST',
       headers,
@@ -43,8 +44,13 @@ async function buildEnv(dir) {
     });
   }
 
-  async function post(body, token = TEST_TOKEN) {
-    const res = await repairRoute.POST({ request: makeRequest(body, token) });
+  // Decidir, previsualizar, aplicar y reconciliar una corrección del catálogo exigen al administrador
+  // principal con SESIÓN (persona); el token de API solo lista y propone. Se usa la cookie del
+  // propietario salvo que la prueba fuerce el token para comprobar que se rechaza.
+  const ACCIONES_HUMANAS = new Set(['decide', 'preview', 'apply', 'reconciliar']);
+  async function post(body, token = TEST_TOKEN, { comoApi = false } = {}) {
+    const humano = ACCIONES_HUMANAS.has(body?.action) && !comoApi;
+    const res = await repairRoute.POST({ request: makeRequest(body, humano ? undefined : token, humano ? await adminCookie() : undefined) });
     const bodyJson = await res.json();
     return { res, body: bodyJson };
   }
@@ -131,6 +137,31 @@ test('reparación: decidir (aprobada) → 200', async () => {
   assert.equal(decideRes.status, 200, 'decisión registrada: ' + JSON.stringify(decideBody));
   assert.equal(decideBody.success, true);
   assert.equal(decideBody.decided, true);
+  env.disablePolicy();
+});
+
+test('reparación: el token de API NO puede aprobar en lugar de una persona → 403', async () => {
+  env.enablePolicy();
+  env.resetDataFiles();
+  env.counter.initRepairCounter();
+  env.store.upsertProduct(env.baseProduct('p1', { merchant: '[object Object]', network: 'amazon', price: 100, extra: { scraperApiSource: { seller: 'TiendaX' } }, specs: {} }));
+  const { body: createBody } = await env.post({ action: 'create', productId: 'p1', kind: 'malformed-merchant' });
+  const proposalId = createBody.proposal.id;
+  assert.ok(!JSON.stringify(createBody).includes('tradylor_admin_session'), 'la propuesta no guarda la cookie de sesión');
+
+  const { res, body } = await env.post({ action: 'decide', id: proposalId, decision: 'aprobada' }, TEST_TOKEN, { comoApi: true });
+  assert.equal(res.status, 403);
+  assert.equal(body.code, 'decision_humana_requerida');
+  const lista = await env.post({ action: 'list' });
+  assert.equal(lista.body.proposals.find((p) => p.id === proposalId).state, 'pendiente', 'sigue pendiente de decisión humana');
+
+  // Aunque una persona apruebe, el token tampoco puede previsualizar ni aplicar una corrección del catálogo.
+  await env.post({ action: 'decide', id: proposalId, decision: 'aprobada' });
+  const prevApi = await env.post({ action: 'preview', id: proposalId }, TEST_TOKEN, { comoApi: true });
+  assert.equal(prevApi.res.status, 403);
+  const applyApi = await env.post({ action: 'apply', id: proposalId, previewToken: 'x', confirm: true }, TEST_TOKEN, { comoApi: true });
+  assert.ok([403, 409].includes(applyApi.res.status), 'el token no aplica: ' + JSON.stringify(applyApi.body));
+  assert.equal(env.store.readProductsFromFile().find((p) => p.id === 'p1').merchant, '[object Object]', 'el catálogo no cambió');
   env.disablePolicy();
 });
 

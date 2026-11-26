@@ -34,9 +34,10 @@ export const LIMITS = Object.freeze({ title: 200, payloadBytes: 32 * 1024, evide
 
 export interface Evidence { kind: EvidenceKind; value: string; at?: string }
 export interface Decision { state: DecisionState; by: { id: string; name: string }; at: string; note: string | null }
-export interface HistoryEvent { at: string; event: 'creada' | DecisionState | 'aplicacion_simulada' | 'aplicacion_real'; by: string; note?: string | null }
+export interface HistoryEvent { at: string; event: 'creada' | DecisionState | 'aplicacion_simulada' | 'aplicacion_real' | 'aplicacion_en_curso'; by: string; note?: string | null }
 /** Registro de una aplicación. Hoy SOLO existe la SIMULADA (no escribe nada fuera de este almacén); una aplicación real exigiría ejecutores con reversión verificable. */
-export interface Application { mode: 'simulada' | 'real'; executor: string; previewToken: string; targetKey: string; at: string; by: { id: string; name: string }; changes: Array<{ campo: string; antes: unknown; despues: unknown }>; inverse: Array<{ campo: string; antes: unknown; despues: unknown }> }
+/** `en_curso`: intención registrada ANTES de escribir el catálogo (recuperable con «reconciliar» si se interrumpe). */
+export interface Application { mode: 'simulada' | 'real' | 'en_curso'; executor: string; previewToken: string; targetKey: string; at: string; by: { id: string; name: string }; changes: Array<{ campo: string; antes: unknown; despues: unknown }>; inverse: Array<{ campo: string; antes: unknown; despues: unknown }> }
 export interface Proposal {
   id: string;
   clientId: string;

@@ -39,6 +39,8 @@ import { isValidApiToken, unauthorizedApiResponse } from '../../../../lib/apiAut
 import { readProductsFromFile, updateCatalog, type Product } from '../../../../lib/productStore';
 import { planRepairs, type RepairPlan, recoverVendorName, type RepairItem } from '../../../../lib/catalogRepair';
 import { reserveAndRecord, canPerformRepair } from '../../../../lib/repairCounter';
+import { sameOrigin } from '../../../../lib/alertsHttp';
+import type { RepairKind } from '../../../../lib/catalogRepair';
 import {
   createProposal,
   decideProposal,
@@ -46,6 +48,7 @@ import {
   listProposalsAdmin,
   readProposalRaw,
   saveApplication,
+  type Proposal,
   type ProposalType,
 } from '../../../../lib/automationProposals';
 import { previewProposal, applyProposal, type Actor } from '../../../../lib/automationApply';
@@ -75,14 +78,28 @@ function patchIsAuthorized(patch: Record<string, unknown>): boolean {
   return keys.length === 1 && keys[0] === 'merchant';
 }
 
-/** Actor de la sesión actual (usuario del panel admin). Soporta sesión de
- * cookie y Bearer token de API pública. */
-function sessionActor(request: Request): Actor | null {
+/** Persona con sesión en el panel (cookie). El token de API NO es una persona. */
+function humanActor(request: Request): Actor | null {
   const user = getSessionUser(request);
-  if (user) return { id: user.id, name: user.name || user.id, master: Boolean(user.master) };
-  // Autenticación por token Bearer (API pública): actor sintético con permiso master.
-  if (isValidApiToken(request)) return { id: 'admin', name: 'admin', master: true };
+  return user ? { id: user.id, name: user.name || user.id, master: Boolean(user.master) } : null;
+}
+
+/**
+ * Actor de la petición. Con sesión de cookie es la persona; con el token de API es un EJECUTOR
+ * automático sin permiso master: puede listar, proponer, previsualizar y aplicar lo que una persona
+ * ya aprobó, pero NUNCA decidir (aprobar o rechazar) en su lugar.
+ */
+function sessionActor(request: Request): Actor | null {
+  const humano = humanActor(request);
+  if (humano) return humano;
+  if (isValidApiToken(request)) return { id: 'api', name: 'automatizacion', master: false };
   return null;
+}
+
+/** Tipo de reparación guardado en la propuesta (las anteriores a este campo solo podían ser de comercio). */
+function repairKindOf(proposal: Proposal): RepairKind {
+  const k = (proposal.payload as { tipoReparacion?: unknown }).tipoReparacion;
+  return (typeof k === 'string' && k ? k : 'malformed-merchant') as RepairKind;
 }
 
 /** Extrae el cambio de campo de una propuesta almacenada.
@@ -97,6 +114,10 @@ function prevChangesFromProposal(proposal: Proposal): { campo: string; antes: un
 export const POST: APIRoute = async ({ request }) => {
   // Autenticación.
   if (!authorized(request)) return unauthorizedApiResponse();
+  // Con sesión de cookie, solo desde el propio sitio (CSRF). El token de API no lleva cookie.
+  if (getSessionUser(request) && !sameOrigin(request)) {
+    return json({ success: false, message: 'Origen de la petición no permitido.' }, 403);
+  }
 
   // Policía desactivada por defecto.
   if (!isRepairEnabled()) {
@@ -177,14 +198,16 @@ export const POST: APIRoute = async ({ request }) => {
 
     const antes = product.merchant ?? null;
 
-    const clientId = String((request as any).headers.get('cookie')?.match(/tradylor_admin_session=([^;]+)/)?.[1] || 'admin');
+    // Identifica a quien propone SIN guardar credenciales (antes se guardaba el valor de la cookie de sesión).
+    const humano = humanActor(request);
+    const clientId = humano ? `usuario:${humano.id}`.slice(0, 80) : 'api';
     const idempotencyKey = `repair-${productId}-${kind}`;
 
     const raw = {
       agent: '04',
       type: 'correccion_catalogo' as ProposalType,
       title: `Reparar comercio de ${product.title}`,
-      payload: { productId, campo: 'merchant', antes, despues },
+      payload: { productId, campo: 'merchant', antes, despues, tipoReparacion: kind },
       evidence: [{ kind: 'texto', value: `Defecto detectado: comercio «${antes}». Vendedor original: ${despues}.` }],
       risk: 'bajo' as const,
       ttlDays: 14,
@@ -209,8 +232,9 @@ export const POST: APIRoute = async ({ request }) => {
       return json({ success: false, message: 'Se requieren "id" y "decision" (aprobada o rechazada).' }, 400);
     }
 
-    const actor = sessionActor(request);
-    if (!actor) return json({ success: false, message: 'Sesión no válida.' }, 401);
+    // Aprobar o rechazar es una decisión HUMANA: el token de API no puede sustituirla.
+    const actor = humanActor(request);
+    if (!actor) return json({ success: false, code: 'decision_humana_requerida', message: 'Solo una persona con sesión en el panel puede aprobar o rechazar una reparación.' }, 403);
 
     const r = decideProposal(id, decision, actor, note, new Date());
     if (!r.ok) return json({ success: false, message: r.message, code: r.code }, r.status);
@@ -277,6 +301,13 @@ export const POST: APIRoute = async ({ request }) => {
 
     // 2. Idempotencia: si ya fue aplicada (real o simulada), no tocar nada ni
     //    consumir presupuesto nuevamente.
+    if (proposal.application?.mode === 'en_curso') {
+      return json({
+        success: false,
+        code: 'aplicacion_interrumpida',
+        message: 'Hay una aplicación interrumpida de esta propuesta: usa la acción «reconciliar».',
+      }, 409);
+    }
     if (proposal.application) {
       return json({
         success: true,
@@ -305,7 +336,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     // 4. Reservar presupuesto en el contador ANTES de tocar el catálogo.
     //    Bloquea si el contador falta, está corrupto o no puede reservarse.
-    const reserve = reserveAndRecord(proposal.kind as any);
+    const reserve = reserveAndRecord(repairKindOf(proposal));
     if (!reserve.ok) {
       return json({ success: false, message: reserve.reason ?? 'no_se_pudo_reservar_presupuesto' }, 409);
     }
@@ -478,8 +509,8 @@ export const POST: APIRoute = async ({ request }) => {
         targetKey: `correccion:${proposal.payload.productId}:${change.campo}`,
         at: new Date().toISOString(),
         by: { id: actor.id.slice(0, 80), name: actor.name.slice(0, 80) },
-        changes: change,
-        inverse: { campo: change.campo, antes: change.despues, despues: change.antes },
+        changes: [change],
+        inverse: [{ campo: change.campo, antes: change.despues, despues: change.antes }],
       };
       const saved = saveApplication(id, applicationReal, new Date(), { force: true });
       if (!saved.ok) {
