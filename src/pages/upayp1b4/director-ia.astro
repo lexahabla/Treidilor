@@ -52,6 +52,16 @@ const activeSection = 'director-ia';
           <span class="punto punto--desconectado" aria-hidden="true"></span>
           <span id="textoEstado">Comprobando conexión…</span>
         </div>
+        <div class="director-ia-config" aria-label="Configuración de conversación">
+          <button type="button" id="btnConfigurarConversacion" class="btn-secondary btn-sm" title="Configurar ID de conversación (para compartir con Telegram)">🔗</button>
+          <div id="panelConfiguracion" class="director-ia-config-panel" hidden>
+            <label class="director-ia-config-label">ID de conversación (Telegram / panel):</label>
+            <input type="text" id="inputConversacionId" placeholder="cv_..." maxlength="64" spellcheck="false" />
+            <button type="button" id="btnGuardarConversacionId" class="btn-primary btn-sm">Guardar</button>
+            <button type="button" id="btnLimpiarConversacionId" class="btn-secondary btn-sm" style="margin-left:0.4rem">Limpiar</button>
+            <div id="alertaConversacionId" class="director-ia-alerta" hidden role="alert" aria-live="assertive"></div>
+          </div>
+        </div>
       </aside>
 
       <section class="director-ia-chat" aria-label="Chat">
@@ -75,6 +85,20 @@ const activeSection = 'director-ia';
               spellcheck="false"
               maxlength="2000"
             />
+            <button type="button" id="btnVoz" class="btn-secondary btn-sm" title="Hablar con el Director (micrófono)" aria-pressed="false">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+              </svg>
+              <span id="textoBtnVoz" class="texto-btn-voz">Hablar</span>
+            </button>
+            <button type="button" id="btnDetenerVoz" class="btn-secondary btn-sm" title="Detener voz" hidden aria-label="Detener voz">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="6" height="6"></rect>
+              </svg>
+            </button>
             <button type="button" id="btnAdjuntar" class="btn-secondary btn-sm" title="Opciones de la conversación">⋮</button>
             <button type="submit" id="btnEnviar" class="btn-primary btn-sm" disabled>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -84,6 +108,10 @@ const activeSection = 'director-ia';
             </button>
           </div>
           <div id="alertaForm" class="director-ia-alerta" hidden role="alert" aria-live="assertive"></div>
+          <div id="estadoVoz" class="director-ia-estado-voz" hidden role="status" aria-live="polite">
+            <span class="punto-voz" aria-hidden="true"></span>
+            <span id="textoEstadoVoz">Listo para hablar</span>
+          </div>
         </form>
       </section>
     </main>
@@ -104,9 +132,38 @@ const activeSection = 'director-ia';
         estado: document.getElementById('estadoConexion'),
         textoEstado: document.getElementById('textoEstado'),
         alerta: document.getElementById('alertaForm'),
+        btnConfigurarConversacion: document.getElementById('btnConfigurarConversacion'),
+        panelConfiguracion: document.getElementById('panelConfiguracion'),
+        inputConversacionId: document.getElementById('inputConversacionId'),
+        btnGuardarConversacionId: document.getElementById('btnGuardarConversacionId'),
+        btnLimpiarConversacionId: document.getElementById('btnLimpiarConversacionId'),
+        alertaConversacionId: document.getElementById('alertaConversacionId'),
       };
 
       let enVuelo = false;
+      let conversacionIdConfigurada = null;
+
+      // ── configuración de conversación (compartir con Telegram) ──
+      function leerConversacionIdGuardada() {
+        try {
+          const v = localStorage.getItem('directorIa_conversacionId');
+          return v || null;
+        } catch { return null; }
+      }
+      function guardarConversacionId(id) {
+        try { localStorage.setItem('directorIa_conversacionId', id || ''); } catch { /* sin localStorage */ }
+        conversacionIdConfigurada = id || null;
+      }
+      function urlConConversacionId(path) {
+        if (!conversacionIdConfigurada) return path;
+        const sep = path.includes('?') ? '&' : '?';
+        return `${path}${sep}conversacionId=${encodeURIComponent(conversacionIdConfigurada)}`;
+      }
+      function mostrarAlertaConversacionId(texto) {
+        if (!els.alertaConversacionId) return;
+        els.alertaConversacionId.hidden = !texto;
+        if (texto) els.alertaConversacionId.textContent = texto;
+      }
 
       // ── estado de conexión ──
       async function comprobarEstado() {
@@ -137,7 +194,7 @@ const activeSection = 'director-ia';
         if (!els.contenedor) return;
         els.contenedor.innerHTML = '<div class="director-ia-cargando">Cargando historial…</div>';
         try {
-          const res = await fetch(`${API_BASE}/principal`, { headers: { 'cache-control': 'no-store' } });
+          const res = await fetch(urlConConversacionId(`${API_BASE}/principal`), { headers: { 'cache-control': 'no-store' } });
           const j = await res.json();
           if (!j.success) throw new Error(j.message || 'No se pudo cargar el historial');
           renderizarMensajes(j.conversacion);
@@ -240,7 +297,7 @@ const activeSection = 'director-ia';
         scrollFinal();
 
         try {
-          const res = await enviarConCabeceraSegura(`${API_BASE}/principal`, {
+          const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), {
             method: 'POST',
             body: JSON.stringify({ texto }),
           });
@@ -324,6 +381,250 @@ const activeSection = 'director-ia';
       if (els.btnAdjuntar) {
         els.btnAdjuntar.addEventListener('click', () => {
           mostrarAlerta('Funciones adicionales pendientes (adjuntar contexto de ficha/categoría).');
+        });
+      }
+
+      // ── voz (Web Speech API del navegador, gratuita, sin servicios de pago) ──
+      const Voz = (function () {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const SpeechSynthesis = window.speechSynthesis;
+        const soportada = Boolean(SpeechRecognition && SpeechSynthesis);
+
+        let reconocimiento = null;
+        let sintetizando = false;
+        let escuchando = false;
+        let silenciado = false;
+        let utteranceActual = null;
+
+        const elsVoz = {
+          btn: document.getElementById('btnVoz'),
+          btnDetener: document.getElementById('btnDetenerVoz'),
+          textoBtn: document.getElementById('textoBtnVoz'),
+          estado: document.getElementById('estadoVoz'),
+          textoEstado: document.getElementById('textoEstadoVoz'),
+          input: els.input,
+          contenedor: els.contenedor,
+        };
+
+        function ponerEstadoVoz(texto, tipo = 'listo') {
+          if (!elsVoz.estado || !elsVoz.textoEstado) return;
+          elsVoz.textoEstado.textContent = texto;
+          const punto = elsVoz.estado.querySelector('.punto-voz');
+          if (punto) {
+            punto.className = 'punto-voz punto-voz--' + tipo;
+          }
+          elsVoz.estado.hidden = false;
+        }
+
+        function ocultarEstadoVoz() {
+          if (elsVoz.estado) elsVoz.estado.hidden = true;
+        }
+
+        function actualizarBotones() {
+          const activo = escuchando || sintetizando;
+          if (elsVoz.btn) {
+            elsVoz.btn.disabled = activo;
+            elsVoz.btn.setAttribute('aria-pressed', String(escuchando));
+            if (elsVoz.textoBtn) elsVoz.textoBtn.textContent = escuchando ? 'Escuchando…' : 'Hablar';
+          }
+          if (elsVoz.btnDetener) elsVoz.btnDetener.hidden = !activo;
+          if (elsVoz.input) elsVoz.input.disabled = activo || enVuelo;
+          if (els.btnEnviar) els.btnEnviar.disabled = activo || enVuelo || !elsVoz.input.value.trim();
+        }
+
+        function detenerVoz() {
+          if (reconocimiento) {
+            try { reconocimiento.stop(); } catch { /* ignorar */ }
+            reconocimiento = null;
+          }
+          if (SpeechSynthesis) {
+            try { SpeechSynthesis.cancel(); } catch { /* ignorar */ }
+          }
+          escuchando = false;
+          sintetizando = false;
+          utteranceActual = null;
+          ocultarEstadoVoz();
+          actualizarBotones();
+          if (elsVoz.input) elsVoz.input.disabled = enVuelo;
+          if (els.btnEnviar) els.btnEnviar.disabled = enVuelo || !elsVoz.input.value.trim();
+        }
+
+        function hablarTexto(texto) {
+          if (!SpeechSynthesis || silenciado) return;
+          detenerVoz();
+          sintetizando = true;
+          actualizarBotones();
+          ponerEstadoVoz('El Director responde…', 'hablando');
+          utteranceActual = new SpeechSynthesisUtterance(texto);
+          utteranceActual.lang = 'es-ES';
+          utteranceActual.onend = () => { sintetizando = false; utteranceActual = null; actualizarBotones(); ocultarEstadoVoz(); };
+          utteranceActual.onerror = () => { sintetizando = false; utteranceActual = null; actualizarBotones(); ocultarEstadoVoz(); };
+          try { SpeechSynthesis.speak(utteranceActual); } catch { sintetizando = false; actualizarBotones(); ocultarEstadoVoz(); }
+        }
+
+        function iniciarReconocimiento() {
+          if (!soportada) {
+            mostrarAlerta('Tu navegador no soporta reconocimiento de voz. Usa el teclado.');
+            return;
+          }
+          if (!SpeechRecognition) return;
+          detenerVoz();
+          escuchando = true;
+          actualizarBotones();
+          ponerEstadoVoz('Escuchando… habla ahora', 'escuchando');
+
+          reconocimiento = new SpeechRecognition();
+          reconocimiento.lang = 'es-ES';
+          reconocimiento.continuous = false;
+          reconocimiento.interimResults = false;
+          reconocimiento.maxAlternatives = 1;
+
+          reconocimiento.onresult = (evento) => {
+            const transcripcion = evento.results[0][0].transcript;
+            const confianza = evento.results[0][0].confidence ?? 0;
+            if (elsVoz.input) elsVoz.input.value = transcripcion;
+            if (els.btnEnviar) els.btnEnviar.disabled = !transcripcion.trim() || enVuelo;
+            mostrarAlerta(null);
+            detenerVoz();
+            // Enviar como mensaje de voz automáticamente
+            if (transcripcion.trim()) {
+              enviarMensajeVoz(transcripcion, confianza);
+            }
+          };
+
+          reconocimiento.onerror = (evento) => {
+            console.error('Error reconocimiento:', evento.error);
+            if (evento.error === 'not-allowed' || evento.error === 'service-not-allowed') {
+              mostrarAlerta('Permiso del micrófono denegado. Concede acceso al micrófono o usa el teclado.');
+            } else if (evento.error === 'no-speech') {
+              mostrarAlerta('No se detectó voz. Inténtalo de nuevo.');
+            } else {
+              mostrarAlerta('Error de reconocimiento de voz.');
+            }
+            detenerVoz();
+          };
+
+          reconocimiento.onend = () => {
+            escuchando = false;
+            reconocimiento = null;
+            actualizarBotones();
+            ocultarEstadoVoz();
+          };
+
+          try { reconocimiento.start(); } catch (e) {
+            console.error('No se pudo iniciar reconocimiento:', e);
+            mostrarAlerta('No se pudo iniciar el micrófono.');
+            detenerVoz();
+          }
+        }
+
+        async function enviarMensajeVoz(texto, confianza) {
+          if (!elsVoz.contenedor) return;
+          enVuelo = true;
+          actualizarBotones();
+          mostrarAlerta(null);
+
+          const ahora = new Date().toISOString();
+          const nodoUsuario = crearNodoMensaje({ rol: 'usuario', contenido: texto, en: ahora });
+          elsVoz.contenedor.appendChild(nodoUsuario);
+          scrollFinal();
+
+          try {
+            const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), {
+              method: 'POST',
+              body: JSON.stringify({ texto, origen: 'voz', confianza }),
+            });
+            const j = await res.json();
+            if (!j.success) throw new Error(j.message || 'Error del servidor');
+
+            const nodoDirector = crearNodoMensaje({
+              rol: 'director',
+              contenido: j.respuesta.textoClaro,
+              en: j.respuesta.generadoEn || ahora,
+              estado: j.respuesta.estado,
+              categoria: j.respuesta.categoria,
+              tipoIntencion: j.respuesta.tipoIntencion,
+              naturalezaDatos: j.respuesta.naturalezaDatos,
+              fuentes: j.respuesta.fuentes,
+              tareas: j.respuesta.tareas,
+              solicitudesAutorizacion: j.respuesta.solicitudesAutorizacion,
+              limitaciones: j.respuesta.limitaciones,
+              avisos: j.respuesta.avisos,
+              controles: j.respuesta.controles,
+              registrada: j.respuesta.registrada,
+              generadoEn: j.respuesta.generadoEn,
+            });
+            elsVoz.contenedor.appendChild(nodoDirector);
+            scrollFinal();
+
+            // Leer en voz alta la respuesta del Director (textoParaVoz si está disponible)
+            const textoVoz = j.respuesta.detalle || j.respuesta.textoClaro;
+            if (textoVoz) hablarTexto(textoVoz);
+          } catch (err) {
+            mostrarAlerta(err instanceof Error ? err.message : 'No se pudo enviar el mensaje de voz.');
+            if (nodoUsuario.parentNode) nodoUsuario.parentNode.removeChild(nodoUsuario);
+          } finally {
+            enVuelo = false;
+            actualizarBotones();
+            if (elsVoz.input) elsVoz.input.disabled = enVuelo;
+            if (els.btnEnviar) els.btnEnviar.disabled = enVuelo || !elsVoz.input.value.trim();
+          }
+        }
+
+        return {
+          soportada,
+          silenciado: () => silenciado,
+          setSilenciado: (v) => { silenciado = v; if (v) detenerVoz(); },
+          iniciar: iniciarReconocimiento,
+          detener: detenerVoz,
+          hablar: hablarTexto,
+        };
+      })();
+
+      // eventos de voz
+      if (Voz.soportada) {
+        if (els.btnVoz) els.btnVoz.addEventListener('click', () => { if (!Voz.silenciado()) Voz.iniciar(); });
+        if (els.btnDetenerVoz) els.btnDetenerVoz.addEventListener('click', () => { Voz.detener(); });
+      } else {
+        if (els.btnVoz) els.btnVoz.hidden = true;
+        if (els.btnDetenerVoz) els.btnDetenerVoz.hidden = true;
+      }
+
+      // ── configuración de conversación (compartir con Telegram) ──
+      conversacionIdConfigurada = leerConversacionIdGuardada();
+      if (els.inputConversacionId && conversacionIdConfigurada) {
+        els.inputConversacionId.value = conversacionIdConfigurada;
+      }
+      if (els.btnConfigurarConversacion && els.panelConfiguracion) {
+        els.btnConfigurarConversacion.addEventListener('click', () => {
+          const hidden = els.panelConfiguracion.hidden;
+          els.panelConfiguracion.hidden = !hidden;
+          if (!hidden) els.inputConversacionId.focus();
+        });
+      }
+      if (els.btnGuardarConversacionId && els.inputConversacionId) {
+        els.btnGuardarConversacionId.addEventListener('click', () => {
+          const id = els.inputConversacionId.value.trim();
+          if (id && !/^cv_[0-9a-f]{16}$/.test(id)) {
+            mostrarAlertaConversacionId('ID inválido: debe ser cv_ seguido de 16 caracteres hexadecimales.');
+            return;
+          }
+          guardarConversacionId(id || null);
+          mostrarAlertaConversacionId(id ? `Conversación configurada: ${id}` : 'Conversación limpiada (se creará una nueva).');
+          setTimeout(() => mostrarAlertaConversacionId(null), 3000);
+          els.panelConfiguracion.hidden = true;
+          // Recargar la conversación con el nuevo ID
+          cargarConversacionPrincipal();
+        });
+      }
+      if (els.btnLimpiarConversacionId && els.inputConversacionId) {
+        els.btnLimpiarConversacionId.addEventListener('click', () => {
+          els.inputConversacionId.value = '';
+          guardarConversacionId(null);
+          mostrarAlertaConversacionId('Conversación limpiada.');
+          setTimeout(() => mostrarAlertaConversacionId(null), 3000);
+          els.panelConfiguracion.hidden = true;
+          cargarConversacionPrincipal();
         });
       }
 
@@ -572,6 +873,70 @@ const activeSection = 'director-ia';
       border: 1px solid rgba(248, 113, 113, 0.2);
       border-radius: var(--border-radius-sm, 8px);
       background: rgba(248, 113, 113, 0.05);
+    }
+
+    .director-ia-config {
+      margin-top: 0.6rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .director-ia-config-panel {
+      margin-top: 0.5rem;
+      padding: 0.6rem 0.8rem;
+      border: 1px solid var(--color-border, #1f2937);
+      border-radius: var(--border-radius-sm, 8px);
+      background: rgba(17, 24, 39, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .director-ia-config-label {
+      font-size: 0.72rem;
+      color: var(--color-text-muted, #9ca3af);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .director-ia-config-panel input {
+      flex: 1;
+      min-width: 0;
+      padding: 0.45rem 0.7rem;
+      border: 1px solid var(--color-border, #1f2937);
+      border-radius: var(--border-radius-sm, 8px);
+      background: #0b1120;
+      color: var(--color-text-main, #f3f4f6);
+      font: inherit;
+      font-size: 0.85rem;
+    }
+    .director-ia-config-panel input:focus {
+      outline: none;
+      border-color: var(--color-primary, #2563eb);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    }
+    .director-ia-estado-voz {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.55rem 0.8rem;
+      border-radius: var(--border-radius-sm, 8px);
+      font-size: 0.82rem;
+      border: 1px solid transparent;
+      background: rgba(17, 24, 39, 0.4);
+      margin-top: 0.4rem;
+    }
+    .director-ia-estado-voz .punto-voz {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .punto-voz--escuchando { background: var(--color-primary, #2563eb); box-shadow: 0 0 6px var(--color-primary, #2563eb); animation: pulso-voz 1.5s infinite; }
+    .punto-voz--hablando { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
+    .punto-voz--listo { background: var(--color-text-muted, #9ca3af); }
+    @keyframes pulso-voz {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
     }
 
     @media (max-width: 900px) {

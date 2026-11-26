@@ -20,6 +20,7 @@ import type { APIRoute } from 'astro';
 import { requireAdminAuth, getSessionUser } from '../../../../lib/adminAuth';
 import { findUserById } from '../../../../lib/userStore';
 import { sameOrigin } from '../../../../lib/alertsHttp';
+import { listarConversaciones } from '../../../../lib/directorIaStore';
 import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
 
 const MAX_TEXTO = 2000;
@@ -62,6 +63,17 @@ export const GET: APIRoute = async ({ request }) => {
     return json({ success: false, code: 'no_autorizado', message: 'Solo el propietario puede leer la conversación principal del Director.' }, 403);
   }
 
+  // ID de conversación explícita (p. ej. la de Telegram) para compartirla sin crear nueva.
+  const url = new URL(request.url);
+  const conversacionIdExplícita = url.searchParams.get('conversacionId') ?? undefined;
+
+  // Usar la conversación principal ya guardada en el caché si existe,
+  // para no crear conversaciones paralelas en el puente.
+  const lista = listarConversaciones(user.id);
+  const guardada = conversacionIdExplícita
+    ? { id: conversacionIdExplícita }
+    : (lista.length > 0 ? { id: lista[0].id } : null);
+
   const cliente = clientePuente();
   if (!cliente) {
     return json(
@@ -75,14 +87,18 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   let principal: { conversacion: string; principal: boolean };
-  try {
-    principal = await cliente.abrirConversacionPrincipal();
-  } catch (e) {
-    const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
-    return json(
-      { success: false, code: errorPuente.codigo, message: errorPuente.message },
-      errorPuente.status === 500 ? 503 : errorPuente.status,
-    );
+  if (guardada) {
+    principal = { conversacion: guardada.id, principal: true };
+  } else {
+    try {
+      principal = await cliente.abrirConversacionPrincipal();
+    } catch (e) {
+      const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
+      return json(
+        { success: false, code: errorPuente.codigo, message: errorPuente.message },
+        errorPuente.status === 500 ? 503 : errorPuente.status,
+      );
+    }
   }
 
   let historial: { conversacion: string; turnos: Array<any> };
@@ -156,6 +172,17 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
+  // ID de conversación explícita (p. ej. la de Telegram) para compartirla sin crear nueva.
+  const url = new URL(request.url);
+  const conversacionIdExplícita = url.searchParams.get('conversacionId') ?? undefined;
+
+  // Usar la conversación principal ya guardada en el caché si existe,
+  // para no crear conversaciones paralelas en el puente.
+  const lista = listarConversaciones(user.id);
+  const guardada = conversacionIdExplícita
+    ? { id: conversacionIdExplícita }
+    : (lista.length > 0 ? { id: lista[0].id } : null);
+
   const cliente = clientePuente();
   if (!cliente) {
     return json(
@@ -166,6 +193,21 @@ export const POST: APIRoute = async ({ request }) => {
       },
       503,
     );
+  }
+
+  let principal: { conversacion: string; principal: boolean };
+  if (guardada) {
+    principal = { conversacion: guardada.id, principal: true };
+  } else {
+    try {
+      principal = await cliente.abrirConversacionPrincipal();
+    } catch (e) {
+      const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
+      return json(
+        { success: false, code: errorPuente.codigo, message: errorPuente.message },
+        errorPuente.status === 500 ? 503 : errorPuente.status,
+      );
+    }
   }
 
   let body: { texto?: string };
@@ -181,17 +223,6 @@ export const POST: APIRoute = async ({ request }) => {
   }
   if (texto.length > MAX_TEXTO) {
     return json({ success: false, code: 'texto_demasiado_largo', message: `El mensaje supera los ${MAX_TEXTO} caracteres.` }, 400);
-  }
-
-  let principal: { conversacion: string; principal: boolean };
-  try {
-    principal = await cliente.abrirConversacionPrincipal();
-  } catch (e) {
-    const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
-    return json(
-      { success: false, code: errorPuente.codigo, message: errorPuente.message },
-      errorPuente.status === 500 ? 503 : errorPuente.status,
-    );
   }
 
   let respuesta: any;

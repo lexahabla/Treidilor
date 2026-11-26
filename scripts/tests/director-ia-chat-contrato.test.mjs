@@ -86,7 +86,8 @@ function crearServidorDePrueba(tokenEsperado) {
 
       try {
         if (ruta === '/tai/v1/chat/conversacion') {
-          if (datos.principal !== true) return error(res, 400, 'solicitud_invalida', 'principal debe ser true.');
+          // En producción, CAMPOS['/tai/v1/chat/conversacion'] = []: no se permiten campos.
+          // El cliente envía {} (vacío). El servidor de prueba lo acepta sin exigir principal.
           const conversacion = `cv_${String(siguienteId++).padStart(16, '0')}`;
           return json(res, 200, { esquema: ESQUEMA, conversacion, principal: true });
         }

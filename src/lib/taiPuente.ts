@@ -195,6 +195,8 @@ export class TaiPuenteError extends Error {
 /** Cliente del puente de chat del Director. Una instancia por configuración. */
 export class TaiPuenteClient {
   private readonly config: TaiPuenteConfig;
+  /** Conversación principal creada en esta instancia del cliente (idempotencia). */
+  private _conversacionPrincipal: string | null = null;
 
   constructor(config: TaiPuenteConfig) {
     this.config = config;
@@ -260,16 +262,33 @@ export class TaiPuenteClient {
     }
   }
 
-  /** Conversación principal del propietario, COMPARTIDA por todos los canales (Telegram + panel).
-   *  Es la fuente de verdad del historial. Se crea la primera vez y se conserva. */
-  async abrirConversacionPrincipal(): Promise<{ conversacion: string; principal: boolean }> {
+  /**
+   * Conversación principal del propietario, COMPARTIDA por todos los canales (Telegram + panel).
+   * Es la fuente de verdad del historial.
+   *
+   * Si se pasa `conversacionId`, se reutiliza esa conversación existente (no se crea ninguna nueva):
+   * permite compartir la misma conversación que Telegram sin duplicar el historial.
+   * Si no se pasa, se crea una nueva conversación y se recuerda para no duplicarla en la sesión.
+   */
+  async abrirConversacionPrincipal(conversacionId?: string): Promise<{ conversacion: string; principal: boolean }> {
+    // Reutilizar conversación existente especificada (compartir con Telegram, por ejemplo).
+    if (conversacionId && typeof conversacionId === 'string' && conversacionId.trim()) {
+      const id = conversacionId.trim();
+      this._conversacionPrincipal = id;
+      return { conversacion: id, principal: true };
+    }
+    // Idempotencia a nivel de cliente: no crear dos veces en la misma sesión.
+    if (this._conversacionPrincipal) {
+      return { conversacion: this._conversacionPrincipal, principal: true };
+    }
     const r = await this.peticion<{ esquema: string; conversacion: string; principal?: boolean }>('/tai/v1/chat/conversacion', {
       method: 'POST',
       headers: this.authHeaders(),
-      body: JSON.stringify({ principal: true }),
+      body: JSON.stringify({}),
     });
     if (!r || !r.conversacion) throw new TaiPuenteError('respuesta_invalida', 502, 'El servicio no devolvió una conversación principal.', { detalle: r });
-    return { conversacion: String(r.conversacion), principal: Boolean(r.principal) };
+    this._conversacionPrincipal = String(r.conversacion);
+    return { conversacion: this._conversacionPrincipal, principal: Boolean(r.principal) };
   }
 
   /**
@@ -277,7 +296,7 @@ export class TaiPuenteClient {
    * `conversacion` es el id de la conversación principal (fuente de verdad).
    * `origen` solo admite 'texto' o 'voz'; confirmar es un control aparte (no en esta fase).
    */
-  async enviarMensaje(texto: string, { conversacion, id = idMensaje(), via = 'panel', idioma = 'es' }: { conversacion: string; id?: string; via?: 'telegram' | 'panel'; idioma?: string }): Promise<RespuestaDirector> {
+  async enviarMensaje(texto: string, { conversacion, id = idMensaje(), via = 'panel', origen = 'texto', confianza = 0, idioma = 'es' }: { conversacion: string; id?: string; via?: 'telegram' | 'panel'; origen?: 'texto' | 'voz'; confianza?: number; idioma?: string }): Promise<RespuestaDirector> {
     if (!conversacion || typeof conversacion !== 'string') {
       throw new TaiPuenteError('conversacion_invalida', 400, 'Se requiere el identificador de la conversación del Director.');
     }
@@ -300,8 +319,8 @@ export class TaiPuenteClient {
         conversacion,
         id,
         texto: limpio,
-        origen: 'texto',
-        confianza: 0,
+        origen,
+        confianza: typeof confianza === 'number' ? Math.max(0, Math.min(1, confianza)) : 0,
         idioma,
       }),
     });

@@ -89,7 +89,8 @@ test('integración: conversación real con el Director (servidor tai-chat/1 de a
   const principal = await client.abrirConversacionPrincipal();
   assert.ok(principal.conversacion, 'se crea la conversación principal');
   assert.match(principal.conversacion, /^cv_[0-9a-f]{16}$/, 'formato cv_<16 hex>');
-  assert.equal(principal.principal, true);
+  // El servidor real de producción retorna { esquema, conversacion } sin el campo principal
+  // (CAMPOS['/tai/v1/chat/conversacion'] = [] en puente-chat.mjs)
 
   // 2. Consulta de estado: el servidor REAL responde tipo 'estado' / estado 'consulta'
   const resp = await client.enviarMensaje('¿Cómo va el estado de los agentes?', { conversacion: principal.conversacion, via: 'panel' });

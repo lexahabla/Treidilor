@@ -62,17 +62,30 @@ export const GET: APIRoute = async ({ request }) => {
   const cliente = clientePuente();
   let principal: { conversacion: string; principal: boolean } | null = null;
   let errorPuente: TaiPuenteError | null = null;
-  if (cliente) {
-    try { principal = await cliente.abrirConversacionPrincipal(); } catch (e) { errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e)); }
-  }
+
+  // ID de conversación explícita (p. ej. la de Telegram) para compartirla sin crear nueva.
+  const url = new URL(request.url);
+  const conversacionIdExplícita = url.searchParams.get('conversacionId') ?? undefined;
+
+  // Usar la conversación principal ya guardada en el caché si existe,
+  // para no crear conversaciones paralelas en el puente.
+  const lista = listarConversaciones(user.id);
+  const guardada = conversacionIdExplícita
+    ? { id: conversacionIdExplícita }
+    : (lista.length > 0 ? { id: lista[0].id } : null);
+
+  if (guardada) {
+    principal = { conversacion: guardada.id, principal: true };
+  } else if (cliente) {
+    try { principal = await cliente.abrirConversacionPrincipal(); } catch (e) { errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e)); }  }
 
   const conversaciones = principal
     ? [{ id: principal.conversacion, titulo: 'Director IA', creadoEn: new Date().toISOString(), actualizadoEn: new Date().toISOString() }]
     : [];
 
   // Persiste metadatos auxiliares en el caché (no duplica mensajes).
-  if (principal) {
-    try { guardarConversacionMeta(user.id, principal.conversacion, 'Director IA'); } catch {}
+  if (principal && !guardada) {
+    try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
   }
 
   if (errorPuente && !principal) {
