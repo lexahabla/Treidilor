@@ -190,9 +190,9 @@ export const POST: APIRoute = async ({ params, request }) => {
     );
   }
 
-  let body: { texto?: string };
+  let body: { texto?: string; origen?: string; confianza?: number };
   try {
-    body = (await request.json()) as { texto?: string };
+    body = (await request.json()) as { texto?: string; origen?: string; confianza?: number };
   } catch {
     return json({ success: false, code: 'json_no_valido', message: 'Cuerpo JSON no válido.' }, 400);
   }
@@ -205,10 +205,22 @@ export const POST: APIRoute = async ({ params, request }) => {
     return json({ success: false, code: 'texto_demasiado_largo', message: `El mensaje supera los ${MAX_TEXTO} caracteres.` }, 400);
   }
 
+  // Validar origen: solo 'texto' o 'voz'.
+  const origen = typeof body.origen === 'string' && (body.origen === 'texto' || body.origen === 'voz')
+    ? body.origen : 'texto';
+  // Validar y acotar confianza: número entre 0 y 1.
+  const confianza = typeof body.confianza === 'number' && Number.isFinite(body.confianza)
+    ? Math.max(0, Math.min(1, body.confianza)) : 0;
+
   let respuesta: any;
   let errorPuente: TaiPuenteError | null = null;
   try {
-    respuesta = await cliente.enviarMensaje(texto, { conversacion: meta.id, via: 'panel' });
+    respuesta = await cliente.enviarMensaje(texto, {
+      conversacion: meta.id,
+      via: 'panel',
+      origen,
+      confianza,
+    });
   } catch (e) {
     errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
   }

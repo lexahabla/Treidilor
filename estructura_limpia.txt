@@ -129,6 +129,8 @@ scripts/tests/data-backup.test.mjs
 scripts/tests/deleted-identity.test.mjs
 scripts/tests/deleted-panel-paths.test.mjs
 scripts/tests/deploy-config.test.mjs
+scripts/tests/director-ia-boton-voz.test.mjs
+scripts/tests/director-ia-conversacion-natural.test.mjs
 scripts/tests/discount-claims.test.mjs
 scripts/tests/facets.test.mjs
 scripts/tests/aliexpress-validate.test.mjs
@@ -280,6 +282,7 @@ src/lib/comparableOffers.ts
 src/lib/curation.ts
 src/lib/deletedIdentity.ts
 src/lib/deletedProducts.ts
+src/lib/directorIaConversacion.ts
 src/lib/excelExport.ts
 src/lib/formConflicts.ts
 src/lib/geminiGrounded.ts

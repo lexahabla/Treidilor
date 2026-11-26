@@ -18,7 +18,7 @@ import { requireAdminAuth, getSessionUser } from '../../../../lib/adminAuth';
 import { findUserById } from '../../../../lib/userStore';
 import { sameOrigin } from '../../../../lib/alertsHttp';
 import {
-  listarConversaciones, crearConversacion, contarConversaciones, obtenerConversacionMeta, guardarConversacionPrincipal,
+  listarConversaciones, contarConversaciones, obtenerConversacionMeta, guardarConversacionPrincipal,
 } from '../../../../lib/directorIaStore';
 import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
 
@@ -75,9 +75,15 @@ export const GET: APIRoute = async ({ request }) => {
     : (lista.length > 0 ? { id: lista[0].id } : null);
 
   if (guardada) {
-    principal = { conversacion: guardada.id, principal: true };
+    // Reutilizar la conversación existente (compartida con Telegram).
+    try { principal = await cliente.abrirConversacionPrincipal(guardada.id); } catch (e) { errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e)); }
   } else if (cliente) {
-    try { principal = await cliente.abrirConversacionPrincipal(); } catch (e) { errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e)); }  }
+    try {
+      principal = await cliente.abrirConversacionPrincipal();
+      // Persiste el ID de la conversación principal para reutilizarla.
+      try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
+    } catch (e) { errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e)); }
+  }
 
   const conversaciones = principal
     ? [{ id: principal.conversacion, titulo: 'Director IA', creadoEn: new Date().toISOString(), actualizadoEn: new Date().toISOString() }]
@@ -134,9 +140,9 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  let body: { texto?: string };
+  let body: { texto?: string; origen?: string; confianza?: number };
   try {
-    body = (await request.json()) as { texto?: string };
+    body = (await request.json()) as { texto?: string; origen?: string; confianza?: number };
   } catch {
     return json({ success: false, code: 'json_no_valido', message: 'Cuerpo JSON no válido.' }, 400);
   }
@@ -149,6 +155,13 @@ export const POST: APIRoute = async ({ request }) => {
     return json({ success: false, code: 'texto_demasiado_largo', message: `El mensaje supera los ${MAX_TEXTO} caracteres.` }, 400);
   }
 
+  // Validar origen: solo 'texto' o 'voz'.
+  const origen = typeof body.origen === 'string' && (body.origen === 'texto' || body.origen === 'voz')
+    ? body.origen : 'texto';
+  // Validar y acotar confianza: número entre 0 y 1.
+  const confianza = typeof body.confianza === 'number' && Number.isFinite(body.confianza)
+    ? Math.max(0, Math.min(1, body.confianza)) : 0;
+
   const yaTiene = contarConversaciones(user.id);
   if (yaTiene >= 50) {
     return json({ success: false, code: 'limite_conversaciones', message: 'Has alcanzado el máximo de 50 conversaciones.' }, 409);
@@ -157,6 +170,9 @@ export const POST: APIRoute = async ({ request }) => {
   let principal: { conversacion: string; principal: boolean };
   try {
     principal = await cliente.abrirConversacionPrincipal();
+    // Persiste el ID de la conversación principal para reutilizarla
+    // (historial único compartido con Telegram).
+    try { guardarConversacionPrincipal(user.id, principal.conversacion, texto); } catch {}
   } catch (e) {
     const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
     return json(
@@ -169,7 +185,12 @@ export const POST: APIRoute = async ({ request }) => {
   let respuesta: any;
   let errorPuente: TaiPuenteError | null = null;
   try {
-    respuesta = await cliente.enviarMensaje(texto, { conversacion: principal.conversacion, via: 'panel' });
+    respuesta = await cliente.enviarMensaje(texto, {
+      conversacion: principal.conversacion,
+      via: 'panel',
+      origen,
+      confianza,
+    });
   } catch (e) {
     errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
   }

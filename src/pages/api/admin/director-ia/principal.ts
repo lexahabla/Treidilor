@@ -17,11 +17,15 @@
  */
 
 import type { APIRoute } from 'astro';
+import { randomBytes } from 'node:crypto';
 import { requireAdminAuth, getSessionUser } from '../../../../lib/adminAuth';
 import { findUserById } from '../../../../lib/userStore';
 import { sameOrigin } from '../../../../lib/alertsHttp';
-import { listarConversaciones } from '../../../../lib/directorIaStore';
+import {
+  listarConversaciones, guardarConversacionPrincipal,
+} from '../../../../lib/directorIaStore';
 import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
+import { clasificarIntencion, respuestaSocial, respuestaSinDatos } from '../../../../lib/directorIaConversacion';
 
 const MAX_TEXTO = 2000;
 const CABECERA_ESCRITURA = 'X-Director-IA';
@@ -88,10 +92,21 @@ export const GET: APIRoute = async ({ request }) => {
 
   let principal: { conversacion: string; principal: boolean };
   if (guardada) {
-    principal = { conversacion: guardada.id, principal: true };
+    // Reutilizar la conversación existente (compartida con Telegram) en lugar
+    // de crear una nueva. Así el panel y Telegram comparten el mismo historial.
+    try {
+      principal = await cliente.abrirConversacionPrincipal(guardada.id);
+    } catch {
+      // Si la conversación guardada ya no existe en el puente, crear una nueva.
+      principal = await cliente.abrirConversacionPrincipal();
+      try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
+    }
   } else {
     try {
       principal = await cliente.abrirConversacionPrincipal();
+      // Persiste el ID de la conversación principal para reutilizarla en
+      // futuras peticiones (historial único compartido con Telegram).
+      try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
     } catch (e) {
       const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
       return json(
@@ -197,10 +212,16 @@ export const POST: APIRoute = async ({ request }) => {
 
   let principal: { conversacion: string; principal: boolean };
   if (guardada) {
-    principal = { conversacion: guardada.id, principal: true };
+    try {
+      principal = await cliente.abrirConversacionPrincipal(guardada.id);
+    } catch {
+      principal = await cliente.abrirConversacionPrincipal();
+      try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
+    }
   } else {
     try {
       principal = await cliente.abrirConversacionPrincipal();
+      try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
     } catch (e) {
       const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
       return json(
@@ -210,9 +231,9 @@ export const POST: APIRoute = async ({ request }) => {
     }
   }
 
-  let body: { texto?: string };
+  let body: { texto?: string; origen?: string; confianza?: number };
   try {
-    body = (await request.json()) as { texto?: string };
+    body = (await request.json()) as { texto?: string; origen?: string; confianza?: number };
   } catch {
     return json({ success: false, code: 'json_no_valido', message: 'Cuerpo JSON no válido.' }, 400);
   }
@@ -225,10 +246,74 @@ export const POST: APIRoute = async ({ request }) => {
     return json({ success: false, code: 'texto_demasiado_largo', message: `El mensaje supera los ${MAX_TEXTO} caracteres.` }, 400);
   }
 
+  // Validar origen: solo 'texto' o 'voz'.
+  const origen = typeof body.origen === 'string' && (body.origen === 'texto' || body.origen === 'voz')
+    ? body.origen : 'texto';
+  // Validar y acotar confianza: número entre 0 y 1.
+  const confianza = typeof body.confianza === 'number' && Number.isFinite(body.confianza)
+    ? Math.max(0, Math.min(1, body.confianza)) : 0;
+
+  // ── Clasificación conversacional local (Problema 2) ──
+  // Los mensajes sociales reciben respuesta natural sin cargar al puente
+  // (evita que saludos y preguntas cotidianas se clasifiquen como no_entendida).
+  // Se recupera el historial real de la conversación (compartido con Telegram)
+  // para que la charla tenga continuidad y memoria entre turnos y canales.
+  const intencion = clasificarIntencion(texto);
+
+  if (intencion === 'social') {
+    const historialReal = await cliente.obtenerHistorial(principal.conversacion, { ultimos: 50 }).catch(() => ({ turnos: [] }));
+    const historialTurnos = Array.isArray(historialReal.turnos) ? historialReal.turnos : [];
+    const textoRespuesta = respuestaSocial(texto, { historial: historialTurnos });
+    const generadoEn = new Date().toISOString();
+    // Guarda metadatos del intercambio social (no duplica mensajes en el puente;
+    // el historial de la sesión se muestra en el panel y es fuente de verdad).
+    try { guardarConversacionPrincipal(user.id, principal.conversacion, texto); } catch {}
+    return json({
+      success: true,
+      conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: true },
+      mensaje: { id: `msg-${randomBytes(8).toString('hex')}`, texto, en: generadoEn },
+      respuesta: {
+        estado: 'respondida',
+        categoria: 'social',
+        textoClaro: textoRespuesta,
+        detalle: textoRespuesta,
+        tipoIntencion: 'social',
+        naturalezaDatos: [],
+        fuentes: [],
+        tareas: [],
+        solicitudesAutorizacion: [],
+        alternativas: [],
+        consecuencias: [],
+        limitaciones: [],
+        avisos: [],
+        controles: {
+          registrada: true,
+          paradaActiva: null,
+          secretoDetectado: false,
+          tipoDeControl: null,
+          instruccionesSospechosas: 0,
+          confirmaPorEsteCanal: false,
+          canal: 'panel',
+        },
+        registrada: true,
+        resumenHablado: textoRespuesta,
+        generadoEn,
+      },
+      trazabilidad: { tareas: [] },
+      autorizacion: { apruebaElPuente: false, pendientes: [] },
+    });
+  }
+
+  // ── Consulta del negocio o orden administrativa: ruta normal al puente ──
   let respuesta: any;
   let errorPuente: TaiPuenteError | null = null;
   try {
-    respuesta = await cliente.enviarMensaje(texto, { conversacion: principal.conversacion, via: 'panel' });
+    respuesta = await cliente.enviarMensaje(texto, {
+      conversacion: principal.conversacion,
+      via: 'panel',
+      origen,
+      confianza,
+    });
   } catch (e) {
     errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
   }
@@ -243,6 +328,27 @@ export const POST: APIRoute = async ({ request }) => {
       },
       errorPuente.status === 500 ? 503 : errorPuente.status,
     );
+  }
+
+  // Si el puente no entendió una consulta no social, ofrecer una respuesta
+  // natural de fallback en lugar de «no_entendida».
+  if (respuesta.estado === 'sin_entender' && intencion !== 'social') {
+    const textoFallback = respuestaSinDatos(texto);
+    return json({
+      success: true,
+      conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: true },
+      mensaje: { id: respuesta.idSolicitud, texto, en: respuesta.generadoEn },
+      respuesta: {
+        ...respuesta,
+        estado: 'respondida',
+        categoria: 'consulta',
+        textoClaro: textoFallback,
+        detalle: textoFallback,
+        tipoIntencion: 'consulta',
+      },
+      trazabilidad: respuesta.trazabilidad,
+      autorizacion: respuesta.autorizacion,
+    });
   }
 
   return json({

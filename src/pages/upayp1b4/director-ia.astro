@@ -127,6 +127,8 @@ const activeSection = 'director-ia';
         input: document.getElementById('inputMensaje'),
         btnEnviar: document.getElementById('btnEnviar'),
         btnAdjuntar: document.getElementById('btnAdjuntar'),
+        btnVoz: document.getElementById('btnVoz'),
+        btnDetenerVoz: document.getElementById('btnDetenerVoz'),
         titulo: document.getElementById('tituloConversacion'),
         subtitulo: document.getElementById('subtituloConversacion'),
         estado: document.getElementById('estadoConexion'),
@@ -529,6 +531,7 @@ const activeSection = 'director-ia';
           elsVoz.contenedor.appendChild(nodoUsuario);
           scrollFinal();
 
+          ponerEstadoVoz('El Director está procesando…', 'procesando');
           try {
             const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), {
               method: 'POST',
@@ -562,6 +565,7 @@ const activeSection = 'director-ia';
             if (textoVoz) hablarTexto(textoVoz);
           } catch (err) {
             mostrarAlerta(err instanceof Error ? err.message : 'No se pudo enviar el mensaje de voz.');
+            ocultarEstadoVoz();
             if (nodoUsuario.parentNode) nodoUsuario.parentNode.removeChild(nodoUsuario);
           } finally {
             enVuelo = false;
@@ -932,6 +936,7 @@ const activeSection = 'director-ia';
       flex-shrink: 0;
     }
     .punto-voz--escuchando { background: var(--color-primary, #2563eb); box-shadow: 0 0 6px var(--color-primary, #2563eb); animation: pulso-voz 1.5s infinite; }
+    .punto-voz--procesando { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; animation: pulso-voz 1.5s infinite; }
     .punto-voz--hablando { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
     .punto-voz--listo { background: var(--color-text-muted, #9ca3af); }
     @keyframes pulso-voz {
