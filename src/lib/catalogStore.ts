@@ -104,7 +104,7 @@ export function upsertCatalogProduct(raw: N8nContractPayload): CatalogSaveResult
   let result: CatalogSaveResult;
   try {
     const written = updateCatalog<CatalogSaveResult>((products) => {
-      const productId = data.id || slugifyProduct(data.title);
+      const productId = data.id || slugifyProduct(data.title ?? '');
       const existing = products.find((p) => p.id === productId);
 
       const product: Product = {

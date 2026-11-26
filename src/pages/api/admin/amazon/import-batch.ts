@@ -23,7 +23,7 @@ const parseBody = async (request: Request): Promise<{
     const body = await request.json();
     if (!body || typeof body !== 'object') return null;
     const asins = Array.isArray(body.asins)
-      ? body.asins.filter((v) => typeof v === 'string').map((v) => String(v).trim()).filter(Boolean)
+      ? body.asins.filter((v: unknown) => typeof v === 'string').map((v: unknown) => String(v).trim()).filter(Boolean)
       : undefined;
     return {
       asins,
@@ -98,9 +98,9 @@ export const POST: APIRoute = async ({ request }) => {
       if (result.success) {
         ok++;
         results.push({
-          asin: result.asin,
+          asin: result.asin ?? asinOrUrl,
           success: true,
-          message: result.message,
+          message: result.message ?? '',
           product: result.product,
           updated: result.updated,
           saved: result.saved,
@@ -111,7 +111,7 @@ export const POST: APIRoute = async ({ request }) => {
         results.push({
           asin: result.asin || asinOrUrl,
           success: false,
-          message: result.message,
+          message: result.message ?? 'Error al importar.',
           warnings: result.warnings,
         });
       }
@@ -126,7 +126,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Delay entre peticiones (excepto después de la última)
     if (i < asins.length - 1) {
-      await sleepMs(delayMs);
+      await sleepMs(delayMs ?? 3000);
     }
   }
 

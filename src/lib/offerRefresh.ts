@@ -698,7 +698,7 @@ async function runRefresh(options: RefreshOptions): Promise<RefreshReport> {
     const net = detectNetworkId(product) || 'desconocida';
     if (halted[net]) {
       // Fuente detenida en esta ejecución: no se insiste ficha a ficha (cuota/intentos de pago).
-      report.results.push({ id: product.id, title: String((product as AnyRecord).title_short || product.title || ''), network: net, status: 'error', attempts: 0, changes: [], message: 'Fuente detenida en esta ejecución: ' + halted[net] });
+      report.results.push({ id: product.id, title: String((product as unknown as AnyRecord).title_short || product.title || ''), network: net, status: 'error', attempts: 0, changes: [], message: 'Fuente detenida en esta ejecución: ' + halted[net] });
       report.errors++;
       continue;
     }

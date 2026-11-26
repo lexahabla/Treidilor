@@ -138,7 +138,7 @@ export function sameSeller(a: ResolvedSeller, b: ResolvedSeller): boolean {
 /* ───────────────────────────── Tipos de resultado ───────────────────────────── */
 
 /** Envío de una oferta: lo declarado a FECHA DE CAPTURA (`asOf`), nunca «vigente» ni «verificado hoy». */
-export type ComparableShipping = OfferShipping & {
+export type ComparableShipping = Omit<OfferShipping, 'asOf'> & {
   confirmed: boolean;
   /** De dónde sale el dato de envío. */
   source?: 'campos_planos' | 'specs_ebay';

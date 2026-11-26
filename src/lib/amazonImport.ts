@@ -86,6 +86,10 @@ export interface AmazonScrapedProduct {
 /** Producto normalizado (forma plana) listo para enriquecer y guardar. */
 export interface NormalizedAmazonProduct {
   asin: string;
+  /** Ventas estimadas de 30 días a partir del ranking de bestsellers (si lo hay). */
+  sales30d?: number;
+  /** Comisión declarada por la fuente (commission_rate), si la trae. */
+  commissionRate?: number;
   title: string;
   description?: string;
   price?: number;

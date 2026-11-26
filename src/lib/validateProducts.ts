@@ -146,7 +146,8 @@ function normalizeToProduct(schema: Product): FlatProduct {
       currentPrice: schema.pricing.currentPrice,
       originalPrice: schema.pricing.originalPrice,
       discountPercentage: schema.pricing.discountPercentage,
-      priceLastChecked: schema.pricing.priceLastChecked,
+      // Puede faltar en fichas antiguas: se conserva tal cual (sin inventar una fecha de verificación).
+      priceLastChecked: schema.pricing.priceLastChecked as string,
       freeShipping: schema.pricing.freeShipping,
       stockStatus: schema.pricing.stockStatus,
     },

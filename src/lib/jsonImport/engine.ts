@@ -489,7 +489,7 @@ function buildProduct(rec: CanonicalRecord, id: string, batchId: string, nowIso:
   };
   const extra: Any = { importMeta: { channel: 'json', batchId, importedAt: nowIso }, priceReading: reading };
   // Trazabilidad: la categoría que traía la fuente se conserva aunque el destino elegido en el panel la sustituya.
-  if (target && sourceCategory && sourceCategory !== target.category) extra.importMeta.sourceCategory = sourceCategory;
+  if (target && sourceCategory && sourceCategory !== target.category) (extra.importMeta as Any).sourceCategory = sourceCategory;
   // Enlace de ORIGEN (dónde se vio la oferta), siempre separado del de afiliado: sin `affiliateUrl` real la ficha queda `link_status: pending`.
   if (o.url) extra.sourceUrl = o.url;
   // Vendedor de la oferta principal (si no es la propia plataforma): permite reconocerla al reimportar sin duplicarla.
