@@ -171,7 +171,7 @@ const activeSection = 'director-ia';
       async function comprobarEstado() {
         try {
           const res = await fetch(`${API_BASE}/status`, { headers: { 'cache-control': 'no-store' } });
-          const j = await res.json();
+          const j = await leerJson(res);
           if (j.success && j.conectado) {
             ponerEstado('conectado', 'Conectado con el Director.');
           } else {
@@ -197,7 +197,7 @@ const activeSection = 'director-ia';
         els.contenedor.innerHTML = '<div class="director-ia-cargando">Cargando historial…</div>';
         try {
           const res = await fetch(urlConConversacionId(`${API_BASE}/principal`), { headers: { 'cache-control': 'no-store' } });
-          const j = await res.json();
+          const j = await leerJson(res);
           if (!j.success) throw new Error(j.message || 'No se pudo cargar el historial');
           renderizarMensajes(j.conversacion);
         } catch (e) {
@@ -272,6 +272,20 @@ const activeSection = 'director-ia';
         return partes.join('');
       }
 
+      /**
+       * Lee la respuesta como JSON solo si el servidor la envía como JSON. Una sesión caducada (texto
+       * «Autenticacion requerida»), una página de error del proxy o un HTML se convierten en un error
+       * comprensible en lugar de «Unexpected token <».
+       */
+      async function leerJson(res) {
+        const tipo = res.headers.get('content-type') || '';
+        if (!tipo.includes('application/json')) {
+          if (res.status === 401) throw new Error('La sesión ha caducado. Vuelve a iniciar sesión en el panel.');
+          throw new Error(`El servidor no respondió con datos válidos (HTTP ${res.status}).`);
+        }
+        return res.json();
+      }
+
       async function enviarConCabeceraSegura(url, init) {
         const cabeceras = { 'Content-Type': 'application/json; charset=utf-8', ...(init.headers || {}) };
         if (init.method && (init.method.toUpperCase() === 'POST' || init.method.toUpperCase() === 'PUT' || init.method.toUpperCase() === 'DELETE' || init.method.toUpperCase() === 'PATCH')) {
@@ -303,7 +317,7 @@ const activeSection = 'director-ia';
             method: 'POST',
             body: JSON.stringify({ texto }),
           });
-          const j = await res.json();
+          const j = await leerJson(res);
           if (!j.success) throw new Error(j.message || 'Error del servidor');
 
           const nodoDirector = crearNodoMensaje({
@@ -400,6 +414,7 @@ const activeSection = 'director-ia';
         let silenciado = false;
         let utteranceActual = null;
         let enVueloSesion = false; // bloquea nuevo envío mientras hay petición en curso
+        let reconociendo = false;  // evita reconocimientos simultáneos y duplicados
 
         const elsVoz = {
           btn: document.getElementById('btnVoz'),
@@ -424,9 +439,13 @@ const activeSection = 'director-ia';
         }
 
         function actualizarBotones() {
-          const ocupado = estado === 'escuchando' || estado === 'procesando' || estado === 'hablando';
+          // El botón Hablar/Finalizar solo se desactiva mientras se procesa o habla,
+          // NO mientras se escucha (así se puede finalizar la sesión en cualquier momento).
+          const ocupado = estado === 'procesando' || estado === 'hablando';
           if (elsVoz.btn) {
-            elsVoz.btn.disabled = ocupado;
+            // Con la sesión activa el botón es «Finalizar sesión» y debe poder pulsarse SIEMPRE
+            // (también mientras el Director procesa o habla).
+            elsVoz.btn.disabled = ocupado && !sesionActiva;
             elsVoz.btn.setAttribute('aria-pressed', String(estado === 'escuchando'));
             if (elsVoz.textoBtn) elsVoz.textoBtn.textContent = sesionActiva ? 'Finalizar sesión' : 'Hablar';
           }
@@ -436,6 +455,7 @@ const activeSection = 'director-ia';
         }
 
         function detenerReconocimiento() {
+          reconociendo = false;
           if (reconocimiento) {
             try { reconocimiento.stop(); } catch { /* ignorar */ }
             reconocimiento = null;
@@ -511,7 +531,9 @@ const activeSection = 'director-ia';
             if (sesionActiva) finalizarSesion();
             return;
           }
+          if (reconociendo) return; // evita reconocimientos simultáneos
           detenerReconocimiento();
+          reconociendo = true;
           reconocimiento = new SpeechRecognition();
           reconocimiento.lang = 'es-ES';
           reconocimiento.continuous = true;
@@ -519,6 +541,7 @@ const activeSection = 'director-ia';
           reconocimiento.maxAlternatives = 1;
 
           reconocimiento.onresult = (evento) => {
+            if (!sesionActiva) return; // ignora resultados si la sesión ya terminó
             const transcripcion = evento.results[evento.results.length - 1][0].transcript;
             const confianza = evento.results[evento.results.length - 1][0].confidence ?? 0;
             if (!transcripcion || !transcripcion.trim()) return;
@@ -531,6 +554,7 @@ const activeSection = 'director-ia';
 
           reconocimiento.onend = () => {
             reconocimiento = null;
+            reconociendo = false;
             // Si terminó por sí solo (pausa natural) y la sesión sigue activa, volver a escuchar.
             if (sesionActiva && estado === 'escuchando') {
               reanudarEscucha();
@@ -539,6 +563,7 @@ const activeSection = 'director-ia';
 
           reconocimiento.onerror = (evento) => {
             reconocimiento = null;
+            reconociendo = false;
             if (evento.error === 'not-allowed' || evento.error === 'service-not-allowed') {
               mostrarAlerta('Permiso del micrófono denegado. Concede acceso al micrófono o usa el teclado.');
               if (sesionActiva) finalizarSesion();
@@ -574,7 +599,7 @@ const activeSection = 'director-ia';
               method: 'POST',
               body: JSON.stringify({ texto, origen: 'voz', confianza }),
             });
-            const j = await res.json();
+            const j = await leerJson(res);
             if (!j.success) throw new Error(j.message || 'Error del servidor');
 
             const nodoDirector = crearNodoMensaje({
@@ -597,9 +622,12 @@ const activeSection = 'director-ia';
             els.contenedor.appendChild(nodoDirector);
             scrollFinal();
 
+            // Una respuesta que llega después de finalizar la sesión se muestra, pero no se lee en voz
+            // alta ni reactiva la escucha.
             const textoVoz = j.respuesta.detalle || j.respuesta.textoClaro;
-            if (textoVoz) hablarTexto(textoVoz);
-            else if (sesionActiva) reanudarEscucha();
+            if (!sesionActiva) { /* sesión finalizada: nada más */ }
+            else if (textoVoz) hablarTexto(textoVoz);
+            else reanudarEscucha();
           } catch (err) {
             mostrarAlerta(err instanceof Error ? err.message : 'No se pudo enviar el mensaje.');
             if (sesionActiva) {
@@ -611,7 +639,11 @@ const activeSection = 'director-ia';
               els.input.disabled = false;
             }
           } finally {
-            if (!sesionActiva) { enVueloSesion = false; els.input.disabled = false; }
+            // Siempre liberar el candado de la sesión de voz al terminar el ciclo de petición.
+            enVueloSesion = false;
+            if (sesionActiva) {
+              els.input.disabled = false;
+            }
           }
         }
 
