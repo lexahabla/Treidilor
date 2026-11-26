@@ -525,6 +525,25 @@ const TEXT_SYSTEM_PROMPT = [
  */
 const TEXT_PROVIDER_FALLBACK_ORDER: TextProvider[] = ['openai', 'anthropic', 'nvidia', 'groq', 'openrouter'];
 
+/** Proveedores de texto que facturan por uso. */
+const PAID_TEXT_PROVIDERS: TextProvider[] = ['openai', 'anthropic', 'gemini'];
+
+/**
+ * Un proveedor de pago solo puede entrar como ALTERNATIVA automática si el propietario lo autoriza por
+ * nombre en IA_PROVEEDORES_DE_PAGO_AUTORIZADOS (lista separada por comas). El proveedor elegido
+ * expresamente (TEXT_AI_PROVIDER o el del llamante) se respeta siempre: esa elección ya es explícita.
+ * Sin esta autorización, un fallo de un proveedor gratuito NUNCA se resuelve gastando en otro de pago.
+ */
+export function paidFallbackAllowed(provider: TextProvider, source: Record<string, string | undefined> = process.env): boolean {
+  if (!PAID_TEXT_PROVIDERS.includes(provider)) return true;
+  return String(source.IA_PROVEEDORES_DE_PAGO_AUTORIZADOS ?? '').split(',').map((x) => x.trim().toLowerCase()).includes(provider);
+}
+
+/** Alternativas automáticas para `primary`: sin repetirlo y sin proveedores de pago no autorizados. */
+export function textFallbackCandidates(primary: TextProvider, source: Record<string, string | undefined> = process.env): TextProvider[] {
+  return [primary, ...TEXT_PROVIDER_FALLBACK_ORDER.filter((p) => p !== primary && paidFallbackAllowed(p, source))];
+}
+
 /**
  * Paso 1 — Enriquecimiento de texto con IA.
  * Genera descripción, ficha técnica estructurada, pros/contras, veredicto
@@ -633,9 +652,9 @@ export async function enrichProductText(input: {
     return callProvider(primary, forcedModel);
   }
 
-  // Automático: el por defecto primero y, si falla, cualquier otro proveedor
-  // con credenciales configuradas (sin repetir el ya intentado).
-  const candidates = [primary, ...TEXT_PROVIDER_FALLBACK_ORDER.filter((p) => p !== primary)];
+  // Automático: el por defecto primero y, si falla, otros proveedores con credenciales configuradas
+  // (sin repetir el ya intentado). Los de pago solo si están autorizados expresamente.
+  const candidates = textFallbackCandidates(primary);
   let lastError: unknown;
   for (const candidate of candidates) {
     if (!hasTextCredentials(candidate)) continue;
