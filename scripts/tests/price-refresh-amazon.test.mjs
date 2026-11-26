@@ -6,6 +6,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// Raíz de la web calculada desde este archivo (sin rutas absolutas).
+const RAIZ_WEB = import.meta.dirname + "/../..";
 import { setupIsolatedData, readCatalog, writeCatalog, adminCookie, apiRequest, jsonOf } from './_helpers.mjs';
 
 const dir = setupIsolatedData('treidilor-price-refresh-');
@@ -147,7 +149,7 @@ test('con selección explícita se consultan exactamente las elegidas (como ante
 });
 
 test('el panel explica qué consulta el botón y muestra cuántos precios se corrigieron', () => {
-  const panel = fs.readFileSync('d:/AXEL/WEBS/TRADYLOR/tradylor_web/src/pages/upayp1b4.astro', 'utf8');
+  const panel = fs.readFileSync(RAIZ_WEB + '/src/pages/upayp1b4.astro', 'utf8');
   assert.ok(panel.includes('Actualizar y corregir el precio de los 10 productos de Amazon'));
   assert.ok(panel.includes('con el precio corregido'));
 });

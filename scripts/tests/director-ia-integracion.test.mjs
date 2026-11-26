@@ -17,17 +17,18 @@ import os from 'node:os';
 import path from 'path';
 import http from 'node:http';
 
-// ── Módulos reales del worktree `autonomia` (Director 1.3.0-candidato, el de producción) ──
-const AUT = 'D:\\AXEL\\WEBS\\TREIDILOR\\treidilor_web\\.worktrees\\autonomia';
-const fileUrl = (p) => new URL('file:///' + path.join(AUT, p).replace(/\\/g, '/')).href;
-const { montarDirectorAutonomo } = await import(fileUrl('automation/autonomia/analisis-comercial/montaje.mjs'));
-const { crearManejadorChat } = await import(fileUrl('automation/autonomia/puente-chat.mjs'));
-const { AlmacenTokensRutinas } = await import(fileUrl('automation/autonomia/tokens-rutinas.mjs'));
-const { AlmacenAutonomia } = await import(fileUrl('automation/autonomia/almacen.mjs'));
-const { Autonomia } = await import(fileUrl('automation/autonomia/orquestador.mjs'));
-const { Instrucciones } = await import(fileUrl('automation/autonomia/instrucciones.mjs'));
-const { ChatDirector } = await import(fileUrl('automation/autonomia/chat.mjs'));
-const { cargarRegistro } = await import(fileUrl('automation/director/registro.mjs'));
+// ── Módulos reales del Director 00 (rama del Director; ver _director-fuente.mjs) ──
+import { FUENTE_DIRECTOR, OMITIR_SIN_DIRECTOR, importarDelDirector } from './_director-fuente.mjs';
+const vacio = {};
+const cargar = (rel) => (FUENTE_DIRECTOR ? importarDelDirector(rel) : Promise.resolve(vacio));
+const { montarDirectorAutonomo } = await cargar('automation/autonomia/analisis-comercial/montaje.mjs');
+const { crearManejadorChat } = await cargar('automation/autonomia/puente-chat.mjs');
+const { AlmacenTokensRutinas } = await cargar('automation/autonomia/tokens-rutinas.mjs');
+const { AlmacenAutonomia } = await cargar('automation/autonomia/almacen.mjs');
+const { Autonomia } = await cargar('automation/autonomia/orquestador.mjs');
+const { Instrucciones } = await cargar('automation/autonomia/instrucciones.mjs');
+const { ChatDirector } = await cargar('automation/autonomia/chat.mjs');
+const { cargarRegistro } = await cargar('automation/director/registro.mjs');
 
 import { TaiPuenteClient } from '../../src/lib/taiPuente.ts';
 import { listarConversaciones, rutaConversaciones, guardarConversacionPrincipal } from '../../src/lib/directorIaStore.ts';
@@ -41,7 +42,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const T0 = Date.parse('2026-11-25T10:00:00.000Z');
 const reloj = () => new Date(T0);
-const registro = cargarRegistro();
+const registro = FUENTE_DIRECTOR ? cargarRegistro() : null;
 const dirs = []; const cierres = [];
 const limpiar = (d) => { dirs.push(d); cierres.push(() => fs.rmSync(d, { recursive: true, force: true })); };
 test.after(async () => {
@@ -81,7 +82,7 @@ async function montarServidorChat() {
 let servicio;
 
 // ── Test 1: conversación real con el Director, historial y panel ───────────────
-test('integración: conversación real con el Director (servidor tai-chat/1 de autonomía)', async (t) => {
+test('integración: conversación real con el Director (servidor tai-chat/1 de autonomía)', { skip: OMITIR_SIN_DIRECTOR }, async (t) => {
   servicio = await montarServidorChat();
   const { client, a } = servicio;
 
@@ -137,14 +138,14 @@ test('integración: conversación real con el Director (servidor tai-chat/1 de a
 });
 
 // ── Test 2: almacenamiento en volumen persistente (ruta fuera del repositorio) ──
-test('integración: almacenamiento en volumen persistente (ruta fuera del repositorio)', () => {
+test('integración: almacenamiento en volumen persistente (ruta fuera del repositorio)', { skip: OMITIR_SIN_DIRECTOR }, () => {
   const r = rutaConversaciones();
   assert.ok(r.includes(DATA_DIR) || r.includes('director-ia-conversaciones.json'), 'almacén en ruta de datos: ' + r);
   assert.ok(listarConversaciones('usuario-x').length === 0, 'sin conversaciones previas');
 });
 
 // ── Test 3: token chat solo servidor→servidor, sin alcance confirmar ───────────
-test('seguridad: token de alcance chat, nunca viaja al cliente, sin confirmar', () => {
+test('seguridad: token de alcance chat, nunca viaja al cliente, sin confirmar', { skip: OMITIR_SIN_DIRECTOR }, () => {
   // reconstruimos un token para inspeccionar su patrón sin exponer el secreto
   const t2 = new AlmacenTokensRutinas({ reloj: reloj });
   const { token: tk } = t2.crear({ id: 'seguridad-test', alcances: ['chat'], dias: 30 });
@@ -162,7 +163,7 @@ test('seguridad: token de alcance chat, nunca viaja al cliente, sin confirmar', 
 });
 
 // ── Test 4: instancia única, un solo escritor del ledger (secuencias consecutivas) ──
-test('instancia única: un solo Director y un solo escritor del ledger (secuencias consecutivas)', async () => {
+test('instancia única: un solo Director y un solo escritor del ledger (secuencias consecutivas)', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   const ledDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tai-dir-ia-led-')); limpiar(ledDir);
   const a = new Autonomia({ almacen: new AlmacenAutonomia({ dir: path.join(ledDir, 'ledger'), reloj }), registro, reloj });
   const i = new Instrucciones({ autonomia: a, registro, reloj });
@@ -178,7 +179,7 @@ test('instancia única: un solo Director y un solo escritor del ledger (secuenci
 });
 
 // ── Test 5: desconexión graceful ──────────────────────────────────────────────
-test('integración: desconexión graceful del servicio', async () => {
+test('integración: desconexión graceful del servicio', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   await servicio.cerrar();
   let fallo = false;
   try { await servicio.client.enviarMensaje('post-mortem', { conversacion: 'cv_0000000000000001' }); } catch { fallo = true; }

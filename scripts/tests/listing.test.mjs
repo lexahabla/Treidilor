@@ -4,6 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// Raíz de la web calculada desde este archivo (sin rutas absolutas).
+const RAIZ_WEB = import.meta.dirname + "/../..";
 import { setupIsolatedData, readCatalog, writeCatalog } from './_helpers.mjs';
 
 const dir = setupIsolatedData('treidilor-listing-');
@@ -265,7 +267,7 @@ test('/api/catalogo/facets devuelve el mismo total que el listado', async () => 
 
 /* ───────────── Interfaz y navegación (comprobación sobre el código fuente) ───────────── */
 
-const read = (p) => fs.readFileSync('d:/AXEL/WEBS/TRADYLOR/tradylor_web/' + p, 'utf8');
+const read = (p) => fs.readFileSync(RAIZ_WEB + '/' + p, 'utf8');
 
 test('portada: filtros en la URL, diversidad desactivada con filtros, sin módulos editoriales sobre los resultados y orden de la URL sobre la cookie', () => {
   const index = read('src/pages/index.astro');

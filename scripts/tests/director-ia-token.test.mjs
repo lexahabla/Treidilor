@@ -15,12 +15,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { AlmacenTokensRutinas } from '../../.worktrees/autonomia/automation/autonomia/tokens-rutinas.mjs';
+import { FUENTE_DIRECTOR, OMITIR_SIN_DIRECTOR, importarDelDirector } from './_director-fuente.mjs';
 
-const almacen = new AlmacenTokensRutinas();
+const { AlmacenTokensRutinas } = FUENTE_DIRECTOR ? await importarDelDirector('automation/autonomia/tokens-rutinas.mjs') : {};
+const almacen = AlmacenTokensRutinas ? new AlmacenTokensRutinas() : null;
 
 // ── Test 1: Generar token nuevo con alcance 'chat' ─────────────────────────
-test('token: generar token nuevo con alcance chat (procedimiento administrativo)', () => {
+test('token: generar token nuevo con alcance chat (procedimiento administrativo)', { skip: OMITIR_SIN_DIRECTOR }, () => {
   const { id, token, caduca } = almacen.crear({ id: 'panel-chat-rotacion', alcances: ['chat'], dias: 30 });
 
   // Patrón tai_<id>_<secreto>.
@@ -41,7 +42,7 @@ test('token: generar token nuevo con alcance chat (procedimiento administrativo)
 });
 
 // ── Test 2: El token de chat no permite confirmar ──────────────────────────
-test('token: alcance chat no permite confirmar (seguridad)', () => {
+test('token: alcance chat no permite confirmar (seguridad)', { skip: OMITIR_SIN_DIRECTOR }, () => {
   const { token } = almacen.crear({ id: 'panel-chat-no-confirmar', alcances: ['chat'], dias: 30 });
 
   const verConfirmar = almacen.verificar(token, 'confirmar');
@@ -50,7 +51,7 @@ test('token: alcance chat no permite confirmar (seguridad)', () => {
 });
 
 // ── Test 3: Revocar token y verificar que ya no se acepta ──────────────────
-test('token: revocar y verificar que ya no se acepta', () => {
+test('token: revocar y verificar que ya no se acepta', { skip: OMITIR_SIN_DIRECTOR }, () => {
   const { id, token } = almacen.crear({ id: 'panel-chat-revocar', alcances: ['chat'], dias: 30 });
 
   // Antes de revocar: válido.
@@ -67,7 +68,7 @@ test('token: revocar y verificar que ya no se acepta', () => {
 });
 
 // ── Test 4: Token diferente (anterior comprometido) no se acepta ──────────
-test('token: token anterior (diferente) no se acepta', () => {
+test('token: token anterior (diferente) no se acepta', { skip: OMITIR_SIN_DIRECTOR }, () => {
   // Crear un token válido primero para que exista el cliente.
   almacen.crear({ id: 'panel-chat-valido', alcances: ['chat'], dias: 30 });
 
@@ -79,7 +80,7 @@ test('token: token anterior (diferente) no se acepta', () => {
 });
 
 // ── Test 5: El secreto en claro no se persiste (solo hash SHA-256) ─────────
-test('token: el secreto en claro no se persiste, solo el hash SHA-256', () => {
+test('token: el secreto en claro no se persiste, solo el hash SHA-256', { skip: OMITIR_SIN_DIRECTOR }, () => {
   const { id, token } = almacen.crear({ id: 'panel-chat-hash', alcances: ['chat'], dias: 30 });
 
   const segundoGuion = token.indexOf('_', token.indexOf('_') + 1);

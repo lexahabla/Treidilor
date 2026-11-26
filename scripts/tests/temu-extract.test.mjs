@@ -6,6 +6,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// Raíz de la web calculada desde este archivo (sin rutas absolutas).
+const RAIZ_WEB = import.meta.dirname + "/../..";
 import path from 'node:path';
 import { setupIsolatedData, readCatalog, writeCatalog, apiRequest, jsonOf, mockFetch, jsonRecord } from './_helpers.mjs';
 
@@ -365,7 +367,7 @@ test('muestra REAL con /es/: EUR y mercado español comprobados → se importan;
 });
 
 test('el adaptador de Temu no usa IA ni red', () => {
-  const text = fs.readFileSync(path.join('d:/AXEL/WEBS/TRADYLOR/tradylor_web', 'src/lib/jsonImport/apifyTemu.ts'), 'utf8');
+  const text = fs.readFileSync(path.join(RAIZ_WEB, 'src/lib/jsonImport/apifyTemu.ts'), 'utf8');
   assert.ok(!/from '\.\.\/ai'|openai|anthropic|fetch\(/i.test(text));
 });
 
@@ -935,7 +937,7 @@ test('trabajos ya terminados sin explicar: se explican UNA vez con el diagnósti
 });
 
 test('el resumen del panel muestra la cuenta hasta los N solicitados y los motivos de los ausentes', () => {
-  const panel = fs.readFileSync(path.join('d:/AXEL/WEBS/TRADYLOR/tradylor_web', 'src/pages/upayp1b4.astro'), 'utf8');
+  const panel = fs.readFileSync(path.join(RAIZ_WEB, 'src/pages/upayp1b4.astro'), 'utf8');
   assert.ok(panel.includes("'Solicitados ' + job.limit + ' → la categoría listó '"));
   assert.ok(panel.includes("'Diferencia hasta ' + job.limit + ': '"));
 });

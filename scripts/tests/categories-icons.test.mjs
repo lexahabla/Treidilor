@@ -3,6 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// Raíz de la web calculada desde este archivo (sin rutas absolutas).
+const RAIZ_WEB = import.meta.dirname + "/../..";
 import { setupIsolatedData } from './_helpers.mjs';
 
 const dir = setupIsolatedData('treidilor-cat-icons-');
@@ -11,7 +13,7 @@ const cats = await import('../../src/lib/categories.ts');
 const route = await import('../../src/pages/api/admin/icon-library.ts');
 const { adminCookie, apiRequest } = await import('./_helpers.mjs');
 
-const read = (p) => fs.readFileSync('d:/AXEL/WEBS/TRADYLOR/tradylor_web/' + p, 'utf8');
+const read = (p) => fs.readFileSync(RAIZ_WEB + '/' + p, 'utf8');
 
 /* ───────────── Subcategorías sin carpeta ───────────── */
 

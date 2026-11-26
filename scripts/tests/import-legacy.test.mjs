@@ -3,6 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// Raíz de la web calculada desde este archivo (sin rutas absolutas).
+const RAIZ_WEB = import.meta.dirname + "/../..";
 import { setupIsolatedData, readCatalog, writeCatalog, jsonRecord, GTIN } from './_helpers.mjs';
 
 const dir = setupIsolatedData('treidilor-legacy-');
@@ -208,7 +210,7 @@ test('el endpoint /api/admin/json-import acepta onlyNew (por defecto desactivado
   assert.equal(readCatalog(dir)[0].price, 50);
   const b = await jsonOf(await post({ batchId: 'onlynew-api-0002', records: [jsonRecord(41, { price: 20, capturedAt: '2026-10-09T10:00:00Z' })] }));
   assert.equal(b.results[0].outcome, 'updated', 'sin onlyNew: actualiza como siempre');
-  const panel = fs.readFileSync('d:/AXEL/WEBS/TRADYLOR/tradylor_web/src/pages/upayp1b4.astro', 'utf8');
+  const panel = fs.readFileSync(RAIZ_WEB + '/src/pages/upayp1b4.astro', 'utf8');
   assert.ok(panel.includes('id="jsonImpOnlyNew" checked'));
   assert.ok(panel.includes('onlyNew: onlyNewBox.checked'));
 });

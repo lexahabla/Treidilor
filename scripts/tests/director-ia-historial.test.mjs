@@ -28,16 +28,16 @@ import path from 'path';
 import http from 'node:http';
 
 // ── Módulos reales del worktree `autonomia` (Director 1.3.0-candidato) ──
-const AUT = 'D:\\AXEL\\WEBS\\TREIDILOR\\treidilor_web\\.worktrees\\autonomia';
-const fileUrl = (p) => new URL('file:///' + path.join(AUT, p).replace(/\\/g, '/')).href;
-const { montarDirectorAutonomo } = await import(fileUrl('automation/autonomia/analisis-comercial/montaje.mjs'));
-const { crearManejadorChat } = await import(fileUrl('automation/autonomia/puente-chat.mjs'));
-const { AlmacenTokensRutinas } = await import(fileUrl('automation/autonomia/tokens-rutinas.mjs'));
-const { AlmacenAutonomia } = await import(fileUrl('automation/autonomia/almacen.mjs'));
-const { Autonomia } = await import(fileUrl('automation/autonomia/orquestador.mjs'));
-const { Instrucciones } = await import(fileUrl('automation/autonomia/instrucciones.mjs'));
-const { ChatDirector } = await import(fileUrl('automation/autonomia/chat.mjs'));
-const { cargarRegistro } = await import(fileUrl('automation/director/registro.mjs'));
+import { FUENTE_DIRECTOR, OMITIR_SIN_DIRECTOR, importarDelDirector } from './_director-fuente.mjs';
+const cargar = (rel) => (FUENTE_DIRECTOR ? importarDelDirector(rel) : Promise.resolve({}));
+const { montarDirectorAutonomo } = await cargar('automation/autonomia/analisis-comercial/montaje.mjs');
+const { crearManejadorChat } = await cargar('automation/autonomia/puente-chat.mjs');
+const { AlmacenTokensRutinas } = await cargar('automation/autonomia/tokens-rutinas.mjs');
+const { AlmacenAutonomia } = await cargar('automation/autonomia/almacen.mjs');
+const { Autonomia } = await cargar('automation/autonomia/orquestador.mjs');
+const { Instrucciones } = await cargar('automation/autonomia/instrucciones.mjs');
+const { ChatDirector } = await cargar('automation/autonomia/chat.mjs');
+const { cargarRegistro } = await cargar('automation/director/registro.mjs');
 
 import { TaiPuenteClient } from '../../src/lib/taiPuente.ts';
 import { listarConversaciones, rutaConversaciones, guardarConversacionPrincipal, obtenerConversacionMeta } from '../../src/lib/directorIaStore.ts';
@@ -51,7 +51,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const T0 = Date.parse('2026-11-25T10:00:00.000Z');
 const reloj = () => new Date(T0);
-const registro = cargarRegistro();
+const registro = FUENTE_DIRECTOR ? cargarRegistro() : null;
 const dirs = []; const cierres = [];
 const limpiar = (d) => { dirs.push(d); cierres.push(() => fs.rmSync(d, { recursive: true, force: true })); };
 test.after(async () => {
@@ -90,7 +90,7 @@ async function montarServidorChat() {
 let servicio;
 
 // ── Test 1: La conversación principal es única y compartida (web + Telegram) ──
-test('historial: una sola conversación principal compartida por web y Telegram', async () => {
+test('historial: una sola conversación principal compartida por web y Telegram', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   servicio = await montarServidorChat();
   const { client } = servicio;
 
@@ -116,7 +116,7 @@ test('historial: una sola conversación principal compartida por web y Telegram'
 });
 
 // ── Test 2: Continuidad contextual entre canales (web escribe, web lee) ────
-test('historial: continuidad contextual real entre mensajes en la misma conversación', async () => {
+test('historial: continuidad contextual real entre mensajes en la misma conversación', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   const { client } = servicio;
   const principal = await client.abrirConversacionPrincipal();
 
@@ -140,7 +140,7 @@ test('historial: continuidad contextual real entre mensajes en la misma conversa
 });
 
 // ── Test 3: Recuperación tras reinicio (principal.json persiste el ID) ────
-test('historial: recuperación tras reinicio — principal.json conserva la conversación', async () => {
+test('historial: recuperación tras reinicio — principal.json conserva la conversación', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   const { chat } = servicio;
 
   // Obtener la conversación principal actual.
@@ -175,7 +175,7 @@ test('historial: recuperación tras reinicio — principal.json conserva la conv
 });
 
 // ── Test 4: Una sola autoridad de escritura — el ledger del Director ───────
-test('historial: un solo escritor del ledger (secuencias consecutivas, cadena íntegra)', async () => {
+test('historial: un solo escritor del ledger (secuencias consecutivas, cadena íntegra)', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   const ledDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tai-hist-led-')); limpiar(ledDir);
   const { a } = servicio;
   const i = new Instrucciones({ autonomia: a, registro, reloj });
@@ -191,7 +191,7 @@ test('historial: un solo escritor del ledger (secuencias consecutivas, cadena í
 });
 
 // ── Test 5: El panel no permite seleccionar conversación ajena ────────────
-test('historial: no se puede seleccionar una conversación de otro usuario', async () => {
+test('historial: no se puede seleccionar una conversación de otro usuario', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   const { client } = servicio;
   // Obtener conversación del usuario actual.
   const principal = await client.abrirConversacionPrincipal();

@@ -3,6 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// Raíz de la web calculada desde este archivo (sin rutas absolutas).
+const RAIZ_WEB = import.meta.dirname + "/../..";
 import path from 'node:path';
 import { setupIsolatedData, readCatalog, writeCatalog, apiRequest, jsonOf, adminCookie, jsonRecord } from './_helpers.mjs';
 
@@ -168,7 +170,7 @@ test('Endpoint: sin autenticación sigue devolviendo 401 aunque lleve destino', 
 
 test('La asignación de destino no usa IA (sin módulos de IA en el importador)', () => {
   for (const f of ['src/lib/jsonImport/engine.ts', 'src/lib/jsonImport/categoryResolver.ts']) {
-    const text = fs.readFileSync(path.join('d:/AXEL/WEBS/TRADYLOR/tradylor_web', f), 'utf8');
+    const text = fs.readFileSync(path.join(RAIZ_WEB, f), 'utf8');
     assert.ok(!/from '\.\.\/ai'|openai|anthropic/i.test(text), f);
   }
 });

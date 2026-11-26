@@ -3,6 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// Raíz de la web calculada desde este archivo (sin rutas absolutas).
+const RAIZ_WEB = import.meta.dirname + "/../..";
 import path from 'node:path';
 import { setupIsolatedData } from './_helpers.mjs';
 
@@ -12,7 +14,7 @@ const lib = await import('../../src/lib/comparableOffers.ts');
 const { resolveProductShipping } = await import('../../src/lib/shipping.ts');
 const { getComparableOffers, groupByCommercialIdentity } = lib;
 
-const read = (p) => fs.readFileSync('d:/AXEL/WEBS/TRADYLOR/tradylor_web/' + p, 'utf8');
+const read = (p) => fs.readFileSync(RAIZ_WEB + '/' + p, 'utf8');
 const clone = (v) => structuredClone(v);
 const deepFreeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(deepFreeze); } return o; };
 const SYNC = '2026-10-28T22:27:35.731Z';
@@ -269,7 +271,7 @@ test('ficha: sin «Precio verificado hoy» incondicional, sin «10 h de análisi
 });
 
 test('alcance: linkOffers sigue inexistente y commercialClaims es sólo lectura', () => {
-  const root = 'd:/AXEL/WEBS/TRADYLOR/tradylor_web/src';
+  const root = RAIZ_WEB + '/src';
   const hits = [];
   const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(ts|astro|mjs)$/.test(e.name) && fs.readFileSync(p, 'utf8').includes('linkOffers')) hits.push(p); } };
   walk(root);

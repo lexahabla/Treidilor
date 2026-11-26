@@ -20,16 +20,16 @@ import http from 'node:http';
 import { TaiPuenteClient, resolverConfigPuente } from '../../src/lib/taiPuente.ts';
 
 // ── Módulos reales del worktree `autonomia` ────────────────────────────────
-const AUT = 'D:\\AXEL\\WEBS\\TREIDILOR\\treidilor_web\\.worktrees\\autonomia';
-const fileUrl = (p) => new URL('file:///' + path.join(AUT, p).replace(/\\/g, '/')).href;
-const { montarDirectorAutonomo } = await import(fileUrl('automation/autonomia/analisis-comercial/montaje.mjs'));
-const { crearManejadorChat } = await import(fileUrl('automation/autonomia/puente-chat.mjs'));
-const { AlmacenTokensRutinas } = await import(fileUrl('automation/autonomia/tokens-rutinas.mjs'));
-const { AlmacenAutonomia } = await import(fileUrl('automation/autonomia/almacen.mjs'));
-const { Autonomia } = await import(fileUrl('automation/autonomia/orquestador.mjs'));
-const { Instrucciones } = await import(fileUrl('automation/autonomia/instrucciones.mjs'));
-const { ChatDirector } = await import(fileUrl('automation/autonomia/chat.mjs'));
-const { cargarRegistro } = await import(fileUrl('automation/director/registro.mjs'));
+import { FUENTE_DIRECTOR, OMITIR_SIN_DIRECTOR, importarDelDirector } from './_director-fuente.mjs';
+const cargar = (rel) => (FUENTE_DIRECTOR ? importarDelDirector(rel) : Promise.resolve({}));
+const { montarDirectorAutonomo } = await cargar('automation/autonomia/analisis-comercial/montaje.mjs');
+const { crearManejadorChat } = await cargar('automation/autonomia/puente-chat.mjs');
+const { AlmacenTokensRutinas } = await cargar('automation/autonomia/tokens-rutinas.mjs');
+const { AlmacenAutonomia } = await cargar('automation/autonomia/almacen.mjs');
+const { Autonomia } = await cargar('automation/autonomia/orquestador.mjs');
+const { Instrucciones } = await cargar('automation/autonomia/instrucciones.mjs');
+const { ChatDirector } = await cargar('automation/autonomia/chat.mjs');
+const { cargarRegistro } = await cargar('automation/director/registro.mjs');
 
 // ── Entorno aislado ────────────────────────────────────────────────────────
 const DATA_DIR = process.env.TRADYLOR_DATA_DIR || path.join(os.tmpdir(), 'tai-dir-ia-panel');
@@ -38,7 +38,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const T0 = Date.parse('2026-11-25T10:00:00.000Z');
 const reloj = () => new Date(T0);
-const registro = cargarRegistro();
+const registro = FUENTE_DIRECTOR ? cargarRegistro() : null;
 const cierres = [];
 const limpiar = (d) => { cierres.push(() => fs.rmSync(d, { recursive: true, force: true })); };
 test.after(async () => {
@@ -74,7 +74,7 @@ async function montarServidorChat() {
 let servicio;
 
 // ── Test 1: obtenerPanel devuelve información real de agentes y estados ────
-test('panel: obtenerPanel devuelve información real de agentes, estados, encargos e informes', async () => {
+test('panel: obtenerPanel devuelve información real de agentes, estados, encargos e informes', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   servicio = await montarServidorChat();
   const { puerto, token } = servicio;
 
@@ -102,7 +102,7 @@ test('panel: obtenerPanel devuelve información real de agentes, estados, encarg
 });
 
 // ── Test 2: El panel es solo lectura — no activa ejecuciones automáticas ──
-test('panel: solo lectura — no activa nuevas ejecuciones automáticas', async () => {
+test('panel: solo lectura — no activa nuevas ejecuciones automáticas', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   const { puerto, token } = servicio;
   process.env.TAI_PUENTE_HOST = '127.0.0.1';
   process.env.TAI_PUENTE_PORT = String(puerto);
@@ -119,7 +119,7 @@ test('panel: solo lectura — no activa nuevas ejecuciones automáticas', async 
 });
 
 // ── Test 3: Procedencia de los datos ───────────────────────────────────────
-test('panel: procedencia de los datos (Director 00, tai-chat/1)', async () => {
+test('panel: procedencia de los datos (Director 00, tai-chat/1)', { skip: OMITIR_SIN_DIRECTOR }, async () => {
   const { puerto, token } = servicio;
   process.env.TAI_PUENTE_HOST = '127.0.0.1';
   process.env.TAI_PUENTE_PORT = String(puerto);
@@ -133,7 +133,7 @@ test('panel: procedencia de los datos (Director 00, tai-chat/1)', async () => {
   // El alcance del token es chat: no permite confirmaciones.
   const verConfirmar = await (async () => {
     // usar el almacen directamente para verificar el alcance
-    const { AlmacenTokensRutinas } = await import(fileUrl('automation/autonomia/tokens-rutinas.mjs'));
+    const { AlmacenTokensRutinas } = await cargar('automation/autonomia/tokens-rutinas.mjs');
     const almacen = new AlmacenTokensRutinas();
     const { token: tk } = almacen.crear({ id: 'panel-procedencia', alcances: ['chat'], dias: 30 });
     return almacen.verificar(tk, 'confirmar');

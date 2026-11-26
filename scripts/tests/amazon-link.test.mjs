@@ -3,6 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// Raíz de la web calculada desde este archivo (sin rutas absolutas).
+const RAIZ_WEB = import.meta.dirname + "/../..";
 import path from 'node:path';
 import { setupIsolatedData, readCatalog, writeCatalog, jsonRecord } from './_helpers.mjs';
 
@@ -67,7 +69,7 @@ test('una ficha de Amazon importada sale a la ficha del producto (no a la cesta)
 });
 
 test('no quedan constructores de enlaces de cesta: sólo la conversión de los antiguos', () => {
-  const root = 'd:/AXEL/WEBS/TRADYLOR/tradylor_web/src';
+  const root = RAIZ_WEB + '/src';
   const hits = [];
   const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(ts|astro)$/.test(e.name) && fs.readFileSync(p, 'utf8').includes('/gp/aws/cart/add.html')) hits.push(path.relative(root, p).replace(/\\/g, '/')); } };
   walk(root);
