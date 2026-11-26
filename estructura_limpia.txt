@@ -61,7 +61,6 @@ automation/workflows/auditor-general.local.json
 automation/workflows/auditor-general.produccion.json
 automation/workflows/auditor-instantaneas-crear-tabla.json
 automation/workflows/investigador-comercial.local.json
-chat.js
 deploy.ps1
 docker/entrypoint.sh
 docs/api-automatizacion.md
@@ -72,8 +71,6 @@ docs/portada-editable.md
 docs/temu-actor-mercado-es.md
 estructura.txt
 estructura_limpia.txt
-INFORME_DESBLOQUEO_IA.md
-gemini.service.ts
 nixpacks.toml
 package-lock.json
 package.json
@@ -102,7 +99,9 @@ scripts/register-ts.mjs
 scripts/repair-catalog.mjs
 scripts/reset-admin-password.mjs
 scripts/source-fingerprint.mjs
+scripts/tests/_director-fuente.mjs
 scripts/tests/_helpers.mjs
+scripts/tests/agentes-web-laboratorio.manual.mjs
 scripts/tests/ai-console-guard.test.mjs
 scripts/tests/amazon-link.test.mjs
 scripts/tests/analytics-memo.test.mjs
@@ -131,7 +130,8 @@ scripts/tests/deleted-identity.test.mjs
 scripts/tests/deleted-panel-paths.test.mjs
 scripts/tests/deploy-config.test.mjs
 scripts/tests/director-ia-boton-voz.test.mjs
-scripts/tests/director-ia-conversacion-natural.test.mjs
+scripts/tests/director-ia-ventana.test.mjs
+scripts/tests/director-ia-voz-comportamiento.test.mjs
 scripts/tests/director-ia-voz-sesion.test.mjs
 scripts/tests/discount-claims.test.mjs
 scripts/tests/facets.test.mjs
@@ -161,6 +161,7 @@ scripts/tests/fixtures/temu-real-sample-us-category-1893.json
 scripts/tests/fixtures/temu-real-sample-us.json
 scripts/tests/fixtures/temu-sample.synthetic.json
 scripts/tests/form-conflicts.test.mjs
+scripts/tests/ia-motor-inferencia-real.manual.mjs
 scripts/tests/id-from-url.test.mjs
 scripts/tests/identity.test.mjs
 scripts/tests/import-actions.test.mjs
@@ -250,6 +251,23 @@ src/layouts/Layout.astro
 src/lib/adminAuth.ts
 src/lib/adminDashboard.ts
 src/lib/affiliateCatalog.ts
+src/lib/agentes/agente-01-investigador.ts
+src/lib/agentes/agente-02-afiliacion.ts
+src/lib/agentes/agente-03-importador.ts
+src/lib/agentes/agente-04-calidad.ts
+src/lib/agentes/agente-05-precios.ts
+src/lib/agentes/agente-06-categorias.ts
+src/lib/agentes/agente-07-marketing.ts
+src/lib/agentes/agente-08-contenido.ts
+src/lib/agentes/agente-09-competencia.ts
+src/lib/agentes/agente-10-analitica.ts
+src/lib/agentes/agente-11-webs-nicho.ts
+src/lib/agentes/agente-12-auditor.ts
+src/lib/agentes/agente-13-asistente.ts
+src/lib/agentes/agente-base.ts
+src/lib/agentes/herramientas-catalogo.ts
+src/lib/agentes/orquestador-agentes.ts
+src/lib/agentes/registro-agentes.ts
 src/lib/ai.ts
 src/lib/aiConsoleGuard.ts
 src/lib/aiKeysStore.ts
@@ -284,7 +302,6 @@ src/lib/comparableOffers.ts
 src/lib/curation.ts
 src/lib/deletedIdentity.ts
 src/lib/deletedProducts.ts
-src/lib/directorIaConversacion.ts
 src/lib/excelExport.ts
 src/lib/formConflicts.ts
 src/lib/geminiGrounded.ts
