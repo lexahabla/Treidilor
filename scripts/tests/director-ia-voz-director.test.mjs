@@ -25,6 +25,7 @@ const srv = http.createServer(async (req, res) => {
   const r = (st, j) => { res.writeHead(st, { 'content-type': 'application/json' }); res.end(JSON.stringify(j)); };
   if (req.url === '/tai/v1/chat/conversacion') return r(200, { esquema: 'tai-chat/1', conversacion: 'cv_0123456789abcdef', principal: true });
   if (req.url !== '/tai/v1/chat/voz') return r(404, { error: { codigo: 'no_encontrado', mensaje: 'x' } });
+  if (modo === 'antigua') return r(404, { error: { codigo: 'no_encontrado', mensaje: 'Ruta no encontrada.' } });
   if (modo === 'sin_voz') return r(503, { error: { codigo: 'voz_no_disponible', mensaje: 'La voz del Director no está activa en el servicio.' } });
   const turno = { conversacion: cuerpo.conversacion, idInstruccion: 'ins_1', en: new Date().toISOString(), origen: 'voz', via: 'panel', textoOriginal: 'hola Director', respuesta: { estado: 'respondida', tipo: 'conversacion', mensaje: 'Hola, aquí estoy.', textoParaVoz: 'Hola, aquí estoy.' } };
   if (modo === 'real') return r(200, { esquema: 'tai-chat/1', estado: 'voz_local', turno, audio: null, vozLocal: 'Hay tres hallazgos nuevos.', requiereRepeticion: false });
@@ -56,7 +57,8 @@ test('endpoint: turno hablado → voz del Director, con el token de chat; datos 
   assert.equal(r.j.voz.transcripcion, 'hola Director'); assert.equal(r.j.respuesta.textoClaro, 'Hola, aquí estoy.'); assert.equal(r.j.voz.audio.mime, 'audio/ogg'); assert.equal(r.j.voz.vozLocal, null);
   assert.ok(!r.t.includes(TOKEN_CHAT) && !r.t.includes(TOKEN_CONF), 'ningún token en la respuesta');
   modo = 'real'; const real = await pedir({ audio: AUDIO, mime: 'audio/webm', segundos: 2 }); assert.equal(real.j.voz.audio, null); assert.equal(real.j.voz.vozLocal, 'Hay tres hallazgos nuevos.');
-  modo = 'sin_voz'; const sin = await pedir({ audio: AUDIO, mime: 'audio/webm', segundos: 2 }); assert.equal(sin.j.success, false); assert.equal(sin.j.code, 'voz_no_disponible'); modo = 'ok';
+  modo = 'sin_voz'; const sin = await pedir({ audio: AUDIO, mime: 'audio/webm', segundos: 2 }); assert.equal(sin.j.success, false); assert.equal(sin.j.code, 'voz_no_disponible');
+  modo = 'antigua'; const vieja = await pedir({ audio: AUDIO, mime: 'audio/webm', segundos: 2 }); assert.equal(vieja.j.code, 'voz_no_disponible', 'con un Director 1.3.2 (sin ruta de voz) el panel pasa a la voz del navegador'); modo = 'ok';
 });
 
 // ───────────────────────────── 2) comportamiento del panel ─────────────────────────────

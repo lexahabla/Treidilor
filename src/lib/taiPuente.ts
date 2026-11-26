@@ -371,11 +371,18 @@ export class TaiPuenteClient {
     if (!conversacion) throw new TaiPuenteError('conversacion_invalida', 400, 'Se requiere el identificador de la conversación del Director.');
     if (!this.config.token) throw new TaiPuenteError('token_no_configurado', 500, 'No se ha configurado el token de acceso al puente del Director.');
     const idSolicitud = idAleatorio();
-    const r = await this.peticion<any>('/tai/v1/chat/voz', {
-      method: 'POST',
-      headers: this.authHeaders(idSolicitud),
-      body: JSON.stringify({ conversacion, id, audio: audioBase64, mime, segundos }),
-    }, Math.max(this.config.timeoutMs, 90_000));
+    let r: any;
+    try {
+      r = await this.peticion<any>('/tai/v1/chat/voz', {
+        method: 'POST',
+        headers: this.authHeaders(idSolicitud),
+        body: JSON.stringify({ conversacion, id, audio: audioBase64, mime, segundos }),
+      }, Math.max(this.config.timeoutMs, 90_000));
+    } catch (e) {
+      // Un Director anterior a 1.3.3 no tiene la ruta de voz: el panel debe usar la voz del navegador, no mostrar un error.
+      if (e instanceof TaiPuenteError && e.codigo === 'no_encontrado') throw new TaiPuenteError('voz_no_disponible', 503, 'La voz del Director no está disponible en esta versión del servicio.');
+      throw e;
+    }
     const turno = r?.turno ?? null;
     const audio = r?.audio && typeof r.audio.base64 === 'string' && typeof r.audio.mime === 'string' ? { base64: r.audio.base64, mime: r.audio.mime } : null;
     return {
