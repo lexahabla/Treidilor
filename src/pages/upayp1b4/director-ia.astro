@@ -386,17 +386,20 @@ const activeSection = 'director-ia';
         });
       }
 
-      // ── voz (Web Speech API del navegador, gratuita, sin servicios de pago) ──
+      // ── voz: sesión continua tipo chat (Web Speech API del navegador, gratuita, sin servicios de pago) ──
       const Voz = (function () {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const SpeechSynthesis = window.speechSynthesis;
         const soportada = Boolean(SpeechRecognition && SpeechSynthesis);
 
+        // Máquina de estados: INACTIVO -> ESCUCHANDO -> PROCESANDO -> HABLANDO -> ESCUCHANDO
+        let estado = 'inactivo'; // inactivo | escuchando | procesando | hablando
+        let sesionActiva = false;
         let reconocimiento = null;
         let sintetizando = false;
-        let escuchando = false;
         let silenciado = false;
         let utteranceActual = null;
+        let enVueloSesion = false; // bloquea nuevo envío mientras hay petición en curso
 
         const elsVoz = {
           btn: document.getElementById('btnVoz'),
@@ -408,14 +411,12 @@ const activeSection = 'director-ia';
           contenedor: els.contenedor,
         };
 
-        function ponerEstadoVoz(texto, tipo = 'listo') {
+        function ponerEstadoVoz(texto, tipo = 'inactivo') {
           if (!elsVoz.estado || !elsVoz.textoEstado) return;
           elsVoz.textoEstado.textContent = texto;
-          const punto = elsVoz.estado.querySelector('.punto-voz');
-          if (punto) {
-            punto.className = 'punto-voz punto-voz--' + tipo;
-          }
           elsVoz.estado.hidden = false;
+          const punto = elsVoz.estado.querySelector('.punto-voz');
+          if (punto) punto.className = 'punto-voz punto-voz--' + tipo;
         }
 
         function ocultarEstadoVoz() {
@@ -423,115 +424,151 @@ const activeSection = 'director-ia';
         }
 
         function actualizarBotones() {
-          const activo = escuchando || sintetizando;
+          const ocupado = estado === 'escuchando' || estado === 'procesando' || estado === 'hablando';
           if (elsVoz.btn) {
-            elsVoz.btn.disabled = activo;
-            elsVoz.btn.setAttribute('aria-pressed', String(escuchando));
-            if (elsVoz.textoBtn) elsVoz.textoBtn.textContent = escuchando ? 'Escuchando…' : 'Hablar';
+            elsVoz.btn.disabled = ocupado;
+            elsVoz.btn.setAttribute('aria-pressed', String(estado === 'escuchando'));
+            if (elsVoz.textoBtn) elsVoz.textoBtn.textContent = sesionActiva ? 'Finalizar sesión' : 'Hablar';
           }
-          if (elsVoz.btnDetener) elsVoz.btnDetener.hidden = !activo;
-          if (elsVoz.input) elsVoz.input.disabled = activo || enVuelo;
-          if (els.btnEnviar) els.btnEnviar.disabled = activo || enVuelo || !elsVoz.input.value.trim();
+          if (elsVoz.btnDetener) elsVoz.btnDetener.hidden = !sesionActiva;
+          if (elsVoz.input) elsVoz.input.disabled = ocupado || enVuelo;
+          if (els.btnEnviar) els.btnEnviar.disabled = ocupado || enVuelo || !elsVoz.input.value.trim();
         }
 
-        function detenerVoz() {
+        function detenerReconocimiento() {
           if (reconocimiento) {
             try { reconocimiento.stop(); } catch { /* ignorar */ }
             reconocimiento = null;
           }
+        }
+
+        function cancelarSíntesis() {
           if (SpeechSynthesis) {
             try { SpeechSynthesis.cancel(); } catch { /* ignorar */ }
           }
-          escuchando = false;
           sintetizando = false;
           utteranceActual = null;
+        }
+
+        function finalizarSesion() {
+          sesionActiva = false;
+          estado = 'inactivo';
+          detenerReconocimiento();
+          cancelarSíntesis();
           ocultarEstadoVoz();
           actualizarBotones();
           if (elsVoz.input) elsVoz.input.disabled = enVuelo;
           if (els.btnEnviar) els.btnEnviar.disabled = enVuelo || !elsVoz.input.value.trim();
+          mostrarAlerta(null);
         }
 
         function hablarTexto(texto) {
-          if (!SpeechSynthesis || silenciado) return;
-          detenerVoz();
+          if (!SpeechSynthesis || silenciado) {
+            // No hay síntesis o está silenciado: volver a escuchar directamente.
+            if (sesionActiva) reanudarEscucha();
+            return;
+          }
+          cancelarSíntesis();
           sintetizando = true;
+          estado = 'hablando';
           actualizarBotones();
           ponerEstadoVoz('El Director responde…', 'hablando');
           utteranceActual = new SpeechSynthesisUtterance(texto);
           utteranceActual.lang = 'es-ES';
-          utteranceActual.onend = () => { sintetizando = false; utteranceActual = null; actualizarBotones(); ocultarEstadoVoz(); };
-          utteranceActual.onerror = () => { sintetizando = false; utteranceActual = null; actualizarBotones(); ocultarEstadoVoz(); };
-          try { SpeechSynthesis.speak(utteranceActual); } catch { sintetizando = false; actualizarBotones(); ocultarEstadoVoz(); }
+          utteranceActual.onend = () => {
+            sintetizando = false;
+            utteranceActual = null;
+            actualizarBotones();
+            ocultarEstadoVoz();
+            if (sesionActiva) reanudarEscucha();
+          };
+          utteranceActual.onerror = () => {
+            sintetizando = false;
+            utteranceActual = null;
+            actualizarBotones();
+            ocultarEstadoVoz();
+            if (sesionActiva) reanudarEscucha();
+          };
+          try { SpeechSynthesis.speak(utteranceActual); } catch {
+            sintetizando = false;
+            actualizarBotones();
+            ocultarEstadoVoz();
+            if (sesionActiva) reanudarEscucha();
+          }
         }
 
-        function iniciarReconocimiento() {
-          if (!soportada) {
+        function reanudarEscucha() {
+          if (!sesionActiva) return;
+          estado = 'escuchando';
+          actualizarBotones();
+          ponerEstadoVoz('Escuchando…', 'escuchando');
+          iniciarReconocimientoInterno();
+        }
+
+        function iniciarReconocimientoInterno() {
+          if (!soportada || !SpeechRecognition) {
             mostrarAlerta('Tu navegador no soporta reconocimiento de voz. Usa el teclado.');
+            if (sesionActiva) finalizarSesion();
             return;
           }
-          if (!SpeechRecognition) return;
-          detenerVoz();
-          escuchando = true;
-          actualizarBotones();
-          ponerEstadoVoz('Escuchando… habla ahora', 'escuchando');
-
+          detenerReconocimiento();
           reconocimiento = new SpeechRecognition();
           reconocimiento.lang = 'es-ES';
-          reconocimiento.continuous = false;
+          reconocimiento.continuous = true;
           reconocimiento.interimResults = false;
           reconocimiento.maxAlternatives = 1;
 
           reconocimiento.onresult = (evento) => {
-            const transcripcion = evento.results[0][0].transcript;
-            const confianza = evento.results[0][0].confidence ?? 0;
-            if (elsVoz.input) elsVoz.input.value = transcripcion;
-            if (els.btnEnviar) els.btnEnviar.disabled = !transcripcion.trim() || enVuelo;
-            mostrarAlerta(null);
-            detenerVoz();
-            // Enviar como mensaje de voz automáticamente
-            if (transcripcion.trim()) {
-              enviarMensajeVoz(transcripcion, confianza);
+            const transcripcion = evento.results[evento.results.length - 1][0].transcript;
+            const confianza = evento.results[evento.results.length - 1][0].confidence ?? 0;
+            if (!transcripcion || !transcripcion.trim()) return;
+            detenerReconocimiento();
+            estado = 'procesando';
+            actualizarBotones();
+            ponerEstadoVoz('Procesando…', 'procesando');
+            enviarMensajeSesion(transcripcion.trim(), confianza);
+          };
+
+          reconocimiento.onend = () => {
+            reconocimiento = null;
+            // Si terminó por sí solo (pausa natural) y la sesión sigue activa, volver a escuchar.
+            if (sesionActiva && estado === 'escuchando') {
+              reanudarEscucha();
             }
           };
 
           reconocimiento.onerror = (evento) => {
-            console.error('Error reconocimiento:', evento.error);
+            reconocimiento = null;
             if (evento.error === 'not-allowed' || evento.error === 'service-not-allowed') {
               mostrarAlerta('Permiso del micrófono denegado. Concede acceso al micrófono o usa el teclado.');
-            } else if (evento.error === 'no-speech') {
-              mostrarAlerta('No se detectó voz. Inténtalo de nuevo.');
-            } else {
-              mostrarAlerta('Error de reconocimiento de voz.');
+              if (sesionActiva) finalizarSesion();
+              return;
             }
-            detenerVoz();
-          };
-
-          reconocimiento.onend = () => {
-            escuchando = false;
-            reconocimiento = null;
-            actualizarBotones();
-            ocultarEstadoVoz();
+            if (evento.error === 'no-speech') {
+              if (sesionActiva) reanudarEscucha();
+              return;
+            }
+            mostrarAlerta('Error de reconocimiento de voz.');
+            if (sesionActiva) finalizarSesion();
           };
 
           try { reconocimiento.start(); } catch (e) {
             console.error('No se pudo iniciar reconocimiento:', e);
             mostrarAlerta('No se pudo iniciar el micrófono.');
-            detenerVoz();
+            if (sesionActiva) finalizarSesion();
           }
         }
 
-        async function enviarMensajeVoz(texto, confianza) {
-          if (!elsVoz.contenedor) return;
-          enVuelo = true;
-          actualizarBotones();
-          mostrarAlerta(null);
+        async function enviarMensajeSesion(texto, confianza) {
+          if (enVueloSesion) return;
+          enVueloSesion = true;
+          els.input.disabled = true;
 
           const ahora = new Date().toISOString();
           const nodoUsuario = crearNodoMensaje({ rol: 'usuario', contenido: texto, en: ahora });
-          elsVoz.contenedor.appendChild(nodoUsuario);
+          els.contenedor.appendChild(nodoUsuario);
           scrollFinal();
 
-          ponerEstadoVoz('El Director está procesando…', 'procesando');
           try {
             const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), {
               method: 'POST',
@@ -557,42 +594,65 @@ const activeSection = 'director-ia';
               registrada: j.respuesta.registrada,
               generadoEn: j.respuesta.generadoEn,
             });
-            elsVoz.contenedor.appendChild(nodoDirector);
+            els.contenedor.appendChild(nodoDirector);
             scrollFinal();
 
-            // Leer en voz alta la respuesta del Director (textoParaVoz si está disponible)
             const textoVoz = j.respuesta.detalle || j.respuesta.textoClaro;
             if (textoVoz) hablarTexto(textoVoz);
+            else if (sesionActiva) reanudarEscucha();
           } catch (err) {
-            mostrarAlerta(err instanceof Error ? err.message : 'No se pudo enviar el mensaje de voz.');
-            ocultarEstadoVoz();
-            if (nodoUsuario.parentNode) nodoUsuario.parentNode.removeChild(nodoUsuario);
+            mostrarAlerta(err instanceof Error ? err.message : 'No se pudo enviar el mensaje.');
+            if (sesionActiva) {
+              enVueloSesion = false;
+              els.input.disabled = false;
+              reanudarEscucha();
+            } else {
+              enVueloSesion = false;
+              els.input.disabled = false;
+            }
           } finally {
-            enVuelo = false;
+            if (!sesionActiva) { enVueloSesion = false; els.input.disabled = false; }
+          }
+        }
+
+        // Interrupción natural: si el usuario habla mientras el Director responde, se corta la síntesis.
+        function interrumpirPorVoz() {
+          if (estado === 'hablando' && sesionActiva) {
+            cancelarSíntesis();
+            estado = 'procesando';
             actualizarBotones();
-            if (elsVoz.input) elsVoz.input.disabled = enVuelo;
-            if (els.btnEnviar) els.btnEnviar.disabled = enVuelo || !elsVoz.input.value.trim();
+            ponerEstadoVoz('Procesando…', 'procesando');
+            // El siguiente onresult de reconocimiento enviará el nuevo mensaje.
           }
         }
 
         return {
           soportada,
           silenciado: () => silenciado,
-          setSilenciado: (v) => { silenciado = v; if (v) detenerVoz(); },
-          iniciar: iniciarReconocimiento,
-          detener: detenerVoz,
+          setSilenciado: (v) => { silenciado = v; if (v) { cancelarSíntesis(); detenerReconocimiento(); } },
+          iniciar: () => {
+            if (sesionActiva) { finalizarSesion(); return; }
+            if (!soportada) {
+              mostrarAlerta('Tu navegador no soporta reconocimiento de voz. Usa el teclado.');
+              return;
+            }
+            sesionActiva = true;
+            estado = 'escuchando';
+            actualizarBotones();
+            ponerEstadoVoz('Escuchando…', 'escuchando');
+            iniciarReconocimientoInterno();
+          },
+          detener: finalizarSesion,
           hablar: hablarTexto,
+          interrumpir: interrumpirPorVoz,
         };
       })();
 
       // eventos de voz
-      if (Voz.soportada) {
-        if (els.btnVoz) els.btnVoz.addEventListener('click', () => { if (!Voz.silenciado()) Voz.iniciar(); });
-        if (els.btnDetenerVoz) els.btnDetenerVoz.addEventListener('click', () => { Voz.detener(); });
-      } else {
-        if (els.btnVoz) els.btnVoz.hidden = true;
-        if (els.btnDetenerVoz) els.btnDetenerVoz.hidden = true;
-      }
+      if (els.btnVoz) els.btnVoz.addEventListener('click', () => { if (!Voz.silenciado()) Voz.iniciar(); });
+      if (els.btnDetenerVoz) els.btnDetenerVoz.addEventListener('click', () => { Voz.detener(); });
+
+
 
       // ── configuración de conversación (compartir con Telegram) ──
       conversacionIdConfigurada = leerConversacionIdGuardada();
