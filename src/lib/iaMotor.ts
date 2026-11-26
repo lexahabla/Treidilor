@@ -24,10 +24,31 @@
  */
 
 import { chatComplete, type TextProvider, type ChatMessage, hasTextCredentials } from './ai';
+import fs from 'node:fs';
+import path from 'node:path';
+
+/** Endpoint OpenAI-compatible de Ollama local (sin clave de API, sin facturación). */
+const OLLAMA_BASE_URL = (typeof process !== 'undefined' && process.env.OLLAMA_BASE_URL) || 'http://127.0.0.1:11434';
 
 /* ─── Tipos ─── */
 
-export type IaProvider = 'openai' | 'anthropic' | 'groq' | 'nvidia' | 'openrouter' | 'gemini';
+export type IaProvider = 'openai' | 'anthropic' | 'groq' | 'nvidia' | 'openrouter' | 'gemini' | 'ollama';
+
+/** Proveedores de pago (requieren clave de API propia y facturación convencional). */
+export const PROVEEDORES_DE_PAGO: IaProvider[] = ['openai', 'anthropic', 'gemini'];
+
+/** Proveedores gratuitos (sin coste adicional, con clave opcional o local). */
+export const PROVEEDORES_GRATUITOS: IaProvider[] = ['groq', 'nvidia', 'openrouter'];
+
+/** Proveedores locales autorizados (ejecución propia, sin claves de API, sin facturación). */
+export const PROVEEDORES_LOCALES: IaProvider[] = ['ollama'];
+
+/** Lista explícita y completa de proveedores y métodos de acceso autorizados. */
+export const PROVEEDORES_AUTORIZADOS: IaProvider[] = [
+  ...PROVEEDORES_LOCALES,
+  ...PROVEEDORES_GRATUITOS,
+  ...PROVEEDORES_DE_PAGO,
+];
 
 export interface IaTool {
   name: string;
@@ -88,24 +109,95 @@ export interface IaResultado {
   avisos: string[];
 }
 
-/* ─── Estado del motor (memoria de trabajo) ─── */
+/* ─── Estado del motor (memoria de trabajo + persistente) ─── */
 
 const MAX_HISTORIAL_POR_AGENTE = 200;
 const MAX_CONCURRENCIA = 6;
 const MAX_REINTENTOS_DEFECTO = 2;
 const TIEMPO_ESPERA_CUOTA_MS = 60_000;
 
-/** Historial de conversación por clave (agente + conversación). */
+/** Directorio persistente de la memoria del motor (volumen, no solo proceso). */
+const MEMORIA_DIR = path.join(
+  process.env.TRADYLOR_DATA_DIR ? path.join(process.env.TRADYLOR_DATA_DIR, 'ia-motor') :
+  path.join(process.cwd(), 'src', 'data', 'ia-motor'),
+);
+
+/** Ruta del índice de consumo persistente. */
+const CONSUMO_FILE = path.join(MEMORIA_DIR, 'consumo.json');
+
+/** Asegura que exista el directorio de memoria persistente. */
+function asegurarMemoriaDir(): void {
+  try { fs.mkdirSync(MEMORIA_DIR, { recursive: true }); } catch { /* no bloqueante */ }
+}
+
+/** Historial de conversación por clave (agente + conversación), cargado desde disco. */
 const memorias = new Map<string, IaMensaje[]>();
 
 /** Proveedores temporalmente apagados por cuota: { proveedor: momentoDeReactivacion }. */
 const proveedoresApagados = new Map<IaProvider, number>();
 
-/** Contador de llamadas por proveedor (registro de consumo). */
+/** Contador de llamadas por proveedor (registro de consumo persistente). */
 const consumoPorProveedor = new Map<IaProvider, { llamadas: number; errores: number }>();
 
 /** Semaforo de concurrencia simple. */
 let ejecucionesActivas = 0;
+
+/** Carga el historial persistente de una clave (agente::conversacion). */
+function cargarMemoriaDisco(clave: string): IaMensaje[] {
+  try {
+    const archivo = path.join(MEMORIA_DIR, `${clave.replace(/[^a-z0-9_-]/gi, '_')}.json`);
+    const raw = fs.readFileSync(archivo, 'utf-8');
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Guarda el historial persistente de una clave en disco. */
+function guardarMemoriaDisco(clave: string, historial: IaMensaje[]): void {
+  try {
+    asegurarMemoriaDir();
+    const archivo = path.join(MEMORIA_DIR, `${clave.replace(/[^a-z0-9_-]/gi, '_')}.json`);
+    const tmp = `${archivo}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(historial, null, 2), 'utf-8');
+    fs.renameSync(tmp, archivo);
+  } catch {
+    /* no bloqueante: la memoria en proceso sigue funcionando */
+  }
+}
+
+/** Carga el consumo persistente desde disco. */
+function cargarConsumoDisco(): void {
+  try {
+    const raw = fs.readFileSync(CONSUMO_FILE, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      for (const [p, v] of Object.entries(parsed as Record<string, { llamadas: number; errores: number }>)) {
+        consumoPorProveedor.set(p as IaProvider, v);
+      }
+    }
+  } catch {
+    /* empieza vacío si no hay archivo */
+  }
+}
+
+/** Guarda el consumo persistente en disco. */
+function guardarConsumoDisco(): void {
+  try {
+    asegurarMemoriaDir();
+    const tmp = `${CONSUMO_FILE}.tmp`;
+    const obj: Record<string, { llamadas: number; errores: number }> = {};
+    for (const [p, v] of consumoPorProveedor) obj[p] = v;
+    fs.writeFileSync(tmp, JSON.stringify(obj, null, 2), 'utf-8');
+    fs.renameSync(tmp, CONSUMO_FILE);
+  } catch {
+    /* no bloqueante */
+  }
+}
+
+/** Inicializa la memoria persistente al cargar el módulo. */
+cargarConsumoDisco();
 
 /* ─── Utilidades internas ─── */
 
@@ -116,12 +208,20 @@ function claveMemoria(agente: string, conversacion?: string): string {
 }
 
 function obtenerMemoria(agente: string, conversacion?: string): IaMensaje[] {
-  return memorias.get(claveMemoria(agente, conversacion)) ?? [];
+  const clave = claveMemoria(agente, conversacion);
+  let historial = memorias.get(clave);
+  if (!historial) {
+    historial = cargarMemoriaDisco(clave);
+    memorias.set(clave, historial);
+  }
+  return historial;
 }
 
 function guardarMemoria(agente: string, conversacion: string | undefined, historial: IaMensaje[]): void {
+  const clave = claveMemoria(agente, conversacion);
   const recortado = historial.slice(-MAX_HISTORIAL_POR_AGENTE);
-  memorias.set(claveMemoria(agente, conversacion), recortado);
+  memorias.set(clave, recortado);
+  guardarMemoriaDisco(clave, recortado);
 }
 
 function esProveedorGratuito(proveedor: IaProvider): boolean {
@@ -148,16 +248,17 @@ function proveedorPorDefecto(): IaProvider {
  * pago": es lo contrario).
  */
 function ordenCandidatos(principal: IaProvider, envCredenciales: Record<string, boolean>): IaProvider[] {
-  const todos: IaProvider[] = ['openai', 'anthropic', 'groq', 'nvidia', 'openrouter', 'gemini'];
+  const todos: IaProvider[] = ['openai', 'anthropic', 'groq', 'nvidia', 'openrouter', 'gemini', 'ollama'];
   const conCredenciales = todos.filter((p) => envCredenciales[p]);
-  const gratuitos = ['groq', 'nvidia', 'openrouter'];
+  // Ollama es local (primero entre los gratuitos), luego el resto de gratuitos remotos, luego los de pago.
+  const gratuitos: IaProvider[] = ['ollama', 'groq', 'nvidia', 'openrouter'];
 
-  // Primero el principal (si tiene credenciales).
-  const primero = conCredenciales.includes(principal) ? [principal] : [];
+  // Primero el principal (si tiene credenciales / está disponible).
+  const primero: IaProvider[] = conCredenciales.includes(principal) ? [principal] : [];
 
-  // Resto: gratuitos primero (excepto el principal), luego los de pago (excepto el principal).
-  const restoGratuitos = gratuitos.filter((p) => p !== principal && conCredenciales.includes(p));
-  const restoPago = ['openai', 'anthropic', 'gemini'].filter((p) => p !== principal && conCredenciales.includes(p));
+  // Resto: locales/gratuitos primero (excepto el principal), luego los de pago (excepto el principal).
+  const restoGratuitos: IaProvider[] = gratuitos.filter((p) => p !== principal && conCredenciales.includes(p));
+  const restoPago: IaProvider[] = (['openai', 'anthropic', 'gemini'] as IaProvider[]).filter((p) => p !== principal && conCredenciales.includes(p));
 
   return [...primero, ...restoGratuitos, ...restoPago];
 }
@@ -167,6 +268,7 @@ function registroConsumo(proveedor: IaProvider, exito: boolean): void {
   actual.llamadas += 1;
   if (!exito) actual.errores += 1;
   consumoPorProveedor.set(proveedor, actual);
+  guardarConsumoDisco();
 }
 
 function apagarProveedor(proveedor: IaProvider): void {
@@ -218,9 +320,10 @@ export async function inferir(mensajes: IaMensaje[], opcion: IaOpcion = {}): Pro
     const proveedorBase = proveedorSolicitado ?? proveedorPorDefecto();
 
     // Qué proveedores tienen credenciales configuradas (leído en tiempo de llamada).
-    const envCredenciales: Record<string, boolean> = {};
+    // Ollama es local: no necesita clave de API, siempre es intentable.
+    const envCredenciales: Record<string, boolean> = { ollama: true };
     for (const p of ['openai', 'anthropic', 'groq', 'nvidia', 'openrouter', 'gemini'] as IaProvider[]) {
-      envCredenciales[p] = hasTextCredentials(p);
+      envCredenciales[p] = hasTextCredentials(p as TextProvider);
     }
 
     const candidatos = ordenCandidatos(proveedorBase, envCredenciales).filter(
@@ -228,7 +331,8 @@ export async function inferir(mensajes: IaMensaje[], opcion: IaOpcion = {}): Pro
     );
 
     if (candidatos.length === 0) {
-      const hayClave = hasTextCredentials(proveedorBase as IaProvider);
+      // Ollama no necesita clave; los demás sí.
+      const hayClave = proveedorBase === 'ollama' || hasTextCredentials(proveedorBase as TextProvider);
       throw new Error(
         hayClave
           ? `Todos los proveedores de texto están temporalmente apagados por cuota o sin respuesta. Inténtalo de nuevo en unos minutos.`
@@ -276,16 +380,28 @@ export async function inferir(mensajes: IaMensaje[], opcion: IaOpcion = {}): Pro
           ultimoError = error;
           const mensaje = error instanceof Error ? error.message : String(error);
           const esCuota = /429|cuota|límite de peticiones|rate limit/i.test(mensaje);
-          const esModeloCaido = /410|404|modelo (retirado|no disponible)/i.test(mensaje);
+          const esModeloRetirado = /410|404|modelo (retirado|no disponible|no encontrado)/i.test(mensaje);
+          // Errores transitorios de red/servidor (503, timeout, conexión rechazada): sí se reintentan.
+          const esTransitorio =
+            !esCuota && !esModeloRetirado && /503|502|504|ECONNREFUSED|ETIMEDOUT|timeout|agotado/i.test(mensaje);
 
           if (esCuota) {
+            // Cuota agotada: apagar este proveedor (temporalmente) y pasar al siguiente.
+            // No se reintenta en bucle cada 60 s: el apagado expira solo y el propietario puede reactivar manualmente.
             apagarProveedor(proveedor as IaProvider);
-            avisos.push(`Cuota agotada en ${proveedor}; se apaga temporalmente.`);
-            break; // pasar al siguiente candidato (fallback)
+            avisos.push(`Cuota agotada en ${proveedor}; se apaga temporalmente y se usa el siguiente proveedor autorizado.`);
+            break;
           }
-          if (esModeloCaido && intento < reintentos) {
-            avisos.push(`Modelo ${modeloElegido ?? modeloPorDefectoDe(proveedor as IaProvider)} no disponible ahora; reintentando...`);
-            await new Promise((resolve) => setTimeout(resolve, 1_000 * (intento + 1)));
+          if (esModeloRetirado) {
+            // Modelo retirado / no disponible: no sirve reintentar el mismo modelo.
+            avisos.push(`Modelo ${modeloElegido ?? modeloPorDefectoDe(proveedor as IaProvider)} no disponible en ${proveedor}; se prueba el siguiente proveedor.`);
+            break;
+          }
+          if (esTransitorio && intento < reintentos) {
+            // Backoff exponencial suave: 1s, 2s, 4s ... evita agotar recursos.
+            const esperaMs = 1_000 * Math.pow(2, intento);
+            avisos.push(`Error transitorio en ${proveedor}; reintentando en ${esperaMs / 1000}s (intento ${intento + 1}/${reintentos}).`);
+            await new Promise((resolve) => setTimeout(resolve, esperaMs));
             continue;
           }
           // Error no recuperable de este proveedor: probar el siguiente.
@@ -316,6 +432,12 @@ async function llamadaUnica(
     onFragmento?: (texto: string) => void;
   }
 ): Promise<string> {
+  // Ollama es local y expone un endpoint compatible con OpenAI; no usa chatComplete
+  // (que solo cubre los 6 proveedores remotos con clave de API).
+  if (proveedor === 'ollama') {
+    return await llamadaUnicaOllama(mensajes, opts);
+  }
+
   // Construir los mensajes para el proveedor: convertir el formato interno
   // {rol, contenido} al {role, content} que espera chatComplete / ai.ts.
   const mensajesProveedor: ChatMessage[] = mensajes.map((m) => ({
@@ -324,7 +446,8 @@ async function llamadaUnica(
   }));
 
   const texto = await chatComplete(mensajesProveedor, {
-    provider: proveedor,
+    // Se llegó aquí solo si proveedor !== 'ollama' (retorno temprano arriba).
+    provider: proveedor as TextProvider,
     model: opts.modelo,
     temperature: opts.temperatura,
     timeoutMs: 90_000,
@@ -342,6 +465,55 @@ async function llamadaUnica(
   }
 
   return texto;
+}
+
+/**
+ * Llama a Ollama local (endpoint OpenAI-compatible /v1/chat/completions).
+ * No requiere clave de API ni facturación: solo el servidor Ollama local.
+ */
+async function llamadaUnicaOllama(
+  mensajes: IaMensaje[],
+  opts: {
+    modelo?: string;
+    temperatura?: number;
+    maxTokens?: number;
+    onFragmento?: (texto: string) => void;
+  }
+): Promise<string> {
+  const modelo = opts.modelo || 'llama3.1:8b';
+  const mensajesProveedor = mensajes.map((m) => ({
+    role: m.rol as 'system' | 'user' | 'assistant',
+    content: m.contenido,
+  }));
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Ollama ignora la clave, pero la cabecera Authorization es requerida por el servidor.
+        Authorization: 'Bearer ollama',
+      },
+      body: JSON.stringify({
+        model: modelo,
+        temperature: opts.temperatura ?? 0.4,
+        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+        messages: mensajesProveedor,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const txt = await response.text().catch(() => '');
+      throw new Error(`Ollama respondió ${response.status}: ${txt.slice(0, 200)}`);
+    }
+    const payload: any = await response.json();
+    return payload?.choices?.[0]?.message?.content ?? '';
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -419,15 +591,20 @@ export function obtenerConsumo(): Array<{
   apagado: boolean;
   libre: boolean;
 }> {
-  const proveedores: IaProvider[] = ['openai', 'anthropic', 'groq', 'nvidia', 'openrouter', 'gemini'];
+  const proveedores: IaProvider[] = ['ollama', 'openai', 'anthropic', 'groq', 'nvidia', 'openrouter', 'gemini'];
   return proveedores.map((p) => {
     const c = consumoPorProveedor.get(p) ?? { llamadas: 0, errores: 0 };
+    // Ollama no necesita clave: es libre si no está apagado. Los demás requieren credenciales.
+    const libre =
+      p === 'ollama'
+        ? !estaApagado(p)
+        : hasTextCredentials(p) && !estaApagado(p);
     return {
       proveedor: p,
       llamadas: c.llamadas,
       errores: c.errores,
       apagado: estaApagado(p),
-      libre: hasTextCredentials(p) && !estaApagado(p),
+      libre,
     };
   });
 }
@@ -455,5 +632,6 @@ function modeloPorDefectoDe(proveedor: IaProvider): string {
     case 'nvidia': return 'nvidia/nemotron-3.5-super-vl-120b-a12b';
     case 'openrouter': return 'deepseek/deepseek-chat-v3-0324:free';
     case 'gemini': return 'gemini-3.5-flash';
+    case 'ollama': return 'llama3.1:8b';
   }
 }
