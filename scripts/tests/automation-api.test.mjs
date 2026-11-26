@@ -80,7 +80,7 @@ test('alta: sólo un administrador con CSRF; el token se muestra una vez y en di
   assert.ok(disco.includes(r.client.id));
   const lista = await (await adminReq(undefined, { method: 'GET' })).json();
   assert.ok(!JSON.stringify(lista).includes(secreto) && !JSON.stringify(lista).includes('secretHash'));
-  assert.deepEqual(lista.scopesAvailable, ['catalog:read']);
+  assert.deepEqual(lista.scopesAvailable, ['catalog:read', 'analytics:read']);
   assert.equal((await adminRoute.ALL({ request: req('/api/admin/automation-clients', { method: 'PUT' }) })).status, 405);
 });
 
@@ -94,7 +94,7 @@ test('alta: validaciones estrictas (alcance inexistente, caducidad, límites, no
     assert.equal(r.status, 400, JSON.stringify(over));
     assert.equal(r.code, code);
   }
-  assert.deepEqual(A.AUTOMATION_SCOPES, ['catalog:read'], 'no existe ningún alcance de escritura');
+  assert.deepEqual(A.AUTOMATION_SCOPES, ['catalog:read', 'analytics:read'], 'solo lecturas: no existe ningún alcance de escritura');
 });
 
 let TOKEN;

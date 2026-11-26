@@ -8,7 +8,9 @@
  *  · Un cliente por integración, con token PROPIO `tai_<id>_<secreto>` (el secreto se muestra una sola vez; en disco sólo su huella
  *    HMAC/SHA-256 con sal). Caducidad obligatoria (máx. 90 días) y revocación inmediata. El token general NO sirve aquí y estos tokens
  *    no sirven en ninguna otra API.
- *  · Alcances mínimos y CERRADOS: hoy sólo `catalog:read`. No existe ningún alcance de escritura: no hay endpoint que lo acepte.
+ *  · Alcances mínimos y CERRADOS, SOLO de lectura: `catalog:read` (catálogo v1 y, con su interruptor, v2 con historial de precios) y `analytics:read`
+ *    (analítica AGREGADA por mes, sin datos de visitantes). No existe ningún alcance de escritura: no hay endpoint que lo acepte. Ningún alcance se concede
+ *    por tener otro. Las lecturas v2 tienen su propio interruptor, apagado por defecto (`AUTOMATION_READ_V2_ENABLED`).
  *  · Límites: peticiones por minuto y por día, por cliente; bloqueo temporal por IP tras intentos fallidos.
  *  · Auditoría de sólo añadir (`automation-audit.jsonl`): quién, qué, resultado. Nunca registra tokens ni IP en claro.
  *  · Almacenamiento: `automation-clients.json` en el volumen (escritura atómica + .bak). Un archivo ilegible NO se sobrescribe y
@@ -21,8 +23,15 @@ import { dataFile } from './paths';
 import { createRateLimiter, type RateLimiter } from './rateLimit';
 import { resolveClientIp } from './clientIp';
 
-export const AUTOMATION_SCOPES = ['catalog:read'] as const;
+export const AUTOMATION_SCOPES = ['catalog:read', 'analytics:read'] as const;
 export type AutomationScope = (typeof AUTOMATION_SCOPES)[number];
+
+export type AutomationFeature = 'readV2';
+const FEATURE_ENV: Record<AutomationFeature, string> = { readV2: 'AUTOMATION_READ_V2_ENABLED' };
+/** Interruptores INDEPENDIENTES (solo el valor exacto «true»; apagados por defecto y siempre subordinados a `AUTOMATION_API_ENABLED`). */
+export function featureEnabled(feature: AutomationFeature): boolean {
+  return automationEnabled() && process.env[FEATURE_ENV[feature]] === 'true';
+}
 
 export const MAX_CLIENTS = 20;
 export const DEFAULT_TTL_DAYS = 30;
