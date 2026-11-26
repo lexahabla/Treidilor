@@ -37,9 +37,9 @@ import { enrichProductText, hasTextCredentials, mergeWithMinimum, textProvider, 
 import { enrichProductLocally } from '../localEnrich';
 import { getCategories, createCategory, getCategoryById, type Category } from '../categories';
 import { suggestCategory } from '../categories';
-import { readProductsFromFile, upsertMergedProduct, writeProductsToFile, type Product } from '../productStore';
+import { readProductsFromFile, upsertMergedProduct, writeProductsToFile, normalizeProductKey, type Product } from '../productStore';
 import { matchDeletedProduct } from '../deletedIdentity';
-import { autoLinkAlternatives, computeConversionScore, extractNormalizedTags } from '../curation';
+import { autoLinkAlternatives, computeConversionScore, extractNormalizedTags, cleanTitleKey } from '../curation';
 import { slugify } from '../productStore';
 import { env } from '../ai';
 
@@ -685,7 +685,6 @@ export class MassCatalogPipeline {
     }
 
     // 2. Por URL canónica (afiliado/producto)
-    const { normalizeProductKey } = require('../productStore');
     const candidateUrls = [enriched.affiliateUrl].filter(Boolean);
     for (const product of products) {
       for (const url of candidateUrls) {
@@ -701,7 +700,6 @@ export class MassCatalogPipeline {
     }
 
     // 4. Por título limpio en misma categoría (posible duplicado)
-    const { cleanTitleKey } = require('../curation');
     const titleKey = cleanTitleKey(enriched.title);
     if (titleKey.length >= 8) {
       const found = products.find(p =>
