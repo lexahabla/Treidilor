@@ -94,7 +94,7 @@ const activeSection = 'director-ia';
               </svg>
               <span id="textoBtnVoz" class="texto-btn-voz">Hablar</span>
             </button>
-            <button type="button" id="btnDetenerVoz" class="btn-secondary btn-sm" title="Detener voz" hidden aria-label="Detener voz">
+            <button type="button" id="btnDetenerVoz" class="btn-secondary btn-sm" title="Interrumpir al Director y volver a escuchar" hidden aria-label="Interrumpir al Director">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="9" y="9" width="6" height="6"></rect>
               </svg>
@@ -615,15 +615,15 @@ const activeSection = 'director-ia';
           }
         }
 
-        // Interrupción natural: si el usuario habla mientras el Director responde, se corta la síntesis.
-        function interrumpirPorVoz() {
-          if (estado === 'hablando' && sesionActiva) {
-            cancelarSíntesis();
-            estado = 'procesando';
-            actualizarBotones();
-            ponerEstadoVoz('Procesando…', 'procesando');
-            // El siguiente onresult de reconocimiento enviará el nuevo mensaje.
-          }
+        // Interrupción del Director mientras habla: detiene la síntesis y vuelve a escuchar.
+        // NO finaliza la sesión. Es un control diferenciado de «Finalizar sesión» (btnVoz).
+        function interrumpirDirector() {
+          if (!sesionActiva) return;
+          cancelarSíntesis();
+          estado = 'escuchando';
+          actualizarBotones();
+          ponerEstadoVoz('Escuchando…', 'escuchando');
+          iniciarReconocimientoInterno();
         }
 
         return {
@@ -644,13 +644,15 @@ const activeSection = 'director-ia';
           },
           detener: finalizarSesion,
           hablar: hablarTexto,
-          interrumpir: interrumpirPorVoz,
+          interrumpir: interrumpirDirector,
         };
       })();
 
       // eventos de voz
+      // btnVoz: inicia la sesión (inactivo) o la finaliza inequívocamente (activa).
       if (els.btnVoz) els.btnVoz.addEventListener('click', () => { if (!Voz.silenciado()) Voz.iniciar(); });
-      if (els.btnDetenerVoz) els.btnDetenerVoz.addEventListener('click', () => { Voz.detener(); });
+      // btnDetenerVoz: interrumpe la respuesta del Director y vuelve a escuchar (no finaliza la sesión).
+      if (els.btnDetenerVoz) els.btnDetenerVoz.addEventListener('click', () => { Voz.interrumpir(); });
 
 
 

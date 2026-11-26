@@ -131,6 +131,7 @@ scripts/tests/deleted-panel-paths.test.mjs
 scripts/tests/deploy-config.test.mjs
 scripts/tests/director-ia-boton-voz.test.mjs
 scripts/tests/director-ia-conversacion-natural.test.mjs
+scripts/tests/director-ia-voz-sesion.test.mjs
 scripts/tests/discount-claims.test.mjs
 scripts/tests/facets.test.mjs
 scripts/tests/aliexpress-validate.test.mjs
