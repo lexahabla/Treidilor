@@ -307,6 +307,7 @@ src/lib/homeLayout/storiesStore.ts
 src/lib/homeLayout/types.ts
 src/lib/homeLayout/validate.ts
 src/lib/homeLayout/versionDelete.ts
+src/lib/iaMotor.ts
 src/lib/iconLibrary.ts
 src/lib/imageQuality.ts
 src/lib/jsonImport/apifyAmazon.ts
