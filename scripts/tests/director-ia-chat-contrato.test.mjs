@@ -222,9 +222,13 @@ test('ERRORES: texto vacío, sin token 401, campo extra 400, servicio caído se 
     process.env.TAI_PUENTE_PORT = String(puerto);
     process.env.TAI_PUENTE_TOKEN = `tai_prueba_${'b'.repeat(32)}`;
     const clientSinToken = new TaiPuenteClient({ host: '127.0.0.1', puerto, token: '', timeoutMs: 5000 });
-    let estado401 = false;
-    try { await clientSinToken.abrirConversacionPrincipal(); } catch (e) { estado401 = e.status === 401; }
-    assert.ok(estado401, 'sin token el servidor responde 401');
+    // El puente responde 401; el cliente lo traduce a 502 con el código del puente: un token del
+    // SERVIDOR rechazado no debe parecer una sesión caducada del propietario en el panel.
+    let error = null;
+    try { await clientSinToken.abrirConversacionPrincipal(); } catch (e) { error = e; }
+    assert.ok(error instanceof TaiPuenteError, 'sin token se rechaza con TaiPuenteError');
+    assert.equal(error.status, 502);
+    assert.equal(error.codigo, 'no_autenticado');
   });
 
   // campo extra en el cuerpo → 400 (servidor estricto). Verificado indirectamente: si el cliente enviara

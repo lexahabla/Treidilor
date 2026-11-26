@@ -60,6 +60,12 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   const cliente = clientePuente();
+  if (!cliente) {
+    return json(
+      { success: false, code: 'puente_no_configurado', message: 'El servicio conversacional del Director no está configurado en el servidor.', conversaciones: [], total: 0 },
+      503,
+    );
+  }
   let principal: { conversacion: string; principal: boolean } | null = null;
   let errorPuente: TaiPuenteError | null = null;
 
@@ -77,7 +83,7 @@ export const GET: APIRoute = async ({ request }) => {
   if (guardada) {
     // Reutilizar la conversación existente (compartida con Telegram).
     try { principal = await cliente.abrirConversacionPrincipal(guardada.id); } catch (e) { errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e)); }
-  } else if (cliente) {
+  } else {
     try {
       principal = await cliente.abrirConversacionPrincipal();
       // Persiste el ID de la conversación principal para reutilizarla.

@@ -240,11 +240,10 @@ export class TaiPuenteClient {
       const mensaje = (cuerpo && typeof cuerpo === 'object' && 'error' in cuerpo && typeof (cuerpo as any).error === 'object')
         ? String((cuerpo as any).error.mensaje ?? 'Error del servicio conversacional.')
         : `El servicio respondió ${res.status}.`;
+      // 401/403 del puente significan que el TOKEN del servidor no vale, no que la sesión del
+      // propietario haya caducado: se devuelven como 502 para que el panel no cierre la sesión.
       let status = res.status;
-      if (status === 401) status = 401;
-      else if (status === 403) status = 403;
-      else if (status === 429) status = 429;
-      else if (status >= 500) status = 502;
+      if (status === 401 || status === 403 || status >= 500) status = 502;
       throw new TaiPuenteError(codigo, status, mensaje, { detalle: cuerpo, http: res.status });
     }
     return cuerpo as T;
@@ -266,29 +265,41 @@ export class TaiPuenteClient {
    * Conversación principal del propietario, COMPARTIDA por todos los canales (Telegram + panel).
    * Es la fuente de verdad del historial.
    *
-   * Si se pasa `conversacionId`, se reutiliza esa conversación existente (no se crea ninguna nueva):
-   * permite compartir la misma conversación que Telegram sin duplicar el historial.
-   * Si no se pasa, se crea una nueva conversación y se recuerda para no duplicarla en la sesión.
+   *  · Con `conversacionId` se reutiliza esa conversación (p. ej. la de Telegram); no se crea ninguna.
+   *  · Sin él, se pide al Director su conversación PRINCIPAL (`{ principal: true }`, Director >= 1.3.1).
+   *    Un Director 1.3.0 rechaza ese campo (`solicitud_invalida`): entonces se abre una conversación
+   *    con el cuerpo vacío, que es el único contrato que admite esa versión.
+   *  · El resultado se recuerda en el cliente para no crear dos conversaciones en la misma sesión.
    */
   async abrirConversacionPrincipal(conversacionId?: string): Promise<{ conversacion: string; principal: boolean }> {
-    // Reutilizar conversación existente especificada (compartir con Telegram, por ejemplo).
     if (conversacionId && typeof conversacionId === 'string' && conversacionId.trim()) {
       const id = conversacionId.trim();
       this._conversacionPrincipal = id;
       return { conversacion: id, principal: true };
     }
-    // Idempotencia a nivel de cliente: no crear dos veces en la misma sesión.
     if (this._conversacionPrincipal) {
       return { conversacion: this._conversacionPrincipal, principal: true };
     }
-    const r = await this.peticion<{ esquema: string; conversacion: string; principal?: boolean }>('/tai/v1/chat/conversacion', {
+    const pedir = (cuerpo: Record<string, unknown>) => this.peticion<{ esquema: string; conversacion: string; principal?: boolean }>('/tai/v1/chat/conversacion', {
       method: 'POST',
       headers: this.authHeaders(),
-      body: JSON.stringify({}),
+      body: JSON.stringify(cuerpo),
     });
-    if (!r || !r.conversacion) throw new TaiPuenteError('respuesta_invalida', 502, 'El servicio no devolvió una conversación principal.', { detalle: r });
+    let r: { esquema: string; conversacion: string; principal?: boolean };
+    try {
+      r = await pedir({ principal: true });
+    } catch (e) {
+      if (!(e instanceof TaiPuenteError && e.status === 400 && e.codigo === 'solicitud_invalida')) throw e;
+      r = await pedir({});
+    }
+    if (!r || !r.conversacion) throw new TaiPuenteError('respuesta_invalida', 502, 'El servicio no devolvió una conversación principal.');
     this._conversacionPrincipal = String(r.conversacion);
     return { conversacion: this._conversacionPrincipal, principal: Boolean(r.principal) };
+  }
+
+  /** Olvida la conversación recordada (p. ej. si el Director ya no la conoce). */
+  olvidarConversacionPrincipal(): void {
+    this._conversacionPrincipal = null;
   }
 
   /**

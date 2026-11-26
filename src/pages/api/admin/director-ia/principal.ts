@@ -1,34 +1,34 @@
 /**
  * TREIDILOR — API ADMIN: CONVERSACIÓN PRINCIPAL DEL DIRECTOR IA.
  *
- * GET  /api/admin/director-ia/principal   devuelve la conversación principal
- *                                        del Director (historial real,
- *                                        compartido con Telegram).
- * POST /api/admin/director-ia/principal   envía un mensaje a la conversación
- *                                        principal (identificado como canal
- *                                        panel).
+ * GET  /api/admin/director-ia/principal   historial real de la conversación
+ *                                        principal del Director 00.
+ * POST /api/admin/director-ia/principal   envía un mensaje (texto o voz) al
+ *                                        Director, identificado como canal panel.
  *
- * La conversación principal es la FUENTE DE VERDAD del historial; el panel
- * no duplica mensajes ni crea conversaciones paralelas.
+ * EL PANEL ES SOLO UNA VENTANA DEL DIRECTOR 00 (VPS): no genera respuestas
+ * propias, no clasifica intenciones ni llama a ningún modelo de lenguaje.
+ * Lo que el propietario ve es exactamente lo que el Director respondió y dejó
+ * registrado en su historial (fuente de verdad, compartida con Telegram cuando
+ * el Director lo admite).
  *
  * Seguridad: solo el USUARIO MASTER (propietario) accede. Las peticiones de
  * escritura están protegidas contra solicitudes cruzadas (CSRF: Origin del
- * propio sitio + cabecera X-Director-IA: 1).
+ * propio sitio + cabecera X-Director-IA: 1). El token del puente nunca sale
+ * del servidor.
  */
 
 import type { APIRoute } from 'astro';
-import { randomBytes } from 'node:crypto';
 import { requireAdminAuth, getSessionUser } from '../../../../lib/adminAuth';
 import { findUserById } from '../../../../lib/userStore';
 import { sameOrigin } from '../../../../lib/alertsHttp';
-import {
-  listarConversaciones, guardarConversacionPrincipal,
-} from '../../../../lib/directorIaStore';
+import { listarConversaciones, guardarConversacionPrincipal } from '../../../../lib/directorIaStore';
 import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
-import { clasificarIntencion, respuestaSocial, respuestaSinDatos } from '../../../../lib/directorIaConversacion';
 
 const MAX_TEXTO = 2000;
 const CABECERA_ESCRITURA = 'X-Director-IA';
+/** Identificador de conversación aceptado desde el navegador (mismo formato que el Director). */
+const ID_CONVERSACION_RE = /^[A-Za-z0-9._:-]{4,120}$/;
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
@@ -40,8 +40,7 @@ let _clientePuente: TaiPuenteClient | null = null;
 function clientePuente(): TaiPuenteClient | null {
   if (_clientePuente) return _clientePuente;
   try {
-    const config = resolverConfigPuente();
-    _clientePuente = new TaiPuenteClient(config);
+    _clientePuente = new TaiPuenteClient(resolverConfigPuente());
     return _clientePuente;
   } catch {
     return null;
@@ -49,90 +48,90 @@ function clientePuente(): TaiPuenteClient | null {
 }
 
 function esPropietario(userId: string): boolean {
-  const user = findUserById(userId);
-  return Boolean(user?.master);
+  return Boolean(findUserById(userId)?.master);
 }
 
 function csrfValido(request: Request): boolean {
-  if (!sameOrigin(request)) return false;
-  return request.headers.get(CABECERA_ESCRITURA) === '1';
+  return sameOrigin(request) && request.headers.get(CABECERA_ESCRITURA) === '1';
 }
 
-export const GET: APIRoute = async ({ request }) => {
+function errorDePuente(e: unknown): Response {
+  const err = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, 'Error interno al contactar con el Director.');
+  return json({ success: false, code: err.codigo, message: err.message }, err.status === 500 ? 503 : err.status);
+}
+
+const sinPuente = () =>
+  json({ success: false, code: 'puente_no_configurado', message: 'El servicio conversacional del Director no está configurado en el servidor.' }, 503);
+
+/** Comprueba sesión de propietario; devuelve el usuario o la respuesta de error. */
+function propietario(request: Request, mensajeNoAutorizado: string): { user: { id: string } } | { error: Response } {
   const authError = requireAdminAuth(request);
-  if (authError) return authError;
+  if (authError) return { error: authError };
   const user = getSessionUser(request);
-  if (!user) return json({ success: false, code: 'no_autenticado', message: 'Sesión no válida.' }, 401);
-  if (!esPropietario(user.id)) {
-    return json({ success: false, code: 'no_autorizado', message: 'Solo el propietario puede leer la conversación principal del Director.' }, 403);
+  if (!user) return { error: json({ success: false, code: 'no_autenticado', message: 'Sesión no válida.' }, 401) };
+  if (!esPropietario(user.id)) return { error: json({ success: false, code: 'no_autorizado', message: mensajeNoAutorizado }, 403) };
+  return { user };
+}
+
+/**
+ * Resuelve la conversación del Director sin crear conversaciones paralelas:
+ *  1. la indicada explícitamente (p. ej. la de Telegram), si tiene formato válido;
+ *  2. la última guardada para este propietario;
+ *  3. si no hay ninguna, la conversación principal que devuelva el Director.
+ * Devuelve también si el id vino guardado (para poder sustituirlo si el Director ya no lo conoce).
+ */
+async function resolverConversacion(cliente: TaiPuenteClient, userId: string, request: Request) {
+  const explicita = new URL(request.url).searchParams.get('conversacionId') ?? '';
+  if (explicita && !ID_CONVERSACION_RE.test(explicita)) {
+    throw new TaiPuenteError('conversacion_invalida', 400, 'Identificador de conversación no válido.');
   }
+  const guardada = listarConversaciones(userId)[0]?.id;
+  const id = explicita || guardada;
+  const principal = await cliente.abrirConversacionPrincipal(id || undefined);
+  if (!id) {
+    try { guardarConversacionPrincipal(userId, principal.conversacion, 'Director IA'); } catch { /* solo caché */ }
+  }
+  return { principal, deCache: !explicita && Boolean(guardada) };
+}
 
-  // ID de conversación explícita (p. ej. la de Telegram) para compartirla sin crear nueva.
-  const url = new URL(request.url);
-  const conversacionIdExplícita = url.searchParams.get('conversacionId') ?? undefined;
+/** Si el Director ya no conoce la conversación guardada (p. ej. tras reinstalarlo), abre la principal y la recuerda. */
+async function sustituirConversacionCaducada(cliente: TaiPuenteClient, userId: string) {
+  cliente.olvidarConversacionPrincipal();
+  const principal = await cliente.abrirConversacionPrincipal();
+  try { guardarConversacionPrincipal(userId, principal.conversacion, 'Director IA'); } catch { /* solo caché */ }
+  return principal;
+}
 
-  // Usar la conversación principal ya guardada en el caché si existe,
-  // para no crear conversaciones paralelas en el puente.
-  const lista = listarConversaciones(user.id);
-  const guardada = conversacionIdExplícita
-    ? { id: conversacionIdExplícita }
-    : (lista.length > 0 ? { id: lista[0].id } : null);
+const esConversacionDesconocida = (e: unknown) => e instanceof TaiPuenteError && (e.codigo === 'conversacion_desconocida' || e.status === 404);
 
+export const GET: APIRoute = async ({ request }) => {
+  const p = propietario(request, 'Solo el propietario puede leer la conversación principal del Director.');
+  if ('error' in p) return p.error;
   const cliente = clientePuente();
-  if (!cliente) {
-    return json(
-      {
-        success: false,
-        code: 'puente_no_configurado',
-        message: 'El servicio conversacional del Director no está configurado en el servidor.',
-      },
-      503,
-    );
-  }
+  if (!cliente) return sinPuente();
 
   let principal: { conversacion: string; principal: boolean };
-  if (guardada) {
-    // Reutilizar la conversación existente (compartida con Telegram) en lugar
-    // de crear una nueva. Así el panel y Telegram comparten el mismo historial.
-    try {
-      principal = await cliente.abrirConversacionPrincipal(guardada.id);
-    } catch {
-      // Si la conversación guardada ya no existe en el puente, crear una nueva.
-      principal = await cliente.abrirConversacionPrincipal();
-      try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
-    }
-  } else {
-    try {
-      principal = await cliente.abrirConversacionPrincipal();
-      // Persiste el ID de la conversación principal para reutilizarla en
-      // futuras peticiones (historial único compartido con Telegram).
-      try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
-    } catch (e) {
-      const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
-      return json(
-        { success: false, code: errorPuente.codigo, message: errorPuente.message },
-        errorPuente.status === 500 ? 503 : errorPuente.status,
-      );
-    }
-  }
-
   let historial: { conversacion: string; turnos: Array<any> };
   try {
-    historial = await cliente.obtenerHistorial(principal.conversacion, { ultimos: 200 });
+    const r = await resolverConversacion(cliente, p.user.id, request);
+    principal = r.principal;
+    try {
+      historial = await cliente.obtenerHistorial(principal.conversacion, { ultimos: 200 });
+    } catch (e) {
+      if (!(r.deCache && esConversacionDesconocida(e))) throw e;
+      principal = await sustituirConversacionCaducada(cliente, p.user.id);
+      historial = await cliente.obtenerHistorial(principal.conversacion, { ultimos: 200 });
+    }
   } catch (e) {
-    const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
-    return json(
-      { success: false, code: errorPuente.codigo, message: errorPuente.message },
-      errorPuente.status === 500 ? 503 : errorPuente.status,
-    );
+    return errorDePuente(e);
   }
 
-  // Mapea los turnos del Director (usuario + respuesta) al formato de burbujas.
+  // Turnos del Director (lo dicho + lo respondido y registrado) al formato de burbujas.
   const mensajes = historial.turnos.flatMap((turno: any) => {
-    const en = turno.en || new Date().toISOString();
+    const en = turno.en || null;
     const partes: Array<any> = [];
     if (typeof turno.texto === 'string' && turno.texto.trim()) {
-      partes.push({ rol: 'usuario', contenido: turno.texto, en });
+      partes.push({ rol: 'usuario', contenido: turno.texto, en, via: turno.via ?? null, origen: turno.origen ?? null });
     }
     const resp = turno.respuesta || {};
     if (typeof resp.mensaje === 'string' && resp.mensaje.trim()) {
@@ -149,7 +148,7 @@ export const GET: APIRoute = async ({ request }) => {
         limitaciones: Array.isArray(turno.limitaciones) ? turno.limitaciones : [],
         avisos: Array.isArray(turno.avisos) ? turno.avisos : [],
         controles: turno.controles ?? undefined,
-        registrada: turno.registrada ?? undefined,
+        registrada: true,
         generadoEn: turno.en ?? undefined,
       });
     }
@@ -162,235 +161,58 @@ export const GET: APIRoute = async ({ request }) => {
       id: principal.conversacion,
       titulo: 'Director IA',
       mensajes,
-      creadoEn: new Date().toISOString(),
-      actualizadoEn: new Date().toISOString(),
       conversacionDirector: principal.conversacion,
-      principal: true,
+      principal: principal.principal,
     },
   });
 };
 
 export const POST: APIRoute = async ({ request }) => {
-  const authError = requireAdminAuth(request);
-  if (authError) return authError;
-  const user = getSessionUser(request);
-  if (!user) return json({ success: false, code: 'no_autenticado', message: 'Sesión no válida.' }, 401);
-  if (!esPropietario(user.id)) {
-    return json({ success: false, code: 'no_autorizado', message: 'Solo el propietario puede enviar mensajes al Director.' }, 403);
-  }
-
-  // Protección contra solicitudes cruzadas (CSRF).
+  const p = propietario(request, 'Solo el propietario puede enviar mensajes al Director.');
+  if ('error' in p) return p.error;
   if (!csrfValido(request)) {
-    return json(
-      { success: false, code: 'origen_no_permitido', message: 'No se pudo verificar el origen de la petición.' },
-      403,
-    );
+    return json({ success: false, code: 'origen_no_permitido', message: 'No se pudo verificar el origen de la petición.' }, 403);
   }
 
-  // ID de conversación explícita (p. ej. la de Telegram) para compartirla sin crear nueva.
-  const url = new URL(request.url);
-  const conversacionIdExplícita = url.searchParams.get('conversacionId') ?? undefined;
-
-  // Usar la conversación principal ya guardada en el caché si existe,
-  // para no crear conversaciones paralelas en el puente.
-  const lista = listarConversaciones(user.id);
-  const guardada = conversacionIdExplícita
-    ? { id: conversacionIdExplícita }
-    : (lista.length > 0 ? { id: lista[0].id } : null);
-
-  const cliente = clientePuente();
-  if (!cliente) {
-    return json(
-      {
-        success: false,
-        code: 'puente_no_configurado',
-        message: 'El servicio conversacional del Director no está configurado en el servidor.',
-      },
-      503,
-    );
-  }
-
-  let principal: { conversacion: string; principal: boolean };
-  if (guardada) {
-    try {
-      principal = await cliente.abrirConversacionPrincipal(guardada.id);
-    } catch {
-      principal = await cliente.abrirConversacionPrincipal();
-      try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
-    }
-  } else {
-    try {
-      principal = await cliente.abrirConversacionPrincipal();
-      try { guardarConversacionPrincipal(user.id, principal.conversacion, 'Director IA'); } catch {}
-    } catch (e) {
-      const errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
-      return json(
-        { success: false, code: errorPuente.codigo, message: errorPuente.message },
-        errorPuente.status === 500 ? 503 : errorPuente.status,
-      );
-    }
-  }
-
-  let body: { texto?: string; origen?: string; confianza?: number };
+  // Validar la entrada ANTES de tocar el Director.
+  let body: { texto?: unknown; origen?: unknown; confianza?: unknown };
   try {
-    body = (await request.json()) as { texto?: string; origen?: string; confianza?: number };
+    body = (await request.json()) as typeof body;
   } catch {
     return json({ success: false, code: 'json_no_valido', message: 'Cuerpo JSON no válido.' }, 400);
   }
-
   const texto = typeof body.texto === 'string' ? body.texto.trim() : '';
-  if (!texto) {
-    return json({ success: false, code: 'texto_vacio', message: 'El mensaje no puede ir vacío.' }, 400);
-  }
+  if (!texto) return json({ success: false, code: 'texto_vacio', message: 'El mensaje no puede ir vacío.' }, 400);
   if (texto.length > MAX_TEXTO) {
     return json({ success: false, code: 'texto_demasiado_largo', message: `El mensaje supera los ${MAX_TEXTO} caracteres.` }, 400);
   }
-
-  // Validar origen: solo 'texto' o 'voz'.
-  const origen = typeof body.origen === 'string' && (body.origen === 'texto' || body.origen === 'voz')
-    ? body.origen : 'texto';
-  // Validar y acotar confianza: número entre 0 y 1.
+  const origen: 'texto' | 'voz' = body.origen === 'voz' ? 'voz' : 'texto';
   const confianza = typeof body.confianza === 'number' && Number.isFinite(body.confianza)
     ? Math.max(0, Math.min(1, body.confianza)) : 0;
 
-  // ── Clasificación conversacional con LLM real (Bloque 1) ──
-  // Los mensajes pasan por el motor de inferencia (LLM real) en lugar de
-  // patrones regex. Se recupera el historial real de la conversación
-  // (compartido con Telegram) para que la charla tenga continuidad y memoria.
-  const intencion = await clasificarIntencion(texto);
+  const cliente = clientePuente();
+  if (!cliente) return sinPuente();
 
-  if (intencion === 'social') {
-    // Historial real de la conversación (fuente de verdad, compartida con Telegram)
-    // mapeado al formato {rol, contenido} que usa respuestaSocial para dar continuidad.
-    const historialReal = await cliente.obtenerHistorial(principal.conversacion, { ultimos: 50 }).catch(() => ({ turnos: [] }));
-    const historialTurnos = Array.isArray(historialReal.turnos) ? historialReal.turnos : [];
-    const historialParaSocial = historialTurnos.flatMap((t) => [
-      { rol: 'usuario', contenido: t.texto },
-      { rol: 'director', contenido: (t.respuesta && typeof t.respuesta === 'object' ? t.respuesta.mensaje : '') ?? '' },
-    ]).filter((m) => m.contenido && String(m.contenido).trim());
-
-    // Registrar el turno social en el servicio conversacional REAL y persistente
-    // del Director (único escritor del ledger: ChatDirector vía puente tai-chat/1).
-    // No se crea otro Director ni otro escritor del JSONL.
-    let respuestaPuente: any = null;
-    let errorPuente: TaiPuenteError | null = null;
-    try {
-      respuestaPuente = await cliente.enviarMensaje(texto, {
-        conversacion: principal.conversacion,
-        via: 'panel',
-        origen,
-        confianza,
-      });
-    } catch (e) {
-      errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
-    }
-
-    const generadoEn = new Date().toISOString();
-    // Respuesta natural generada por el LLM real. Si el puente entendió y
-    // respondió, se usa su respuesta real; si no entendió, se responde con
-    // respuestaSocial (LLM real, sin inventar datos del negocio ni ejecutar acciones).
-    let textoRespuesta: string;
-    let registrada = false;
-    if (!errorPuente && respuestaPuente && respuestaPuente.estado !== 'sin_entender') {
-      textoRespuesta = typeof respuestaPuente.textoClaro === 'string' && respuestaPuente.textoClaro.trim()
-        ? respuestaPuente.textoClaro
-        : (typeof respuestaPuente.detalle === 'string' && respuestaPuente.detalle.trim()
-          ? respuestaPuente.detalle
-          : await respuestaSocial(texto, { historial: historialParaSocial }));
-      registrada = Boolean(respuestaPuente.registrada);
-    } else {
-      textoRespuesta = await respuestaSocial(texto, { historial: historialParaSocial });
-      // El turno de usuario ya quedó registrado por el puente (enviarMensaje guarda
-      // el turno en el JSONL persistente); solo se muestra la respuesta social al usuario.
-      registrada = !errorPuente;
-    }
-
-    return json({
-      success: true,
-      conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: true },
-      mensaje: { id: `msg-${randomBytes(8).toString('hex')}`, texto, en: generadoEn },
-      respuesta: {
-        estado: 'respondida',
-        categoria: 'social',
-        textoClaro: textoRespuesta,
-        detalle: textoRespuesta,
-        tipoIntencion: 'social',
-        naturalezaDatos: [],
-        fuentes: [],
-        tareas: [],
-        solicitudesAutorizacion: [],
-        alternativas: [],
-        consecuencias: [],
-        limitaciones: [],
-        avisos: [],
-        controles: {
-          registrada,
-          paradaActiva: null,
-          secretoDetectado: false,
-          tipoDeControl: null,
-          instruccionesSospechosas: 0,
-          confirmaPorEsteCanal: false,
-          canal: 'panel',
-        },
-        registrada,
-        resumenHablado: textoRespuesta,
-        generadoEn,
-      },
-      trazabilidad: { tareas: [] },
-      autorizacion: { apruebaElPuente: false, pendientes: [] },
-    });
-  }
-
-  // ── Consulta del negocio o orden administrativa: ruta normal al puente ──
-  let respuesta: any;
-  let errorPuente: TaiPuenteError | null = null;
+  let principal: { conversacion: string; principal: boolean };
+  let respuesta: Awaited<ReturnType<TaiPuenteClient['enviarMensaje']>>;
   try {
-    respuesta = await cliente.enviarMensaje(texto, {
-      conversacion: principal.conversacion,
-      via: 'panel',
-      origen,
-      confianza,
-    });
+    const r = await resolverConversacion(cliente, p.user.id, request);
+    principal = r.principal;
+    try {
+      respuesta = await cliente.enviarMensaje(texto, { conversacion: principal.conversacion, origen, confianza });
+    } catch (e) {
+      if (!(r.deCache && esConversacionDesconocida(e))) throw e;
+      principal = await sustituirConversacionCaducada(cliente, p.user.id);
+      respuesta = await cliente.enviarMensaje(texto, { conversacion: principal.conversacion, origen, confianza });
+    }
   } catch (e) {
-    errorPuente = e instanceof TaiPuenteError ? e : new TaiPuenteError('interno', 502, String(e));
+    return errorDePuente(e);
   }
 
-  if (errorPuente) {
-    return json(
-      {
-        success: false,
-        code: errorPuente.codigo,
-        message: errorPuente.message,
-        conversacion: { id: principal.conversacion, conversacionDirector: principal.conversacion, principal: true },
-      },
-      errorPuente.status === 500 ? 503 : errorPuente.status,
-    );
-  }
-
-  // Si el puente no entendió una consulta no social, ofrecer una respuesta
-  // natural de fallback generada por el LLM real en lugar de «no_entendida».
-  if (respuesta.estado === 'sin_entender' && intencion !== 'social') {
-    const textoFallback = await respuestaSinDatos(texto);
-    return json({
-      success: true,
-      conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: true },
-      mensaje: { id: respuesta.idSolicitud, texto, en: respuesta.generadoEn },
-      respuesta: {
-        ...respuesta,
-        estado: 'respondida',
-        categoria: 'consulta',
-        textoClaro: textoFallback,
-        detalle: textoFallback,
-        tipoIntencion: 'consulta',
-      },
-      trazabilidad: respuesta.trazabilidad,
-      autorizacion: respuesta.autorizacion,
-    });
-  }
-
+  // Se devuelve la respuesta del Director TAL CUAL (lo mostrado = lo registrado).
   return json({
     success: true,
-    conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: true },
+    conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: principal.principal },
     mensaje: { id: respuesta.idSolicitud, texto, en: respuesta.generadoEn },
     respuesta: {
       estado: respuesta.estado,
