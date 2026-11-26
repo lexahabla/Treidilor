@@ -72,6 +72,7 @@ docs/portada-editable.md
 docs/temu-actor-mercado-es.md
 estructura.txt
 estructura_limpia.txt
+INFORME_DESBLOQUEO_IA.md
 gemini.service.ts
 nixpacks.toml
 package-lock.json
