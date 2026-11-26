@@ -253,12 +253,11 @@ export const POST: APIRoute = async ({ request }) => {
   const confianza = typeof body.confianza === 'number' && Number.isFinite(body.confianza)
     ? Math.max(0, Math.min(1, body.confianza)) : 0;
 
-  // ── Clasificación conversacional local (Problema 2) ──
-  // Los mensajes sociales reciben respuesta natural sin cargar al puente
-  // (evita que saludos y preguntas cotidianas se clasifiquen como no_entendida).
-  // Se recupera el historial real de la conversación (compartido con Telegram)
-  // para que la charla tenga continuidad y memoria entre turnos y canales.
-  const intencion = clasificarIntencion(texto);
+  // ── Clasificación conversacional con LLM real (Bloque 1) ──
+  // Los mensajes pasan por el motor de inferencia (LLM real) en lugar de
+  // patrones regex. Se recupera el historial real de la conversación
+  // (compartido con Telegram) para que la charla tenga continuidad y memoria.
+  const intencion = await clasificarIntencion(texto);
 
   if (intencion === 'social') {
     // Historial real de la conversación (fuente de verdad, compartida con Telegram)
@@ -287,9 +286,9 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     const generadoEn = new Date().toISOString();
-    // Respuesta natural para saludos/charla cotidiana. Si el puente entendió y
-    // respondió, se usa su respuesta real; si no entendió un saludo, se responde
-    // con respuestaSocial (sin inventar datos del negocio ni ejecutar acciones).
+    // Respuesta natural generada por el LLM real. Si el puente entendió y
+    // respondió, se usa su respuesta real; si no entendió, se responde con
+    // respuestaSocial (LLM real, sin inventar datos del negocio ni ejecutar acciones).
     let textoRespuesta: string;
     let registrada = false;
     if (!errorPuente && respuestaPuente && respuestaPuente.estado !== 'sin_entender') {
@@ -297,10 +296,10 @@ export const POST: APIRoute = async ({ request }) => {
         ? respuestaPuente.textoClaro
         : (typeof respuestaPuente.detalle === 'string' && respuestaPuente.detalle.trim()
           ? respuestaPuente.detalle
-          : respuestaSocial(texto, { historial: historialParaSocial }));
+          : await respuestaSocial(texto, { historial: historialParaSocial }));
       registrada = Boolean(respuestaPuente.registrada);
     } else {
-      textoRespuesta = respuestaSocial(texto, { historial: historialParaSocial });
+      textoRespuesta = await respuestaSocial(texto, { historial: historialParaSocial });
       // El turno de usuario ya quedó registrado por el puente (enviarMensaje guarda
       // el turno en el JSONL persistente); solo se muestra la respuesta social al usuario.
       registrada = !errorPuente;
@@ -369,9 +368,9 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Si el puente no entendió una consulta no social, ofrecer una respuesta
-  // natural de fallback en lugar de «no_entendida».
+  // natural de fallback generada por el LLM real en lugar de «no_entendida».
   if (respuesta.estado === 'sin_entender' && intencion !== 'social') {
-    const textoFallback = respuestaSinDatos(texto);
+    const textoFallback = await respuestaSinDatos(texto);
     return json({
       success: true,
       conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: true },
