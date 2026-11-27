@@ -198,13 +198,14 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Validar la entrada ANTES de tocar el Director.
-  let body: { texto?: unknown; origen?: unknown; confianza?: unknown; audio?: unknown; mime?: unknown; segundos?: unknown; adjuntos?: unknown; salidaVoz?: unknown; muestraVoz?: unknown };
+  let body: { texto?: unknown; origen?: unknown; confianza?: unknown; audio?: unknown; mime?: unknown; segundos?: unknown; adjuntos?: unknown; salidaVoz?: unknown; muestraVoz?: unknown; fraseVoz?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return json({ success: false, code: 'json_no_valido', message: 'Cuerpo JSON no válido.' }, 400);
   }
   if (body.muestraVoz !== undefined) return muestraVoz(body.muestraVoz);
+  if (body.fraseVoz !== undefined) return fraseVoz(body.fraseVoz);
   if (body.audio !== undefined) return turnoHablado(request, p.user.id, body);
   const idsAdjuntos = Array.isArray(body.adjuntos) ? body.adjuntos.filter((x): x is string => typeof x === 'string') : [];
   if (Array.isArray(body.adjuntos) && (idsAdjuntos.length !== body.adjuntos.length || idsAdjuntos.length > LIMITES_ADJUNTOS.porMensaje)) return json({ success: false, code: 'adjuntos_no_validos', message: `Hasta ${LIMITES_ADJUNTOS.porMensaje} adjuntos por mensaje.` }, 400);
@@ -260,6 +261,7 @@ export const POST: APIRoute = async ({ request }) => {
     success: true,
     conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: principal.principal },
     mensaje: { id: respuesta.idSolicitud, texto, en: respuesta.generadoEn },
+    ...((respuesta as any).vozRespuesta ? { vozRespuesta: (respuesta as any).vozRespuesta } : {}),
     respuesta: {
       estado: respuesta.estado,
       categoria: respuesta.categoria,
@@ -292,6 +294,16 @@ function respuestaPanel(respuesta: Awaited<ReturnType<TaiPuenteClient['enviarMen
     alternativas: respuesta.alternativas, consecuencias: respuesta.consecuencias, limitaciones: respuesta.limitaciones, avisos: respuesta.avisos, controles: respuesta.controles,
     registrada: respuesta.registrada, resumenHablado: respuesta.resumenHablado, generadoEn: respuesta.generadoEn,
   };
+}
+
+/** Frase siguiente de una respuesta hablada por frases (Director 1.3.8): solo id y número. */
+async function fraseVoz(f: unknown): Promise<Response> {
+  const id = (f as any)?.id; const n = (f as any)?.n;
+  if (typeof id !== 'string' || !/^hb_[0-9a-f]{16}$/.test(id) || !Number.isInteger(n) || n < 1 || n > 20) return json({ success: false, code: 'frase_no_valida', message: 'Frase no válida.' }, 400);
+  const cliente = clientePuente();
+  if (!cliente) return sinPuente();
+  try { const r = await cliente.fraseVoz(id, n); return json({ success: true, audio: r.audio, ultima: r.ultima }); }
+  catch (e) { return errorDePuente(e); }
 }
 
 /** Muestra de voz para el selector del panel: el Director la sintetiza con su voz local (texto fijo; no se registra en ninguna conversación). */
@@ -338,7 +350,7 @@ async function turnoHablado(request: Request, userId: string, body: { audio?: un
   return json({
     success: true,
     conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: principal.principal },
-    voz: { estado: r.estado, mensaje: r.mensaje, transcripcion: r.transcripcion, audio: r.audio, vozLocal: r.vozLocal, requiereRepeticion: r.requiereRepeticion, motivoSinVoz: r.motivoSinVoz ?? null, vozDirector: r.vozDirector ?? null, motorVoz: r.motorVoz ?? null },
+    voz: { estado: r.estado, mensaje: r.mensaje, transcripcion: r.transcripcion, audio: r.audio, vozLocal: r.vozLocal, requiereRepeticion: r.requiereRepeticion, motivoSinVoz: r.motivoSinVoz ?? null, vozDirector: r.vozDirector ?? null, motorVoz: r.motorVoz ?? null, habla: r.habla ?? null },
     respuesta: r.respuesta ? respuestaPanel(r.respuesta) : null,
   });
 }

@@ -155,7 +155,7 @@ const activeSection = 'director-ia';
             <input type="file" id="inputArchivos" multiple hidden accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.xlsx,.csv,.txt,.md,.json" />
             <select id="modoVoz" class="director-ia-modo-voz" title="Modo de la conversación por voz" aria-label="Modo de voz">
               <option value="director">Voz del Director</option>
-              <option value="rapida">Voz rápida (del navegador)</option>
+              <option value="rapida">Voz rápida (te reconoce el navegador)</option>
             </select>
             <select id="vozElegida" class="director-ia-modo-voz director-ia-voz-elegida" title="Voz con la que te responde el Director (local, sin límite diario). Provisional hasta que la escuches y elijas" aria-label="Voz del Director">
               <option value="alex">Alex (provisional)</option>
@@ -738,6 +738,35 @@ const activeSection = 'director-ia';
         return { activo: () => activo, poner, alSilenciar: (f) => avisos.push(f), salida, reproduccion, marcarSinCupo, sinCupo: () => sinCupo };
       })();
 
+      // ── LOCUTOR: reproduce la respuesta del Director POR FRASES (Director 1.3.8). La primera llega con el turno; mientras suena, se pide la
+      // siguiente (el Director ya la está sintetizando), así no hay que esperar a que toda la respuesta esté sintetizada. Cortar detiene lo que suena
+      // y descarta lo pendiente al instante (interrumpir, silenciar, nuevo turno).
+      const Locutor = (function () {
+        let actual = null; let gen = 0;
+        async function pedirFrase(id, n) {
+          const res = await fetch(`${API_BASE}/principal`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Director-IA': '1' }, body: JSON.stringify({ fraseVoz: { id, n } }) });
+          const j = await leerJson(res); if (!j || !j.success || !j.audio || !j.audio.base64) throw new Error('sin frase');
+          return `data:${j.audio.mime};base64,${j.audio.base64}`;
+        }
+        function cortar() { gen += 1; const a = actual; actual = null; if (a && typeof a.pause === 'function') { try { a.pause(); } catch { /* nada */ } } }
+        /** url de la primera frase + habla {id,total} (o null): alEmpezar() al sonar la primera, alTerminar('completada'|'fallida') al acabar. */
+        function decir(url, habla, { alEmpezar = null, alTerminar = null } = {}) {
+          cortar(); const mio = gen; const total = habla && habla.id && habla.total > 1 ? Math.min(20, habla.total) : 1; const siguientes = new Map(); let empezo = false;
+          const pedir = (n) => { if (n < total && !siguientes.has(n)) { const pr = pedirFrase(habla.id, n); pr.catch(() => {}); siguientes.set(n, pr); } };
+          const acabar = (m) => { if (mio !== gen) return; actual = null; if (alTerminar) alTerminar(m); };
+          const sonar = (u, n) => {
+            if (mio !== gen) return;
+            const a = new window.Audio(u); actual = a; pedir(n + 1);
+            a.onended = async () => { if (mio !== gen || actual !== a) return; if (n + 1 >= total) { acabar('completada'); return; } let u2 = null; try { u2 = await siguientes.get(n + 1); } catch { u2 = null; } if (mio !== gen) return; if (u2) sonar(u2, n + 1); else acabar('fallida'); };
+            a.onerror = () => { if (mio === gen && actual === a) acabar('fallida'); };
+            const empezar = () => { if (!empezo && mio === gen) { empezo = true; if (alEmpezar) alEmpezar(); } };
+            try { const pr = a.play(); if (pr && typeof pr.then === 'function') pr.then(empezar, () => a.onerror()); else empezar(); } catch { a.onerror(); }
+          };
+          sonar(url, 0);
+        }
+        return { decir, cortar, sonando: () => Boolean(actual) };
+      })();
+
       const Voz = (function () {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const SpeechSynthesis = window.speechSynthesis;
@@ -801,6 +830,7 @@ const activeSection = 'director-ia';
         }
 
         function cancelarSíntesis() {
+          Locutor.cortar();
           if (SpeechSynthesis) {
             try { SpeechSynthesis.cancel(); } catch { /* ignorar */ }
           }
@@ -924,8 +954,17 @@ const activeSection = 'director-ia';
           }
         }
 
+        /** Modo rápido con la VOZ DEL DIRECTOR (Kokoro, por frases): sin voz sintética del navegador. */
+        function hablarDirector(vr, tResultado) {
+          cancelarSíntesis(); estado = 'hablando'; actualizarBotones(); ponerEstadoVoz('El Director responde…', 'hablando');
+          Locutor.decir(`data:${vr.audio.mime};base64,${vr.audio.base64}`, vr.habla, {
+            alEmpezar: () => { try { console.info('[voz-rapida]', JSON.stringify({ primerSonidoMs: Date.now() - tResultado })); } catch { /* sin consola */ } },
+            alTerminar: (m) => { Altavoz.reproduccion(m); estado = 'escuchando'; actualizarBotones(); ocultarEstadoVoz(); if (sesionActiva) reanudarEscucha(); },
+          });
+        }
+
         async function enviarMensajeSesion(texto, confianza) {
-          if (enVueloSesion) return;
+          if (enVueloSesion) return; const tResultado = Date.now();
           enVueloSesion = true;
           els.input.disabled = true;
 
@@ -964,6 +1003,7 @@ const activeSection = 'director-ia';
             // alta ni reactiva la escucha.
             const textoVoz = j.respuesta.detalle || j.respuesta.textoClaro;
             if (!sesionActiva) { /* sesión finalizada: nada más */ }
+            else if (j.vozRespuesta && j.vozRespuesta.audio && Altavoz.activo() && !silenciado) hablarDirector(j.vozRespuesta, tResultado);
             else if (textoVoz) hablarTexto(textoVoz);
             else reanudarEscucha();
           } catch (err) {
@@ -1030,7 +1070,7 @@ const activeSection = 'director-ia';
         const AC = window.AudioContext || window.webkitAudioContext;
         const disponible = Boolean(window.MediaRecorder && nav && nav.mediaDevices && typeof nav.mediaDevices.getUserMedia === 'function' && AC);
         // silencioFinMs 1300: en las sesiones del 27/11 una pausa natural de ~1 s partía la intervención en dos turnos (pares a 1–4 s); con 1,3 s se respeta la pausa.
-        const CFG = { umbralMin: 0.012, factorVoz: 3.5, factorSilencio: 2, umbralRespuestaMin: 0.07, factorRespuesta: 6, inicioMs: 120, silencioFinMs: 1300, minMs: 350, maxMs: 30000, interrupcionMs: 300, intervaloMs: 50, timeoutTurnoMs: 35000, maxHablado: 260 };
+        const CFG = { umbralMin: 0.012, factorVoz: 3.5, factorSilencio: 2, umbralRespuestaMin: 0.07, factorRespuesta: 6, inicioMs: 120, silencioFinMs: 1100, minMs: 350, maxMs: 30000, interrupcionMs: 300, intervaloMs: 50, timeoutTurnoMs: 35000, maxHablado: 260 };
         let sesion = false; let estado = 'inactivo'; let noDisponible = false;
         let stream = null; let ctx = null; let analizador = null; let muestras = null; let reloj = null; let piso = 0.005;
         let grabador = null; let trozos = []; let inicio = 0; let ultimaVoz = 0; let vozDesde = 0; let reproduccion = null; let turno = 0; let procesandoDesde = 0; let pendiente = null; let enVuelo = 0; let calibrandoHasta = 0; let minimoCal = 1; let peticion = null; let ventana = []; let maxGrab = 0;
@@ -1153,12 +1193,12 @@ const activeSection = 'director-ia';
             els.contenedor.appendChild(crearNodoMensaje({ rol: 'director', contenido: a.textoClaro, en: a.generadoEn, estado: a.estado, categoria: a.categoria, tipoIntencion: a.tipoIntencion, naturalezaDatos: a.naturalezaDatos, fuentes: a.fuentes, tareas: a.tareas, solicitudesAutorizacion: a.solicitudesAutorizacion, limitaciones: a.limitaciones, avisos: a.avisos, controles: a.controles, registrada: a.registrada, generadoEn: a.generadoEn }));
           }
           scrollFinal(false, estabaAlFinal);
-          const met = { en: new Date().toISOString(), esperaFinMs, servidorMs: Date.now() - t0, servidor: j.voz && j.voz.medidas ? j.voz.medidas : null, conVozDirector: Boolean(v.audio), estado: v.estado || null };
+          const met = { en: new Date().toISOString(), finVozEn: t0 - (Number(esperaFinMs) || 0), esperaFinMs, servidorMs: Date.now() - t0, servidor: j.voz && j.voz.medidas ? j.voz.medidas : null, conVozDirector: Boolean(v.audio), estado: v.estado || null };
           metricas.push(met); if (metricas.length > 50) metricas.shift(); try { console.info('[voz-director]', JSON.stringify(met)); } catch { /* sin consola */ }
           if (v.vozDirector === 'sin_cupo' || v.vozDirector === 'fallo_voz_local' || v.motivoSinVoz === 'cuota_agotada') Altavoz.marcarSinCupo(true); else if (v.vozDirector === 'disponible' || v.audio) Altavoz.marcarSinCupo(false);
           if (mio !== turno || !sesion) return; // la sesión se cerró o llegó otro turno: se muestra, no se lee
           let que;
-          if (v.audio && v.audio.base64) que = { url: `data:${v.audio.mime};base64,${v.audio.base64}`, respaldo: resumenHablado(j.respuesta) };
+          if (v.audio && v.audio.base64) que = { url: `data:${v.audio.mime};base64,${v.audio.base64}`, respaldo: resumenHablado(j.respuesta), habla: v.habla || null, met };
           else if (v.vozLocal) que = { local: v.vozLocal, nota: v.motivoSinVoz === 'fallo_voz_local' ? 'mi voz local no ha respondido; lo intento en la próxima' : 'datos del negocio: no se envían a la voz externa' };
           else if (j.respuesta) que = { local: resumenHablado(j.respuesta), nota: v.motivoSinVoz === 'fallo_voz_local' ? 'mi voz local no ha respondido; lo intento en la próxima' : v.motivoSinVoz === 'cuota_agotada' ? 'mi voz ha agotado su cupo gratuito de hoy' : v.motivoSinVoz === 'limite_diario' ? 'se alcanzó el tope diario de voz' : v.estado === 'respuesta_solo_texto' ? 'voz del Director no disponible ahora' : null };
           else que = { local: v.mensaje || 'No te he entendido. Repítelo, por favor.', aviso: true };
@@ -1171,19 +1211,23 @@ const activeSection = 'director-ia';
           const escuchandoCon = (texto) => { escuchar(); if (estado === 'escuchando') poner('escuchando', texto); };
           if (q && q.aviso) { escuchandoCon(`${q.local} · Escuchando…`); return; } // los avisos se muestran; no se leen con voz sintética
           if (!Altavoz.activo()) { escuchar(); return; } // respuestas solo por escrito: la respuesta ya está en el hilo y se sigue escuchando
-          if (q && q.url) return reproducir(q.url, null);
+          if (q && q.url) return reproducir(q.url, null, q.habla, q.met);
           // Sin audio natural (cuota de voz agotada, respuesta con datos del negocio que no salen hacia el proveedor de voz): NO se sustituye por la
           // voz sintética del navegador. La respuesta queda escrita y se sigue escuchando.
           escuchandoCon(q && q.nota ? `Te respondo por escrito (${q.nota}). Escuchando…` : 'Te respondo por escrito. Escuchando…');
           return undefined;
         }
-        function reproducir(url, respaldo) {
+        function reproducir(url, respaldo, habla = null, met = null) {
           poner('hablando', 'El Director responde…'); vozDesde = 0;
-          const a = new window.Audio(url); reproduccion = a;
-          const fin = () => { if (reproduccion === a) { Altavoz.reproduccion('completada'); reproduccion = null; if (estado === 'hablando') escuchar(); } };
-          const fallo = () => { if (reproduccion === a) { Altavoz.reproduccion('fallida'); reproduccion = null; if (respaldo) hablarLocal(respaldo, 'no se pudo reproducir el audio'); else if (estado === 'hablando') poner('escuchando', 'No se pudo reproducir la voz: te respondo por escrito. Escuchando…'); } };
-          a.onended = fin; a.onerror = fallo;
-          try { const p = a.play(); if (p && typeof p.catch === 'function') p.catch(fallo); } catch { fallo(); }
+          const h = { pause: () => Locutor.cortar() }; reproduccion = h;
+          Locutor.decir(url, habla, {
+            alEmpezar: () => { if (met && met.finVozEn) { met.primerSonidoMs = Date.now() - met.finVozEn; try { console.info('[voz-director] primer sonido', met.primerSonidoMs, 'ms'); } catch { /* sin consola */ } } },
+            alTerminar: (m) => {
+              if (reproduccion !== h) return; reproduccion = null; Altavoz.reproduccion(m);
+              if (m === 'completada') { if (estado === 'hablando') escuchar(); return; }
+              if (respaldo) hablarLocal(respaldo, 'no se pudo reproducir el audio'); else if (estado === 'hablando') poner('escuchando', 'No se pudo reproducir la voz: te respondo por escrito. Escuchando…');
+            },
+          });
         }
         function hablarLocal(texto, nota) {
           const S = window.speechSynthesis;
@@ -1240,7 +1284,7 @@ const activeSection = 'director-ia';
       const selModoVoz = document.getElementById('modoVoz');
       const modoVoz = () => { try { return localStorage.getItem('directorIA.modoVoz') === 'rapida' ? 'rapida' : 'director'; } catch { return 'director'; } };
       const selVoz = document.getElementById('vozElegida'); const btnMuestra = document.getElementById('btnMuestraVoz');
-      const pintarSelectorVoz = () => { const director = modoVoz() === 'director'; if (selVoz) selVoz.hidden = !director; if (btnMuestra) btnMuestra.hidden = !director; };
+      const pintarSelectorVoz = () => { if (selVoz) selVoz.hidden = false; if (btnMuestra) btnMuestra.hidden = false; }; // las dos modalidades responden con la voz elegida
       if (selModoVoz) { selModoVoz.value = modoVoz(); selModoVoz.addEventListener('change', () => { try { localStorage.setItem('directorIA.modoVoz', selModoVoz.value === 'rapida' ? 'rapida' : 'director'); } catch { /* sin almacenamiento */ } if (VozDirector.activa()) VozDirector.finalizar(); if (Voz.activa && Voz.activa()) Voz.detener(); pintarSelectorVoz(); }); }
       // MUESTRA DE VOZ: el Director sintetiza una frase fija con la voz elegida (no se guarda en ninguna conversación). Pulsar otra vez la detiene.
       const Muestra = (function () {
@@ -1265,7 +1309,7 @@ const activeSection = 'director-ia';
       })();
       if (selVoz) { selVoz.value = vozElegidaActual(); selVoz.addEventListener('change', () => { try { localStorage.setItem('directorIA.voz', VOCES_DIRECTOR.includes(selVoz.value) ? selVoz.value : 'alex'); } catch { /* sin almacenamiento */ } Muestra.parar(); }); }
       if (btnMuestra) btnMuestra.addEventListener('click', () => Muestra.sonar());
-      Altavoz.alSilenciar(() => Muestra.parar());
+      Altavoz.alSilenciar(() => { Muestra.parar(); Locutor.cortar(); });
       pintarSelectorVoz();
       if (els.btnVoz) els.btnVoz.addEventListener('click', () => {
         if (VozDirector.activa() || (modoVoz() === 'director' && VozDirector.disponible() && !Voz.silenciado())) { VozDirector.iniciar(); return; }

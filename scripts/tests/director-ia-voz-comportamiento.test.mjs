@@ -64,14 +64,15 @@ function montarPanel(manejarFetch, { habladas = true } = {}) {
     /** El propietario dice algo. */
     decir(texto, confianza = 0.92) { this.onresult?.({ results: [[{ transcript: texto, confidence: confianza }]] }); }
   }
-  const locuciones = [];
+  const locuciones = []; const audios = [];
+  class Audio { constructor(url) { this.url = url; this.pausado = false; audios.push(this); } play() { return Promise.resolve(); } pause() { this.pausado = true; } }
   const speechSynthesis = { speaking: false, speak(u) { locuciones.push(u); }, cancel() {} };
   class SpeechSynthesisUtterance { constructor(texto) { this.text = texto; } }
   const peticiones = [];
   const fetch = async (url, init = {}) => { peticiones.push({ url: String(url), init }); return manejarFetch(String(url), init); };
   const almacen = new Map([['directorIA.respuestasHabladas', habladas ? 'si' : 'no']]); // estas pruebas comprueban la voz: se activa expresamente
   const ventana = {
-    SpeechRecognition, speechSynthesis, SpeechSynthesisUtterance, fetch, document,
+    SpeechRecognition, speechSynthesis, SpeechSynthesisUtterance, Audio, fetch, document,
     localStorage: { getItem: (k) => almacen.get(k) ?? null, setItem: (k, v) => almacen.set(k, v), removeItem: (k) => almacen.delete(k) },
     setTimeout: (fn, ms) => setTimeout(fn, Math.min(Number(ms) || 0, 5)),
     clearTimeout, setInterval: () => 0, clearInterval() {},
@@ -83,7 +84,7 @@ function montarPanel(manejarFetch, { habladas = true } = {}) {
   vm.runInContext(SCRIPT, ventana, { filename: 'director-ia.astro<script>' });
   const el = (id) => document.getElementById(id);
   return {
-    el, peticiones, locuciones,
+    el, peticiones, locuciones, audios, ventana,
     ultimoReconocimiento: () => reconocimientos.at(-1),
     reconocimientosActivos: () => reconocimientos.filter((r) => r.activo).length,
     totalReconocimientos: () => reconocimientos.length,
@@ -191,4 +192,14 @@ test('VOZ RÁPIDA: el texto dictado lleva el estado de la salida (motor del nave
   p.ultimoReconocimiento().decir('otra'); await tic();
   const c2 = JSON.parse(p.peticiones.filter((x) => x.init.method === 'POST').at(-1).init.body);
   assert.equal(c2.salidaVoz.ultimaReproduccion, 'completada');
+});
+
+test('VOZ RÁPIDA con la VOZ DEL DIRECTOR (1.3.8): si el Director manda su voz, suena ella por frases y NO la voz robótica del navegador', async () => {
+  const p = montarPanel(servidor(async (cuerpo) => (cuerpo.fraseVoz ? jsonRes({ success: true, audio: { base64: 'ZnJhc2Ux', mime: 'audio/mpeg' }, ultima: true }) : (async () => { const j = await respuestaDirector(`Respuesta a «${cuerpo.texto}»`).json(); return jsonRes({ ...j, vozRespuesta: { audio: { base64: 'SUQzbXAz', mime: 'audio/mpeg' }, habla: { id: 'hb_0123456789abcdef', total: 2 }, voz: 'dora' } }); })())));
+  try { p.ventana.localStorage.setItem('directorIA.modoVoz', 'rapida'); } catch { /* sin acceso directo */ }
+  await tic(); p.el('btnVoz').click();
+  p.ultimoReconocimiento().decir('hola'); await tic();
+  assert.equal(p.locuciones.length, 0, 'sin voz del navegador'); assert.ok(p.audios && p.audios.length >= 1, 'suena la voz del Director');
+  await p.audios[0].onended(); await tic(); assert.equal(p.audios.length, 2);
+  await p.audios[1].onended(); await tic(); assert.equal(p.locuciones.length, 0);
 });

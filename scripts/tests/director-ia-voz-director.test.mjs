@@ -299,7 +299,7 @@ test('ALTAVOZ ACTIVADO POR DEFECTO: sin preferencia guardada, el Director respon
   assert.equal(cuerpoDe(p.posts()[0]).salidaVoz.altavoz, 'activado'); assert.equal(p.sim.audios.length, 1, 'suena la respuesta'); assert.equal(p.sim.locuciones.length, 0, 'nunca la voz robótica');
 });
 
-test('SELECTOR DE VOZ y MUESTRA: la voz elegida viaja con cada turno, se recuerda, la muestra suena y se detiene; en «Voz rápida» el selector se oculta', async () => {
+test('SELECTOR DE VOZ y MUESTRA: la voz elegida viaja con cada turno, se recuerda, la muestra suena y se detiene; también en «Voz rápida»', async () => {
   const p = montarPanel(async (c, n) => (c.muestraVoz ? { success: true, voz: c.muestraVoz, audio: { base64: 'UklGRg==', mime: 'audio/wav' } } : respuestaVoz(n)));
   await tic(); assert.equal(p.el('vozElegida').value, 'alex', 'provisional por defecto'); assert.equal(p.el('vozElegida').hidden, false);
   p.el('vozElegida').value = 'dora'; p.el('vozElegida').dispatch('change');
@@ -310,7 +310,7 @@ test('SELECTOR DE VOZ y MUESTRA: la voz elegida viaja con cada turno, se recuerd
   p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1500, 0);
   assert.equal(cuerpoDe(p.posts().at(-1)).salidaVoz.voz, 'dora', 'el Director responde con la voz elegida');
   const q = montarPanel(async (c, n) => respuestaVoz(n)); await tic();
-  q.el('modoVoz').value = 'rapida'; q.el('modoVoz').dispatch('change'); assert.equal(q.el('vozElegida').hidden, true); assert.equal(q.el('btnMuestraVoz').hidden, true);
+  q.el('modoVoz').value = 'rapida'; q.el('modoVoz').dispatch('change'); assert.equal(q.el('vozElegida').hidden, false, 'el modo rápido también responde con la voz elegida (1.3.8)'); assert.equal(q.el('btnMuestraVoz').hidden, false);
 });
 
 test('VOZ LOCAL QUE FALLA: se dice por escrito y claro (sin voz robótica) y el altavoz queda marcado', async () => {
@@ -318,4 +318,36 @@ test('VOZ LOCAL QUE FALLA: se dice por escrito y claro (sin voz robótica) y el 
   await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1500, 0);
   assert.match(p.el('textoEstadoVoz').textContent, /Te respondo por escrito \(mi voz local no ha respondido; lo intento en la próxima\)/);
   assert.equal(p.sim.locuciones.length, 0); assert.equal(p.sim.audios.length, 0);
+});
+
+// ───────── HABLA POR FRASES (Director 1.3.8): la primera frase suena en cuanto llega; las siguientes se piden mientras suena la anterior ─────────
+const conFrases = (n, total) => respuestaVoz(n, { audio: { base64: 'SUQzbXAz', mime: 'audio/mpeg' }, habla: { id: 'hb_0123456789abcdef', total } });
+const frase = (c) => ({ success: true, audio: { base64: Buffer.from(`frase${c.fraseVoz.n}`).toString('base64'), mime: 'audio/mpeg' }, ultima: c.fraseVoz.n === 2 });
+test('POR FRASES: suena la primera al llegar, la siguiente se pide ya mientras suena (sin huecos de espera) y al terminar la última vuelve a escuchar', async () => {
+  const p = montarPanel(async (c, n) => (c.fraseVoz ? frase(c) : conFrases(n, 3)));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1300, 0);
+  assert.equal(p.sim.audios.length, 1); assert.match(p.sim.audios[0].url, /^data:audio\/mpeg;base64,/);
+  const pedidas = () => p.posts().map((x) => JSON.parse(x.init.body)).filter((b) => b.fraseVoz);
+  assert.deepEqual(pedidas().map((b) => b.fraseVoz), [{ id: 'hb_0123456789abcdef', n: 1 }], 'la frase 2 se pide mientras suena la 1');
+  await p.sim.audios[0].onended(); await tic();
+  assert.equal(p.sim.audios.length, 2); assert.match(p.sim.audios[1].url, /;base64,ZnJhc2Ux$/); assert.equal(pedidas().length, 2, 'y la 3 mientras suena la 2');
+  await p.sim.audios[1].onended(); await tic(); await p.sim.audios[2].onended(); await tic();
+  assert.equal(p.sim.audios.length, 3); assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando…'); assert.equal(p.sim.locuciones.length, 0, 'sin voz robótica');
+});
+
+test('POR FRASES: interrumpir (■ o hablar encima) corta lo que suena y NO reproduce las frases pendientes; el siguiente turno sigue normal', async () => {
+  const p = montarPanel(async (c, n) => (c.fraseVoz ? frase(c) : conFrases(n, 3)));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1300, 0);
+  await p.sim.audios[0].onended(); await tic(); assert.equal(p.sim.audios.length, 2);
+  p.el('btnDetenerVoz').click(); await tic(); assert.equal(p.sim.audios[1].pausado, true);
+  await p.sim.audios[1].onended?.(); await tic(); assert.equal(p.sim.audios.length, 2, 'la frase 3 ya no suena');
+  assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando…'); assert.equal(p.el('textoBtnVoz').textContent, 'Finalizar sesión');
+  await p.pasar(900, 0.2); await p.pasar(1300, 0); assert.equal(p.sim.audios.length, 3, 'el turno siguiente se oye');
+});
+
+test('FIN DE LA INTERVENCIÓN en 1,1 s de silencio (antes 1,3 s): con 1,0 s aún no se envía; con 1,15 s sí', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2);
+  await p.pasar(1000, 0); assert.equal(p.posts().length, 0, '1,0 s de silencio: todavía puede seguir hablando');
+  await p.pasar(150, 0); assert.equal(p.posts().length, 1);
 });
