@@ -124,3 +124,13 @@ test('ADJUNTOS en la interfaz: elegir archivos los sube al chat abierto, el mens
   const buscar = (e, txt) => (e.className === 'director-ia-chat-abrir' && e.textContent.includes(txt) ? e : e.children.map((x) => buscar(x, txt)).find(Boolean)); buscar(p.el('listaChats'), 'Precios').click(); await tic();
   assert.equal(borrados.length, 1, 'el adjunto sin enviar del chat anterior se borra'); assert.match(borrados[0], /id=ad_0000000000000002/);
 });
+
+test('CONFIDENCIAL en la interfaz: candado en la lista, aviso en el subtítulo y micrófono desactivado en ese chat', async () => {
+  const conf = { ...CHATS, chats: [CHATS.chats[0], { ...CHATS.chats[1], confidencial: true }] };
+  const p = montar(async (url) => (url.includes('/chats') ? conf : historia(0)));
+  await tic(); await tic();
+  const buscar = (e, txt) => (e.className === 'director-ia-chat-abrir' && e.textContent.includes(txt) ? e : e.children.map((x) => buscar(x, txt)).find(Boolean));
+  const item = buscar(p.el('listaChats'), 'Precios'); assert.match(item.textContent, /🔒/);
+  assert.equal(p.el('btnVoz').disabled, false, 'en la principal la voz sigue disponible');
+  item.click(); await tic(); assert.equal(p.el('btnVoz').disabled, true); assert.match(p.el('subtituloConversacion').textContent, /Confidencial: sin modelo externo ni voz/);
+});

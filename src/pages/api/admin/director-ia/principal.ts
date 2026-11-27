@@ -225,11 +225,14 @@ export const POST: APIRoute = async ({ request }) => {
     // adjuntos del chat (solo del propietario y de ESTA conversación) e instrucciones del proyecto del chat
     const adjuntos = []; for (const id of idsAdjuntos) { const a = obtenerAdjunto(p.user.id, id, principal.conversacion); if (!a) return json({ success: false, code: 'adjunto_no_autorizado', message: 'Un adjunto no existe o no pertenece a este chat.' }, 403); adjuntos.push(a); }
     const chatMeta = listarChats(p.user.id); const ch = chatMeta.chats.find((c) => c.id === principal.conversacion); const pr = ch?.proyectoId ? chatMeta.proyectos.find((x) => x.id === ch.proyectoId) : null;
-    const extra = { adjuntos: adjuntos.map(paraDirector), proyecto: pr ? { nombre: pr.nombre, instrucciones: pr.instrucciones } : null };
+    const confidencial = ch?.confidencial === true;
+    const extra = { adjuntos: adjuntos.map(paraDirector), proyecto: pr ? { nombre: pr.nombre, instrucciones: pr.instrucciones } : null, ...(confidencial ? { privado: true } : {}) };
     const enviar = async (conv: string) => {
       try { return await cliente.enviarMensaje(texto, { conversacion: conv, origen, confianza, ...extra }); }
       catch (e) {
         // Director anterior a 1.3.4: no admite adjuntos ni proyecto → se envía el texto y se avisa (no se pierde el mensaje)
+        // Un chat CONFIDENCIAL nunca se reenvía sin su protección: si el Director instalado no la admite, el mensaje no se envía.
+        if (e instanceof TaiPuenteError && e.status === 400 && /Campos no permitidos/.test(e.message) && confidencial) throw new TaiPuenteError('confidencial_no_disponible', 409, 'Este chat es confidencial y el Director instalado aún no lo admite (llega con la versión 1.3.4): no he enviado el mensaje.');
         if (e instanceof TaiPuenteError && e.status === 400 && /Campos no permitidos/.test(e.message) && (extra.adjuntos.length || extra.proyecto)) { avisoVersion = true; return cliente.enviarMensaje(texto, { conversacion: conv, origen, confianza }); }
         throw e;
       }
@@ -296,6 +299,8 @@ async function turnoHablado(request: Request, userId: string, body: { audio?: un
   if (!Number.isFinite(segundos) || segundos <= 0 || segundos > MAX_SEGUNDOS_VOZ) return json({ success: false, code: 'audio_no_valido', message: `Cada intervención puede durar hasta ${MAX_SEGUNDOS_VOZ} s.` }, 400);
   const cliente = clientePuente();
   if (!cliente) return sinPuente();
+  const chatPedido = new URL(request.url).searchParams.get('conversacionId') ?? '';
+  if (chatPedido && chatPermitido(userId, chatPedido)?.confidencial) return json({ success: false, code: 'voz_no_permitida', message: 'Este chat es confidencial: la voz está desactivada porque enviaría tu audio a un servicio externo. Escribe el mensaje.' }, 403);
   let principal: { conversacion: string; principal: boolean };
   let r: Awaited<ReturnType<TaiPuenteClient['hablar']>>;
   try {

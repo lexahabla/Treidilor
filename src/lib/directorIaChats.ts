@@ -21,7 +21,7 @@ export const LIMITES_CHATS = Object.freeze({ chats: 500, proyectos: 50, titulo: 
 export const ID_CONVERSACION_RE = /^cv_[0-9a-f]{16}$/;
 const ID_PROYECTO_RE = /^pr_[0-9a-f]{12}$/;
 
-export interface Chat { id: string; userId: string; titulo: string; proyectoId: string | null; principal: boolean; archivada: boolean; eliminadaEn: string | null; creadoEn: string; actualizadoEn: string }
+export interface Chat { id: string; userId: string; titulo: string; proyectoId: string | null; principal: boolean; archivada: boolean; eliminadaEn: string | null; creadoEn: string; actualizadoEn: string; /** Confidencial: nada sale hacia modelos ni servicios de voz externos (Director ≥ 1.3.4). Desactivado por defecto. */ confidencial?: boolean }
 export interface Proyecto { id: string; userId: string; nombre: string; instrucciones: string; creadoEn: string; actualizadoEn: string }
 interface Archivo { version: number; actualizadoEn: string; chats: Chat[]; proyectos: Proyecto[] }
 
@@ -96,10 +96,11 @@ export function tocarChat(userId: string, id: string, textoUsuario = ''): void {
   try { const a = leer(); const c = a.chats.find((x) => x.userId === userId && x.id === id); if (!c) return; c.actualizadoEn = ahora(); if (c.titulo === 'Chat nuevo' && textoUsuario.trim()) c.titulo = textoLimpio(textoUsuario, 60); guardar(a); } catch { /* solo metadatos */ }
 }
 
-export type AccionChat = { accion: 'renombrar'; id: string; titulo: string } | { accion: 'mover'; id: string; proyectoId: string | null } | { accion: 'archivar' | 'desarchivar' | 'eliminar' | 'restaurar'; id: string };
+export type AccionChat = { accion: 'renombrar'; id: string; titulo: string } | { accion: 'mover'; id: string; proyectoId: string | null } | { accion: 'archivar' | 'desarchivar' | 'eliminar' | 'restaurar'; id: string } | { accion: 'confidencial'; id: string; valor: boolean };
 export function modificarChat(userId: string, o: AccionChat): Chat {
   const a = leer(); const c = chatDe(a, userId, o.id);
   if (c.principal && ['archivar', 'eliminar'].includes(o.accion)) throw new ErrorChats('principal_protegida', 409, 'La conversación principal (Telegram) no se puede archivar ni eliminar.');
+  if (c.principal && o.accion === 'confidencial') throw new ErrorChats('principal_compartida', 409, 'La conversación principal se comparte con Telegram, que no aplica el modo confidencial: crea un chat aparte para lo confidencial.');
   switch (o.accion) {
     case 'renombrar': { const t = textoLimpio(o.titulo, LIMITES_CHATS.titulo); if (!t) throw new ErrorChats('titulo_invalido', 400, 'El título no puede quedar vacío.'); c.titulo = t; break; }
     case 'mover': if (o.proyectoId !== null && !ID_PROYECTO_RE.test(String(o.proyectoId))) throw new ErrorChats('proyecto_invalido', 400, 'Proyecto no válido.'); if (o.proyectoId) proyectoDe(a, userId, o.proyectoId); c.proyectoId = o.proyectoId; break;
@@ -107,6 +108,7 @@ export function modificarChat(userId: string, o: AccionChat): Chat {
     case 'desarchivar': c.archivada = false; break;
     case 'eliminar': c.eliminadaEn = ahora(); break;
     case 'restaurar': c.eliminadaEn = null; break;
+    case 'confidencial': if (typeof o.valor !== 'boolean') throw new ErrorChats('valor_invalido', 400, 'confidencial: true | false.'); c.confidencial = o.valor; break;
   }
   guardar(a); return c;
 }

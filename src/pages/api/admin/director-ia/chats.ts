@@ -68,6 +68,7 @@ export const POST: APIRoute = async ({ request }) => {
       case 'renombrar': modificarChat(p.userId, { accion: 'renombrar', id, titulo: String(b.titulo ?? '') }); break;
       case 'mover': modificarChat(p.userId, { accion: 'mover', id, proyectoId: typeof b.proyectoId === 'string' && b.proyectoId ? b.proyectoId : null }); break;
       case 'archivar': case 'desarchivar': case 'eliminar': case 'restaurar': modificarChat(p.userId, { accion: b.accion, id }); break;
+      case 'confidencial': modificarChat(p.userId, { accion: 'confidencial', id, valor: b.valor }); break;
       case 'crearProyecto': { const pr = crearProyecto(p.userId, String(b.nombre ?? ''), typeof b.instrucciones === 'string' ? b.instrucciones : ''); return json({ success: true, proyecto: { ...pr, userId: undefined }, ...vista(p.userId) }, 201); }
       case 'editarProyecto': modificarProyecto(p.userId, id, { nombre: b.nombre, instrucciones: b.instrucciones }); break;
       case 'eliminarProyecto': eliminarProyecto(p.userId, id); break;

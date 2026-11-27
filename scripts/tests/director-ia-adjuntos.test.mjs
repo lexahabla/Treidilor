@@ -21,7 +21,7 @@ const srv = http.createServer(async (req, res) => {
   const t = []; for await (const x of req) t.push(x); const cuerpo = JSON.parse(Buffer.concat(t).toString() || '{}'); const ruta = req.url.split('?')[0]; recibidos.push({ ruta, cuerpo });
   const r = (st, j) => { res.writeHead(st, { 'content-type': 'application/json' }); res.end(JSON.stringify(j)); };
   if (ruta === '/tai/v1/chat/conversacion') return r(200, { conversacion: cuerpo.principal ? 'cv_aaaaaaaaaaaaaaaa' : `cv_${String(++n).padStart(16, '0')}`, principal: Boolean(cuerpo.principal) });
-  if (ruta === '/tai/v1/chat/mensaje') { if (modo === 'antiguo' && (cuerpo.adjuntos || cuerpo.proyecto)) return r(400, { error: { codigo: 'solicitud_invalida', mensaje: 'Campos no permitidos: adjuntos.' } }); return r(200, { conversacion: cuerpo.conversacion, idInstruccion: 'i', en: new Date().toISOString(), via: 'panel', textoOriginal: cuerpo.texto, respuesta: { estado: 'respondida', tipo: 'documentos', mensaje: 'ok' } }); }
+  if (ruta === '/tai/v1/chat/mensaje') { if (modo === 'antiguo' && (cuerpo.adjuntos || cuerpo.proyecto || cuerpo.privado)) return r(400, { error: { codigo: 'solicitud_invalida', mensaje: 'Campos no permitidos: adjuntos.' } }); return r(200, { conversacion: cuerpo.conversacion, idInstruccion: 'i', en: new Date().toISOString(), via: 'panel', textoOriginal: cuerpo.texto, respuesta: { estado: 'respondida', tipo: 'documentos', mensaje: 'ok' } }); }
   return r(404, { error: { codigo: 'no_encontrado', mensaje: 'x' } });
 });
 await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
@@ -98,4 +98,17 @@ test('INTEGRACIÓN con el Director 1.3.4 REAL: el Excel adjuntado se responde en
   const r = await chat.enviar({ conversacion: cv, id: 'msg-int-0002', texto: '¿Cuál es el total de la columna Precio?' });
   assert.match(r.respuesta.mensaje, /total = \*\*1\.?250\*\* \(3 valores\)/); assert.equal(llamadas.length, 0, 'nada al analista externo');
   fs.rmSync(base, { recursive: true, force: true });
+});
+
+test('CHAT CONFIDENCIAL: desactivado por defecto; activado, el Director recibe privado:true, la voz se bloquea en el servidor y con un Director 1.3.3 el mensaje NO se envía', async () => {
+  const chat = (await accion({ accion: 'crear' })).chat; assert.equal(chat.confidencial, undefined, 'desactivado por defecto');
+  const principalId = (await (await chats.GET({ request: new Request('http://localhost/api/admin/director-ia/chats', { headers: { Cookie: cookie } }) })).json()).chats.find((c) => c.principal).id;
+  const r0 = await chats.POST({ request: new Request('http://localhost/api/admin/director-ia/chats', { method: 'POST', headers: { ...H(), 'Content-Type': 'application/json' }, body: JSON.stringify({ accion: 'confidencial', id: principalId, valor: true }) }) }); assert.equal(r0.status, 409, 'la principal (Telegram) no puede ser confidencial');
+  assert.equal((await accion({ accion: 'confidencial', id: chat.id, valor: true })).chats.find((c) => c.id === chat.id).confidencial, true);
+  await enviar(chat.id, { texto: 'dato confidencial' }); assert.equal(recibidos.filter((x) => x.ruta === '/tai/v1/chat/mensaje').at(-1).cuerpo.privado, true);
+  const voz = await principal.POST({ request: new Request(`http://localhost/api/admin/director-ia/principal?conversacionId=${chat.id}`, { method: 'POST', headers: { ...H(), 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: 'AAAA', mime: 'audio/webm', segundos: 2 }) }) });
+  assert.equal(voz.status, 403); assert.equal((await voz.json()).code, 'voz_no_permitida'); assert.ok(!recibidos.some((x) => x.ruta === '/tai/v1/chat/voz'), 'el audio no sale');
+  modo = 'antiguo'; const antes = recibidos.length; const viejo = await enviar(chat.id, { texto: 'otro dato' }); modo = 'actual';
+  assert.equal(viejo.status, 409); assert.equal(viejo.j.code, 'confidencial_no_disponible'); assert.equal(recibidos.slice(antes).filter((x) => x.ruta === '/tai/v1/chat/mensaje').length, 1, 'solo el intento rechazado: no se reenvía sin protección');
+  assert.equal((await accion({ accion: 'confidencial', id: chat.id, valor: false })).chats.find((c) => c.id === chat.id).confidencial, false);
 });

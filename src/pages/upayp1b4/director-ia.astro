@@ -246,9 +246,9 @@ const activeSection = 'director-ia';
       function renderizarMensajes(conversacion) {
         if (!els.contenedor || !els.titulo || !els.subtitulo) return;
         els.titulo.textContent = (Chats.actual() && Chats.actual().titulo) || conversacion.titulo || 'Director IA';
-        els.subtitulo.textContent = conversacion.mensajes && conversacion.mensajes.length
+        els.subtitulo.textContent = (Chats.actual() && Chats.actual().confidencial ? '🔒 Confidencial: sin modelo externo ni voz. ' : '') + (conversacion.mensajes && conversacion.mensajes.length
           ? conversacion.mensajes.length + ' mensaje' + (conversacion.mensajes.length === 1 ? '' : 's') + ' · ' + fechaLegera(conversacion.actualizadoEn)
-          : 'Sin mensajes aún.';
+          : 'Sin mensajes aún.');
         els.contenedor.innerHTML = '';
         mensajesActuales = Array.isArray(conversacion.mensajes) ? conversacion.mensajes : [];
         mostradosDesde = Math.max(0, mensajesActuales.length - POR_BLOQUE);
@@ -1126,7 +1126,7 @@ const activeSection = 'director-ia';
         function cabecera(texto) { const h = document.createElement('div'); h.className = 'director-ia-grupo'; h.textContent = texto; return h; }
         function item(c) {
           const fila = document.createElement('div'); fila.className = 'director-ia-chat-item'; fila.setAttribute('role', 'listitem'); if (c.id === actualId) fila.setAttribute('aria-current', 'true');
-          const abrir = document.createElement('button'); abrir.type = 'button'; abrir.className = 'director-ia-chat-abrir'; abrir.textContent = (c.principal ? '📌 ' : '') + c.titulo; abrir.title = c.titulo;
+          const abrir = document.createElement('button'); abrir.type = 'button'; abrir.className = 'director-ia-chat-abrir'; abrir.textContent = (c.principal ? '📌 ' : '') + (c.confidencial ? '🔒 ' : '') + c.titulo; abrir.title = c.titulo;
           abrir.addEventListener('click', () => seleccionar(c.id));
           const menu = document.createElement('button'); menu.type = 'button'; menu.className = 'director-ia-chat-menu'; menu.textContent = '⋯'; menu.setAttribute('aria-label', `Acciones de «${c.titulo}»`); menu.setAttribute('aria-expanded', String(abiertoMenu === c.id));
           menu.addEventListener('click', () => { abiertoMenu = abiertoMenu === c.id ? null : c.id; pintar(); });
@@ -1146,6 +1146,11 @@ const activeSection = 'director-ia';
           sel.addEventListener('change', () => hacer({ accion: 'mover', proyectoId: sel.value || null })());
           a.appendChild(sel);
           if (!c.principal) {
+            a.appendChild(boton(c.confidencial ? 'Quitar confidencial' : 'Hacer confidencial', async () => {
+              const aviso = c.confidencial ? '¿Quitar el modo confidencial? Volverá a poder usarse el modelo de conversación externo y la voz.'
+                : 'Chat CONFIDENCIAL:\n• No se usa el modelo de conversación externo: el Director responde solo con sus reglas, los informes de los agentes y tus documentos (algunas preguntas abiertas no podrá contestarlas y lo dirá).\n• La voz queda desactivada (ambos modos enviarían tu audio fuera).\n• Requiere el Director 1.3.4; con uno anterior, los mensajes no se envían.\n¿Activarlo?';
+              if (!window.confirm || window.confirm(aviso)) { await hacer({ accion: 'confidencial', valor: !c.confidencial })(); if (c.id === actualId) seleccionar(c.id); }
+            }));
             a.appendChild(boton(c.archivada ? 'Desarchivar' : 'Archivar', hacer({ accion: c.archivada ? 'desarchivar' : 'archivar' })));
             a.appendChild(boton('Eliminar', async () => { const ok = window.confirm ? window.confirm(`¿Enviar «${c.titulo}» a la papelera? Podrás restaurarlo durante 30 días; el historial del Director no se borra.`) : true; if (ok) await hacer({ accion: 'eliminar' })(); }));
           }
@@ -1172,7 +1177,8 @@ const activeSection = 'director-ia';
           actualId = id; guardarConversacionId(id); abiertoMenu = null; pintar();
           if (barra && barra.classList) { barra.classList.remove('abierta'); if (btnBarra) btnBarra.setAttribute('aria-expanded', 'false'); }
           const c = actual(); if (els.titulo && c) els.titulo.textContent = c.titulo;
-          if (els.subtitulo && c) els.subtitulo.textContent = c.principal ? 'Conversación principal compartida con Telegram.' : (proyectos.find((p) => p.id === c.proyectoId) ? `Proyecto: ${proyectos.find((p) => p.id === c.proyectoId).nombre}` : 'Chat independiente: su propio historial y contexto.');
+          if (els.subtitulo && c) els.subtitulo.textContent = (c.confidencial ? '🔒 Confidencial: sin modelo externo ni voz. ' : '') + (c.principal ? 'Conversación principal compartida con Telegram.' : (proyectos.find((p) => p.id === c.proyectoId) ? `Proyecto: ${proyectos.find((p) => p.id === c.proyectoId).nombre}` : 'Chat independiente: su propio historial y contexto.'));
+          if (els.btnVoz) { els.btnVoz.disabled = Boolean(c && c.confidencial); els.btnVoz.title = c && c.confidencial ? 'Voz desactivada en un chat confidencial (enviaría tu audio fuera)' : 'Hablar con el Director (micrófono)'; }
           cargarConversacionPrincipal();
         }
         async function cargar() {
