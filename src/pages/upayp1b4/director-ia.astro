@@ -693,23 +693,29 @@ const activeSection = 'director-ia';
       // y sobrevive a la recarga). Desactivada: el Director responde solo por escrito, también en una conversación por voz (el micrófono sigue
       // funcionando: tu voz se transcribe). Nunca se sustituye la voz natural del Director por la voz sintética del navegador: esa solo suena si
       // la activas Y eliges «Voz rápida (del navegador)». Independiente de Telegram.
+      const modoVozActual = () => { try { return localStorage.getItem('directorIA.modoVoz') === 'rapida' ? 'rapida' : 'director'; } catch { return 'director'; } };
       const Altavoz = (function () {
         const CLAVE = 'directorIA.respuestasHabladas'; const b = document.getElementById('btnAltavoz'); const avisos = [];
         let activo = false; try { activo = window.localStorage ? localStorage.getItem(CLAVE) === 'si' : false; } catch { activo = false; }
         function pintar() {
           if (!b) return;
           b.setAttribute('aria-pressed', String(activo));
-          const t = activo ? 'Respuestas habladas: activadas. Pulsa para que el Director responda solo por escrito' : 'Respuestas solo por escrito. Pulsa para que el Director también las lea en voz alta';
+          const t = (activo ? 'Respuestas habladas: activadas. Pulsa para que el Director responda solo por escrito' : 'Respuestas solo por escrito. Pulsa para que el Director también las lea en voz alta') + (sinCupo ? '. Hoy la voz del Director ha agotado su cupo: responde por escrito' : '');
           b.title = t; b.setAttribute('aria-label', t);
-          if (b.classList) { if (activo) b.classList.add('activo'); else b.classList.remove('activo'); }
+          if (b.classList) { if (activo) b.classList.add('activo'); else b.classList.remove('activo'); if (sinCupo) b.classList.add('sin-cupo'); else b.classList.remove('sin-cupo'); }
         }
+        // Lo que el panel sabe de la SALIDA (Director 1.3.7): se envía con cada turno hablado para que el Director diagnostique «no te oigo» con hechos.
+        let sinCupo = false; let ultimaReproduccion = 'ninguna';
+        const salida = () => ({ altavoz: activo ? 'activado' : 'desactivado', motor: modoVozActual(), ultimaReproduccion });
+        const reproduccion = (r) => { if (['completada', 'fallida', 'cortada', 'ninguna'].includes(r)) ultimaReproduccion = r; };
+        const marcarSinCupo = (v) => { sinCupo = Boolean(v); pintar(); };
         function poner(v) {
           activo = Boolean(v); try { if (window.localStorage) localStorage.setItem(CLAVE, activo ? 'si' : 'no'); } catch { /* sin almacenamiento */ }
           pintar(); if (!activo) for (const f of avisos) { try { f(); } catch { /* nada */ } } // silenciar corta también lo que esté sonando y su cola
         }
         if (b) b.addEventListener('click', () => poner(!activo));
         pintar();
-        return { activo: () => activo, poner, alSilenciar: (f) => avisos.push(f) };
+        return { activo: () => activo, poner, alSilenciar: (f) => avisos.push(f), salida, reproduccion, marcarSinCupo, sinCupo: () => sinCupo };
       })();
 
       const Voz = (function () {
@@ -808,6 +814,7 @@ const activeSection = 'director-ia';
           utteranceActual = new SpeechSynthesisUtterance(texto);
           utteranceActual.lang = 'es-ES';
           utteranceActual.onend = () => {
+            Altavoz.reproduccion('completada');
             sintetizando = false;
             utteranceActual = null;
             actualizarBotones();
@@ -815,6 +822,7 @@ const activeSection = 'director-ia';
             if (sesionActiva) reanudarEscucha();
           };
           utteranceActual.onerror = () => {
+            Altavoz.reproduccion('fallida');
             sintetizando = false;
             utteranceActual = null;
             actualizarBotones();
@@ -908,7 +916,7 @@ const activeSection = 'director-ia';
           try {
             const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), {
               method: 'POST',
-              body: JSON.stringify({ texto, origen: 'voz', confianza }),
+              body: JSON.stringify({ texto, origen: 'voz', confianza, salidaVoz: Altavoz.salida() }),
             });
             const j = await leerJson(res);
             if (!j.success) throw new Error(j.message || 'Error del servidor');
@@ -1018,7 +1026,7 @@ const activeSection = 'director-ia';
           if (elsV.btn) { elsV.btn.disabled = false; elsV.btn.setAttribute('aria-pressed', String(sesion)); if (elsV.textoBtn) elsV.textoBtn.textContent = sesion ? 'Finalizar sesión' : 'Hablar'; if (elsV.btn.classList) { if (sesion) elsV.btn.classList.add('en-sesion'); else elsV.btn.classList.remove('en-sesion'); } }
           if (elsV.btnDetener) { elsV.btnDetener.hidden = !sesion; elsV.btnDetener.title = nuevo === 'grabando' ? 'Enviar ya lo que has dicho' : 'Interrumpir al Director y volver a escuchar'; }
         }
-        const escuchar = () => { if (!sesion) return; if (enVuelo > 0) poner('procesando', 'Procesando…'); else poner('escuchando', 'Escuchando…'); };
+        const escuchar = () => { if (!sesion) return; if (enVuelo > 0) poner('procesando', 'Procesando…'); else poner('escuchando', Altavoz.activo() ? 'Escuchando…' : 'Escuchando… · te respondo por escrito'); };
         function nivel() { analizador.getFloatTimeDomainData(muestras); let s = 0; for (let i = 0; i < muestras.length; i += 1) s += muestras[i] * muestras[i]; return Math.sqrt(s / muestras.length); }
         const umbralVoz = () => Math.max(CFG.umbralMin, piso * CFG.factorVoz);
         const umbralSilencio = () => Math.max(CFG.umbralMin * 0.8, piso * CFG.factorSilencio);
@@ -1102,7 +1110,7 @@ const activeSection = 'director-ia';
           let j; enVuelo += 1;
           try {
             const audio = await aBase64(new window.Blob(trozos, { type: mime }));
-            const cuerpo = JSON.stringify({ audio, mime, segundos: Math.min(60, Math.max(0.5, duracionMs / 1000)) });
+            const cuerpo = JSON.stringify({ audio, mime, segundos: Math.min(60, Math.max(0.5, duracionMs / 1000)), salidaVoz: Altavoz.salida() });
             j = await enviar(cuerpo);
             // la transcripción falló (p. ej. el proveedor saturado): en el servidor no se ha registrado nada, así que se reintenta UNA vez
             if (j && j.success && j.voz && j.voz.estado === 'error_transcripcion' && mio === turno && sesion) { poner('recuperando', 'No te he oído bien; lo intento otra vez…'); j = await enviar(cuerpo); }
@@ -1127,11 +1135,12 @@ const activeSection = 'director-ia';
           scrollFinal(false, estabaAlFinal);
           const met = { en: new Date().toISOString(), esperaFinMs, servidorMs: Date.now() - t0, servidor: j.voz && j.voz.medidas ? j.voz.medidas : null, conVozDirector: Boolean(v.audio), estado: v.estado || null };
           metricas.push(met); if (metricas.length > 50) metricas.shift(); try { console.info('[voz-director]', JSON.stringify(met)); } catch { /* sin consola */ }
+          if (v.vozDirector === 'sin_cupo' || v.motivoSinVoz === 'cuota_agotada') Altavoz.marcarSinCupo(true); else if (v.vozDirector === 'disponible') Altavoz.marcarSinCupo(false);
           if (mio !== turno || !sesion) return; // la sesión se cerró o llegó otro turno: se muestra, no se lee
           let que;
           if (v.audio && v.audio.base64) que = { url: `data:${v.audio.mime};base64,${v.audio.base64}`, respaldo: resumenHablado(j.respuesta) };
           else if (v.vozLocal) que = { local: v.vozLocal, nota: 'datos del negocio: no se envían a la voz externa' };
-          else if (j.respuesta) que = { local: resumenHablado(j.respuesta), nota: v.estado === 'respuesta_solo_texto' ? 'voz del Director no disponible ahora' : null };
+          else if (j.respuesta) que = { local: resumenHablado(j.respuesta), nota: v.motivoSinVoz === 'cuota_agotada' ? 'mi voz ha agotado su cupo gratuito de hoy' : v.motivoSinVoz === 'limite_diario' ? 'se alcanzó el tope diario de voz' : v.estado === 'respuesta_solo_texto' ? 'voz del Director no disponible ahora' : null };
           else que = { local: v.mensaje || 'No te he entendido. Repítelo, por favor.', aviso: true };
           if (estado === 'grabando') { pendiente = que; return; } // el propietario está hablando: se dice si lo suyo resulta ser solo ruido
           decir(que);
@@ -1151,8 +1160,8 @@ const activeSection = 'director-ia';
         function reproducir(url, respaldo) {
           poner('hablando', 'El Director responde…'); vozDesde = 0;
           const a = new window.Audio(url); reproduccion = a;
-          const fin = () => { if (reproduccion === a) { reproduccion = null; if (estado === 'hablando') escuchar(); } };
-          const fallo = () => { if (reproduccion === a) { reproduccion = null; if (respaldo) hablarLocal(respaldo, 'no se pudo reproducir el audio'); else if (estado === 'hablando') poner('escuchando', 'No se pudo reproducir la voz: te respondo por escrito. Escuchando…'); } };
+          const fin = () => { if (reproduccion === a) { Altavoz.reproduccion('completada'); reproduccion = null; if (estado === 'hablando') escuchar(); } };
+          const fallo = () => { if (reproduccion === a) { Altavoz.reproduccion('fallida'); reproduccion = null; if (respaldo) hablarLocal(respaldo, 'no se pudo reproducir el audio'); else if (estado === 'hablando') poner('escuchando', 'No se pudo reproducir la voz: te respondo por escrito. Escuchando…'); } };
           a.onended = fin; a.onerror = fallo;
           try { const p = a.play(); if (p && typeof p.catch === 'function') p.catch(fallo); } catch { fallo(); }
         }
@@ -1166,7 +1175,7 @@ const activeSection = 'director-ia';
           try { S.speak(u); } catch { fin(); }
         }
         function cortarRespuesta() {
-          const r = reproduccion; reproduccion = null;
+          const r = reproduccion; reproduccion = null; if (r) Altavoz.reproduccion('cortada');
           if (r && typeof r.pause === 'function') { try { r.pause(); } catch { /* nada */ } }
           if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch { /* nada */ } }
         }
@@ -1899,6 +1908,8 @@ const activeSection = 'director-ia';
     .director-ia-altavoz.activo .altavoz-si { display: block; }
     .director-ia-altavoz.activo .altavoz-no { display: none; }
     .director-ia-altavoz.activo { color: var(--di-texto); }
+    .director-ia-altavoz.sin-cupo { position: relative; }
+    .director-ia-altavoz.sin-cupo::after { content: ''; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 5px #f59e0b; }
     #btnDetenerVoz { order: 3; }
     #btnVoz { order: 4; }
     #btnEnviar { order: 5; }

@@ -179,3 +179,16 @@ test('RESPUESTAS SOLO POR ESCRITO (por defecto) con «Voz rápida»: tu voz se t
   }
   assert.equal(p.el('btnAltavoz').atributos['aria-pressed'], 'false', 'el control indica respuestas solo por escrito');
 });
+
+test('VOZ RÁPIDA: el texto dictado lleva el estado de la salida (motor del navegador) y la reproducción terminada se informa', async () => {
+  const p = montarPanel(servidor(async (cuerpo) => respuestaDirector(`Respuesta a «${cuerpo.texto}»`)));
+  try { p.ventana.localStorage.setItem('directorIA.modoVoz', 'rapida'); } catch { /* sin acceso directo */ }
+  await tic(); p.el('btnVoz').click();
+  p.ultimoReconocimiento().decir('hola'); await tic();
+  const c1 = JSON.parse(p.peticiones.filter((x) => x.init.method === 'POST').at(-1).init.body);
+  assert.equal(c1.origen, 'voz'); assert.equal(c1.salidaVoz.altavoz, 'activado'); assert.ok(['director', 'rapida'].includes(c1.salidaVoz.motor));
+  p.locuciones.at(-1).onend(); await tic();
+  p.ultimoReconocimiento().decir('otra'); await tic();
+  const c2 = JSON.parse(p.peticiones.filter((x) => x.init.method === 'POST').at(-1).init.body);
+  assert.equal(c2.salidaVoz.ultimaReproduccion, 'completada');
+});

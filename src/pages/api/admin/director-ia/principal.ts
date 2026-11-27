@@ -197,7 +197,7 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Validar la entrada ANTES de tocar el Director.
-  let body: { texto?: unknown; origen?: unknown; confianza?: unknown; audio?: unknown; mime?: unknown; segundos?: unknown; adjuntos?: unknown };
+  let body: { texto?: unknown; origen?: unknown; confianza?: unknown; audio?: unknown; mime?: unknown; segundos?: unknown; adjuntos?: unknown; salidaVoz?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -231,7 +231,7 @@ export const POST: APIRoute = async ({ request }) => {
     const confidencial = ch?.confidencial === true;
     const extra = { adjuntos: adjuntos.map(paraDirector), proyecto: pr ? { nombre: pr.nombre, instrucciones: pr.instrucciones } : null, ...(confidencial ? { privado: true } : {}) };
     const enviar = async (conv: string) => {
-      try { return await cliente.enviarMensaje(texto, { conversacion: conv, origen, confianza, ...extra }); }
+      try { return await cliente.enviarMensaje(texto, { conversacion: conv, origen, confianza, ...extra, salidaVoz: body.salidaVoz }); }
       catch (e) {
         // Director anterior a 1.3.4: no admite adjuntos ni proyecto → se envía el texto y se avisa (no se pierde el mensaje)
         // Un chat CONFIDENCIAL nunca se reenvía sin su protección: si el Director instalado no la admite, el mensaje no se envía.
@@ -293,7 +293,7 @@ function respuestaPanel(respuesta: Awaited<ReturnType<TaiPuenteClient['enviarMen
 }
 
 /** Turno hablado: el audio va al Director por el servidor (el token nunca llega al navegador); vuelve su voz o el texto para la voz local. */
-async function turnoHablado(request: Request, userId: string, body: { audio?: unknown; mime?: unknown; segundos?: unknown }): Promise<Response> {
+async function turnoHablado(request: Request, userId: string, body: { audio?: unknown; mime?: unknown; segundos?: unknown; salidaVoz?: unknown }): Promise<Response> {
   const audio = typeof body.audio === 'string' ? body.audio : '';
   const mime = String(body.mime ?? '').split(';')[0].trim().toLowerCase();
   const segundos = Number(body.segundos);
@@ -310,11 +310,11 @@ async function turnoHablado(request: Request, userId: string, body: { audio?: un
     const res = await resolverConversacion(cliente, userId, request);
     principal = res.principal;
     try {
-      r = await cliente.hablar(audio, { conversacion: principal.conversacion, mime, segundos });
+      r = await cliente.hablar(audio, { conversacion: principal.conversacion, mime, segundos, salidaVoz: body.salidaVoz });
     } catch (e) {
       if (!(res.deCache && esConversacionDesconocida(e))) throw e;
       principal = await sustituirConversacionCaducada(cliente, userId);
-      r = await cliente.hablar(audio, { conversacion: principal.conversacion, mime, segundos });
+      r = await cliente.hablar(audio, { conversacion: principal.conversacion, mime, segundos, salidaVoz: body.salidaVoz });
     }
   } catch (e) {
     return errorDePuente(e);
@@ -323,7 +323,7 @@ async function turnoHablado(request: Request, userId: string, body: { audio?: un
   return json({
     success: true,
     conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: principal.principal },
-    voz: { estado: r.estado, mensaje: r.mensaje, transcripcion: r.transcripcion, audio: r.audio, vozLocal: r.vozLocal, requiereRepeticion: r.requiereRepeticion },
+    voz: { estado: r.estado, mensaje: r.mensaje, transcripcion: r.transcripcion, audio: r.audio, vozLocal: r.vozLocal, requiereRepeticion: r.requiereRepeticion, motivoSinVoz: r.motivoSinVoz ?? null, vozDirector: r.vozDirector ?? null },
     respuesta: r.respuesta ? respuestaPanel(r.respuesta) : null,
   });
 }

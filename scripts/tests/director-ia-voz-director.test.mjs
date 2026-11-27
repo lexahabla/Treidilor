@@ -235,7 +235,7 @@ test('POR DEFECTO SOLO POR ESCRITO: hablas, tu voz se transcribe y la respuesta 
   p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
   await p.pasar(900, 0.2); await p.pasar(1500, 0); assert.equal(p.posts().length, 1, 'la intervención se envía');
   assert.equal(p.sim.audios.length, 0, 'no se reproduce audio'); assert.equal(p.sim.locuciones.length, 0, 'ni voz sintética');
-  assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando…', 'sigue escuchando'); assert.equal(p.el('textoBtnVoz').textContent, 'Finalizar sesión');
+  assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando… · te respondo por escrito', 'sigue escuchando y dice que responde por escrito'); assert.equal(p.el('textoBtnVoz').textContent, 'Finalizar sesión');
   await p.pasar(900, 0.2); await p.pasar(1500, 0); assert.equal(p.posts().length, 2, 'conversación continuada');
 });
 
@@ -246,7 +246,7 @@ test('ALTAVOZ: el botón activa y desactiva las respuestas habladas y la prefere
   await p.pasar(900, 0.2); await p.pasar(1500, 0); assert.equal(p.sim.audios.length, 1, 'con el altavoz activado suena la voz del Director');
   p.el('btnAltavoz').click(); await tic();
   assert.equal(p.sim.audios[0].pausado, true, 'silenciar corta lo que suena'); assert.equal(p.el('btnAltavoz').atributos['aria-pressed'], 'false');
-  assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando…', 'y vuelve a escuchar'); assert.equal(p.el('textoBtnVoz').textContent, 'Finalizar sesión', 'la sesión sigue');
+  assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando… · te respondo por escrito', 'y vuelve a escuchar'); assert.equal(p.el('textoBtnVoz').textContent, 'Finalizar sesión', 'la sesión sigue');
   await p.pasar(900, 0.2); await p.pasar(1500, 0); assert.equal(p.sim.audios.length, 1, 'la siguiente respuesta ya no suena');
   const q = montarPanel(async (c, n) => respuestaVoz(n)); await tic(); assert.equal(q.el('btnAltavoz').atributos['aria-pressed'], 'true', 'una preferencia guardada «si» se respeta al recargar');
 });
@@ -257,4 +257,27 @@ test('SIN RESPALDO ROBÓTICO: con el altavoz activado, si el audio natural no se
   await p.pasar(900, 0.2); await p.pasar(1500, 0); assert.equal(p.sim.audios.length, 1);
   p.sim.audios[0].onerror(); await tic();
   assert.equal(p.sim.locuciones.length, 0, 'ninguna voz sintética de respaldo'); assert.match(p.el('textoEstadoVoz').textContent, /por escrito/);
+});
+
+// ───────── salida de voz conocida por el Director (1.3.7): el 27/11 20:46–20:49 el propietario no oía nada y el Director no sabía por qué ─────────
+const cuerpoDe = (post) => JSON.parse(post.init.body);
+test('SALIDA DE VOZ: cada turno lleva el estado del altavoz, el modo y cómo acabó la última reproducción (lista cerrada)', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración */
+  await p.pasar(900, 0.2); await p.pasar(1500, 0);
+  assert.deepEqual(cuerpoDe(p.posts()[0]).salidaVoz, { altavoz: 'activado', motor: 'director', ultimaReproduccion: 'ninguna' });
+  p.sim.audios.at(-1).onended(); await tic();
+  await p.pasar(900, 0.2); await p.pasar(1500, 0);
+  assert.equal(cuerpoDe(p.posts()[1]).salidaVoz.ultimaReproduccion, 'completada', 'el navegador reprodujo la respuesta anterior hasta el final');
+  const q = montarPanel(async (c, n) => respuestaVoz(n), { habladas: false });
+  await tic(); q.el('btnVoz').click(); await tic(); await q.pasar(700, 0); await q.pasar(900, 0.2); await q.pasar(1500, 0);
+  assert.equal(cuerpoDe(q.posts()[0]).salidaVoz.altavoz, 'desactivado', 'el Director sabe que las respuestas habladas están desactivadas');
+});
+
+test('CUPO DE VOZ AGOTADO: el panel lo dice claramente, marca el altavoz y NO usa una voz robótica', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n, { estado: 'respuesta_solo_texto', audio: null, motivoSinVoz: 'cuota_agotada', vozDirector: 'sin_cupo' }));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1500, 0);
+  assert.match(p.el('textoEstadoVoz').textContent, /Te respondo por escrito \(mi voz ha agotado su cupo gratuito de hoy\)\. Escuchando…/);
+  assert.ok(p.el('btnAltavoz').classList._s ? p.el('btnAltavoz').classList._s.has('sin-cupo') : true, 'el altavoz queda marcado');
+  assert.match(p.el('btnAltavoz').title, /agotado su cupo/); assert.equal(p.sim.locuciones.length, 0, 'sin voz robótica'); assert.equal(p.sim.audios.length, 0);
 });

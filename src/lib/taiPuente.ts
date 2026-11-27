@@ -248,6 +248,18 @@ export function naturalezaLegible(datos: unknown): Array<{ etiqueta: string; det
 }
 
 /** Cliente del puente de chat del Director. Una instancia por configuración. */
+
+/**
+ * Estado de la SALIDA de voz del panel (Director 1.3.7): solo claves y valores de una lista cerrada, nunca texto libre.
+ * altavoz: respuestas habladas activadas o no · motor: voz del Director o del navegador · ultimaReproduccion: lo que informó el navegador.
+ */
+const SALIDA_VOZ: Record<string, readonly string[]> = { altavoz: ['activado', 'desactivado'], motor: ['director', 'rapida'], ultimaReproduccion: ['completada', 'fallida', 'cortada', 'ninguna'] };
+export function limpiarSalidaVoz(v: unknown): Record<string, string> | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const o: Record<string, string> = {}; for (const [k, permitidos] of Object.entries(SALIDA_VOZ)) { const x = (v as Record<string, unknown>)[k]; if (typeof x === 'string' && permitidos.includes(x)) o[k] = x; }
+  return Object.keys(o).length ? o : null;
+}
+
 export class TaiPuenteClient {
   private readonly config: TaiPuenteConfig;
   /** Conversación principal creada en esta instancia del cliente (idempotencia). */
@@ -394,7 +406,7 @@ export class TaiPuenteClient {
    * `conversacion` es el id de la conversación principal (fuente de verdad).
    * `origen` solo admite 'texto' o 'voz'; confirmar es un control aparte (no en esta fase).
    */
-  async enviarMensaje(texto: string, { conversacion, id = idMensaje(), via = 'panel', origen = 'texto', confianza = 0, idioma = 'es', adjuntos, proyecto, privado = false }: { conversacion: string; id?: string; via?: 'telegram' | 'panel'; origen?: 'texto' | 'voz'; confianza?: number; idioma?: string; adjuntos?: unknown[]; proyecto?: { nombre: string; instrucciones: string } | null; privado?: boolean }): Promise<RespuestaDirector> {
+  async enviarMensaje(texto: string, { conversacion, id = idMensaje(), via = 'panel', origen = 'texto', confianza = 0, idioma = 'es', adjuntos, proyecto, privado = false, salidaVoz }: { salidaVoz?: unknown; conversacion: string; id?: string; via?: 'telegram' | 'panel'; origen?: 'texto' | 'voz'; confianza?: number; idioma?: string; adjuntos?: unknown[]; proyecto?: { nombre: string; instrucciones: string } | null; privado?: boolean }): Promise<RespuestaDirector> {
     if (!conversacion || typeof conversacion !== 'string') {
       throw new TaiPuenteError('conversacion_invalida', 400, 'Se requiere el identificador de la conversación del Director.');
     }
@@ -423,8 +435,14 @@ export class TaiPuenteClient {
         ...(adjuntos && adjuntos.length ? { adjuntos } : {}),
         ...(proyecto ? { proyecto } : {}),
         ...(privado ? { privado: true } : {}),
+        ...(origen === 'voz' && limpiarSalidaVoz(salidaVoz) ? { salidaVoz: limpiarSalidaVoz(salidaVoz) } : {}),
       }),
+    }).catch((e) => {
+      // Director anterior a 1.3.7: no admite `salidaVoz` → se repite sin ese campo (el mensaje no se pierde).
+      if (e instanceof TaiPuenteError && e.status === 400 && /salidaVoz/.test(e.message)) return this.enviarMensaje(texto, { conversacion, id, via, origen, confianza, idioma, adjuntos, proyecto, privado }).then((x) => ({ __mapeado: x }) as any);
+      throw e;
     });
+    if ((r as any)?.__mapeado) return (r as any).__mapeado;
 
     const turno = r;
     const resp = turno.respuesta || {};
@@ -436,7 +454,7 @@ export class TaiPuenteClient {
    * (memoria, permisos y ledger únicos) y devuelve el audio con la MISMA voz que en Telegram. Si la respuesta lleva datos reales del
    * negocio, el Director no la sintetiza fuera y devuelve `vozLocal` (texto breve) para que la lea el navegador. Alcance chat: no confirma nada.
    */
-  async hablar(audioBase64: string, { conversacion, mime, segundos, id = idMensaje(), privado = false }: { conversacion: string; mime: string; segundos: number; id?: string; privado?: boolean }): Promise<{ estado: string; mensaje: string | null; transcripcion: string; respuesta: RespuestaDirector | null; audio: { base64: string; mime: string } | null; vozLocal: string | null; requiereRepeticion: boolean }> {
+  async hablar(audioBase64: string, { conversacion, mime, segundos, id = idMensaje(), privado = false, salidaVoz }: { conversacion: string; mime: string; segundos: number; id?: string; privado?: boolean; salidaVoz?: unknown }): Promise<{ estado: string; mensaje: string | null; transcripcion: string; respuesta: RespuestaDirector | null; audio: { base64: string; mime: string } | null; vozLocal: string | null; requiereRepeticion: boolean }> {
     if (!conversacion) throw new TaiPuenteError('conversacion_invalida', 400, 'Se requiere el identificador de la conversación del Director.');
     if (!this.config.token) throw new TaiPuenteError('token_no_configurado', 500, 'No se ha configurado el token de acceso al puente del Director.');
     const idSolicitud = idAleatorio();
@@ -445,9 +463,11 @@ export class TaiPuenteClient {
       r = await this.peticion<any>('/tai/v1/chat/voz', {
         method: 'POST',
         headers: this.authHeaders(idSolicitud),
-        body: JSON.stringify({ conversacion, id, audio: audioBase64, mime, segundos, ...(privado ? { privado: true } : {}) }),
+        body: JSON.stringify({ conversacion, id, audio: audioBase64, mime, segundos, ...(privado ? { privado: true } : {}), ...(limpiarSalidaVoz(salidaVoz) ? { salidaVoz: limpiarSalidaVoz(salidaVoz) } : {}) }),
       }, Math.max(this.config.timeoutMs, 90_000));
     } catch (e) {
+      // Director anterior a 1.3.7: no admite `salidaVoz` → mismo turno sin ese campo.
+      if (e instanceof TaiPuenteError && e.status === 400 && /salidaVoz/.test(e.message)) return this.hablar(audioBase64, { conversacion, mime, segundos, id, privado });
       // Un Director anterior a 1.3.3 no tiene la ruta de voz: el panel debe usar la voz del navegador, no mostrar un error.
       if (e instanceof TaiPuenteError && e.codigo === 'no_encontrado') throw new TaiPuenteError('voz_no_disponible', 503, 'La voz del Director no está disponible en esta versión del servicio.');
       throw e;
@@ -462,6 +482,8 @@ export class TaiPuenteClient {
       audio,
       vozLocal: typeof r?.vozLocal === 'string' && r.vozLocal ? r.vozLocal : null,
       requiereRepeticion: Boolean(r?.requiereRepeticion),
+      motivoSinVoz: ['cuota_agotada', 'fallo_sintesis', 'limite_diario', 'datos_del_negocio'].includes(r?.motivoSinVoz) ? r.motivoSinVoz : null,
+      vozDirector: ['disponible', 'sin_cupo', 'no_disponible'].includes(r?.vozDirector) ? r.vozDirector : null,
     };
   }
 
