@@ -99,6 +99,10 @@ const activeSection = 'director-ia';
               </svg>
               <span id="textoBtnVoz" class="texto-btn-voz">Hablar</span>
             </button>
+            <select id="modoVoz" class="director-ia-modo-voz" title="Modo de la conversación por voz" aria-label="Modo de voz">
+              <option value="director">Voz del Director</option>
+              <option value="rapida">Voz rápida (navegador)</option>
+            </select>
             <button type="button" id="btnDetenerVoz" class="btn-secondary btn-sm" title="Interrumpir al Director y volver a escuchar" hidden aria-label="Interrumpir al Director">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="9" y="9" width="6" height="6"></rect>
@@ -680,36 +684,43 @@ const activeSection = 'director-ia';
             iniciarReconocimientoInterno();
           },
           detener: finalizarSesion,
+          activa: () => sesionActiva,
           hablar: hablarTexto,
           interrumpir: interrumpirDirector,
         };
       })();
 
-      // ── voz del Director (1.3.3): conversación hablada continua con la MISMA voz que Telegram ──
-      // El micrófono se graba en el navegador; un detector de nivel decide cuándo empieza y termina cada intervención;
-      // el audio va al Director por el servidor del panel (el token nunca llega aquí); vuelve su voz. Si la respuesta lleva
-      // datos reales del negocio, el Director no la sintetiza fuera y la lee la voz local del navegador.
-      // Hablar mientras el Director responde lo interrumpe (y se graba lo nuevo). Sin grabación o sin voz en el Director: voz del navegador.
+      // ── voz del Director: conversación hablada continua con la MISMA voz que Telegram (1.3.3; corrección de fluidez 27/11) ──
+      // El micrófono se graba en el navegador; un detector de nivel ADAPTATIVO (aprende el ruido de fondo, con histéresis) decide cuándo empieza y
+      // termina cada intervención; el audio va al Director por el servidor del panel (el token nunca llega aquí) y vuelve su voz.
+      // Cada turno tiene SIEMPRE un resultado audible: la voz del Director; si no llega (cuota de síntesis agotada, datos del negocio, error de audio),
+      // la voz local del navegador lee la respuesta; si falla la transcripción se reintenta una vez y, si no, se avisa en voz alta. Tiempo máximo por turno.
+      // Hablar mientras el Director responde lo interrumpe. Pulsar ■ mientras hablas envía ya tu intervención; mientras él habla, lo corta.
       const VozDirector = (function () {
         const nav = window.navigator;
         const AC = window.AudioContext || window.webkitAudioContext;
         const disponible = Boolean(window.MediaRecorder && nav && nav.mediaDevices && typeof nav.mediaDevices.getUserMedia === 'function' && AC);
-        const CFG = { umbral: 0.02, umbralRespuesta: 0.07, silencioFinMs: 900, minMs: 350, maxMs: 55000, interrupcionMs: 300, intervaloMs: 50 };
+        // silencioFinMs 1300: en las sesiones del 27/11 una pausa natural de ~1 s partía la intervención en dos turnos (pares a 1–4 s); con 1,3 s se respeta la pausa.
+        const CFG = { umbralMin: 0.012, factorVoz: 3.5, factorSilencio: 2, umbralRespuestaMin: 0.07, factorRespuesta: 6, inicioMs: 120, silencioFinMs: 1300, minMs: 350, maxMs: 30000, interrupcionMs: 300, intervaloMs: 50, timeoutTurnoMs: 35000, maxHablado: 260 };
         let sesion = false; let estado = 'inactivo'; let noDisponible = false;
-        let stream = null; let ctx = null; let analizador = null; let muestras = null; let reloj = null;
-        let grabador = null; let trozos = []; let inicio = 0; let ultimaVoz = 0; let vozDesde = 0; let reproduccion = null; let turno = 0;
+        let stream = null; let ctx = null; let analizador = null; let muestras = null; let reloj = null; let piso = 0.005;
+        let grabador = null; let trozos = []; let inicio = 0; let ultimaVoz = 0; let vozDesde = 0; let reproduccion = null; let turno = 0; let procesandoDesde = 0; let pendiente = null; let enVuelo = 0; let calibrandoHasta = 0; let minimoCal = 1; let peticion = null; let ventana = []; let maxGrab = 0;
+        const metricas = (window.__vozDirectorMetricas = window.__vozDirectorMetricas || []);
         const elsV = { btn: document.getElementById('btnVoz'), btnDetener: document.getElementById('btnDetenerVoz'), textoBtn: document.getElementById('textoBtnVoz'), estado: document.getElementById('estadoVoz'), textoEstado: document.getElementById('textoEstadoVoz') };
 
         function poner(nuevo, texto) {
           estado = nuevo;
           if (elsV.estado && elsV.textoEstado) {
             elsV.textoEstado.textContent = texto; elsV.estado.hidden = nuevo === 'inactivo';
-            const p = elsV.estado.querySelector('.punto-voz'); if (p) p.className = 'punto-voz punto-voz--' + (nuevo === 'grabando' ? 'escuchando' : nuevo);
+            const p = elsV.estado.querySelector('.punto-voz'); if (p) p.className = 'punto-voz punto-voz--' + (nuevo === 'grabando' ? 'escuchando' : nuevo === 'recuperando' ? 'procesando' : nuevo);
           }
           if (elsV.btn) { elsV.btn.disabled = false; elsV.btn.setAttribute('aria-pressed', String(sesion)); if (elsV.textoBtn) elsV.textoBtn.textContent = sesion ? 'Finalizar sesión' : 'Hablar'; }
-          if (elsV.btnDetener) elsV.btnDetener.hidden = !sesion;
+          if (elsV.btnDetener) { elsV.btnDetener.hidden = !sesion; elsV.btnDetener.title = nuevo === 'grabando' ? 'Enviar ya lo que has dicho' : 'Interrumpir al Director y volver a escuchar'; }
         }
+        const escuchar = () => { if (!sesion) return; if (enVuelo > 0) poner('procesando', 'Procesando…'); else poner('escuchando', 'Escuchando…'); };
         function nivel() { analizador.getFloatTimeDomainData(muestras); let s = 0; for (let i = 0; i < muestras.length; i += 1) s += muestras[i] * muestras[i]; return Math.sqrt(s / muestras.length); }
+        const umbralVoz = () => Math.max(CFG.umbralMin, piso * CFG.factorVoz);
+        const umbralSilencio = () => Math.max(CFG.umbralMin * 0.8, piso * CFG.factorSilencio);
         function formato() {
           for (const t of ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm', 'audio/mp4']) {
             try { if (typeof window.MediaRecorder.isTypeSupported !== 'function' || window.MediaRecorder.isTypeSupported(t)) return t; } catch { /* siguiente */ }
@@ -719,52 +730,90 @@ const activeSection = 'director-ia';
 
         function vigilar() {
           if (!sesion || !analizador) return;
+          if (ctx && ctx.state === 'suspended' && typeof ctx.resume === 'function') { try { ctx.resume(); } catch { /* reintenta en el siguiente ciclo */ } }
           const ahora = Date.now(); const n = nivel();
-          if (estado === 'escuchando' || estado === 'procesando') { if (n > CFG.umbral) grabar(ahora); return; }
-          if (estado === 'grabando') { if (n > CFG.umbral) ultimaVoz = ahora; if (ahora - ultimaVoz >= CFG.silencioFinMs || ahora - inicio >= CFG.maxMs) terminar(); return; }
+          if (calibrandoHasta) { // ~0,6 s al empezar: aprende el ruido de fondo (el mínimo observado, con tope: la voz nunca pasa por ruido)
+            minimoCal = Math.min(minimoCal, n);
+            if (ahora < calibrandoHasta) return;
+            calibrandoHasta = 0; piso = Math.min(Math.max(minimoCal, 0.003), 0.05); escuchar(); return;
+          }
+          // tiempo máximo por turno medido aquí (vale con cualquier reloj y aunque el navegador no cancele la petición)
+          if (peticion && ahora - peticion.desde >= CFG.timeoutTurnoMs) { const pt = peticion; peticion = null; pt.caducar(); }
+          if (estado === 'escuchando' || estado === 'procesando') {
+            if (n > umbralVoz()) { vozDesde = vozDesde || ahora; if (ahora - vozDesde >= CFG.inicioMs) grabar(ahora, vozDesde); }
+            else { vozDesde = 0; piso = piso * 0.95 + Math.min(n, 0.2) * 0.05; } // el ruido de fondo solo se aprende cuando no se habla
+            if (estado === 'procesando' && procesandoDesde) { const s = Math.floor((ahora - procesandoDesde) / 1000); if (s >= 2 && elsV.textoEstado) elsV.textoEstado.textContent = `El Director está pensando… ${s} s`; }
+            return;
+          }
+          if (estado === 'grabando') {
+            // RUIDO CONSTANTE (p. ej. un ventilador que arranca): si el nivel lleva ~1,5 s estable, es ruido de fondo: se aprende y deja de contar como voz
+            ventana.push(n); if (ventana.length > 30) ventana.shift();
+            if (ventana.length === 30) { const mn = Math.min(...ventana); const mx = Math.max(...ventana); if (mx < 0.1 && mx <= mn * 1.6) piso = Math.max(piso, (mn + mx) / 2); }
+            if (n > umbralSilencio()) ultimaVoz = ahora;
+            if (n > maxGrab) maxGrab = n;
+            if (ahora - ultimaVoz >= CFG.silencioFinMs || ahora - inicio >= CFG.maxMs) terminar(); return;
+          }
           if (estado === 'hablando') {
-            if (n > CFG.umbralRespuesta) { vozDesde = vozDesde || ahora; if (ahora - vozDesde >= CFG.interrupcionMs) { const desde = vozDesde; cortarRespuesta(); grabar(ahora, desde); } }
+            if (n > Math.max(CFG.umbralRespuestaMin, piso * CFG.factorRespuesta)) { vozDesde = vozDesde || ahora; if (ahora - vozDesde >= CFG.interrupcionMs) { const desde = vozDesde; cortarRespuesta(); grabar(ahora, desde); } }
             else vozDesde = 0;
           }
         }
 
-        /** `desde`: cuándo empezó a hablar (al interrumpir, la voz ya llevaba unos ms). */
+        /** `desde`: cuándo empezó a hablar (la voz ya llevaba unos ms cuando se detecta). */
         function grabar(ahora, desde = ahora) {
-          if (estado === 'procesando') turno += 1; // hablar encima de una respuesta en camino la deja sin leer
-          trozos = []; inicio = desde; ultimaVoz = ahora; vozDesde = 0;
+          const misTrozos = []; trozos = misTrozos; inicio = desde; ultimaVoz = ahora; vozDesde = 0; ventana = []; maxGrab = 0;
           const tipo = formato();
           try { grabador = tipo ? new window.MediaRecorder(stream, { mimeType: tipo }) : new window.MediaRecorder(stream); } catch { grabador = new window.MediaRecorder(stream); }
-          grabador.ondataavailable = (e) => { if (e.data && e.data.size) trozos.push(e.data); };
-          grabador.onstop = () => procesarGrabacion(Date.now() - inicio, ultimaVoz - inicio);
+          grabador.ondataavailable = (e) => { if (e.data && e.data.size) misTrozos.push(e.data); };
+          grabador.onerror = () => { grabador = null; mostrarAlerta('Se interrumpió la grabación: vuelve a hablar.'); escuchar(); };
+          const esta = grabador; grabador.onstop = () => { const f = esta._fin || { duracion: Date.now() - inicio, habla: ultimaVoz - inicio, espera: 0 }; procesarGrabacion(esta, misTrozos, f.duracion, f.habla, f.espera); };
           grabador.start();
           poner('grabando', 'Te escucho…');
         }
-        function terminar() { if (grabador && grabador.state !== 'inactive') { poner('procesando', 'Procesando…'); try { grabador.stop(); } catch { /* ya parado */ } } }
+        function terminar() { if (grabador && grabador.state !== 'inactive') { const ahora = Date.now(); grabador._fin = { duracion: ahora - inicio, habla: maxGrab > umbralVoz() ? ultimaVoz - inicio : 0, espera: ahora - ultimaVoz /* si solo hubo ruido de fondo, habla=0 y se descarta */ }; procesandoDesde = ahora; poner('procesando', 'Procesando…'); try { grabador.stop(); } catch { /* ya parado */ } } }
 
         async function aBase64(blob) {
           const b = new Uint8Array(await blob.arrayBuffer()); let s = '';
           for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
           return window.btoa(s);
         }
+        /** Envía el turno. Si en `timeoutTurnoMs` no hay respuesta, el vigilante lo da por caducado: se cancela (si el navegador puede) y se rechaza. */
+        function enviar(cuerpo) {
+          const ctrl = typeof window.AbortController === 'function' ? new window.AbortController() : null;
+          return new Promise((ok, ko) => {
+            let hecho = false; const fin = (f) => (x) => { if (hecho) return; hecho = true; if (peticion === estaP) peticion = null; f(x); };
+            const estaP = { desde: Date.now(), caducar: () => { try { if (ctrl) ctrl.abort(); } catch { /* nada */ } fin(ko)(new Error('El Director no respondió a tiempo: vuelve a decirlo.')); } };
+            peticion = estaP;
+            enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), { method: 'POST', body: cuerpo, ...(ctrl ? { signal: ctrl.signal } : {}) }).then((res) => leerJson(res)).then(fin(ok), fin(ko));
+          });
+        }
+        const resumenHablado = (a) => { const t = String((a && (a.resumenHablado || a.detalle || a.textoClaro)) || '').replace(/\s+/g, ' ').trim(); if (t.length <= CFG.maxHablado) return t; const corte = t.slice(0, CFG.maxHablado); const p = Math.max(corte.lastIndexOf('. '), corte.lastIndexOf('? '), corte.lastIndexOf('! ')); return p > 80 ? corte.slice(0, p + 1) : `${corte.trim()}…`; };
 
-        async function procesarGrabacion(duracionMs, hablaMs) {
-          const r = grabador; grabador = null;
+        async function procesarGrabacion(r, trozos, duracionMs, hablaMs, esperaFinMs) {
+          if (grabador === r) grabador = null;
           if (!sesion) return;
-          if (hablaMs < CFG.minMs || !trozos.length) { poner('escuchando', 'Escuchando…'); return; } // ruido, no una intervención
-          const mio = (turno += 1);
+          if (hablaMs < CFG.minMs || !trozos.length) { // ruido, no una intervención: si había una respuesta esperando a ser dicha, se dice ahora
+            if (pendiente) { const p = pendiente; pendiente = null; decir(p); } else escuchar(); return;
+          }
+          pendiente = null; // el propietario ha seguido hablando: lo nuevo manda
+          const mio = (turno += 1); const t0 = Date.now(); procesandoDesde = t0;
           const mime = (r && r.mimeType) || (trozos[0] && trozos[0].type) || 'audio/webm';
-          let j;
+          let j; enVuelo += 1;
           try {
             const audio = await aBase64(new window.Blob(trozos, { type: mime }));
-            const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), { method: 'POST', body: JSON.stringify({ audio, mime, segundos: Math.min(60, Math.max(0.5, duracionMs / 1000)) }) });
-            j = await leerJson(res);
+            const cuerpo = JSON.stringify({ audio, mime, segundos: Math.min(60, Math.max(0.5, duracionMs / 1000)) });
+            j = await enviar(cuerpo);
+            // la transcripción falló (p. ej. el proveedor saturado): en el servidor no se ha registrado nada, así que se reintenta UNA vez
+            if (j && j.success && j.voz && j.voz.estado === 'error_transcripcion' && mio === turno && sesion) { poner('recuperando', 'No te he oído bien; lo intento otra vez…'); j = await enviar(cuerpo); }
           } catch (e) {
-            if (mio === turno && sesion) { mostrarAlerta(e instanceof Error ? e.message : 'No se pudo enviar tu voz.'); poner('escuchando', 'Escuchando…'); }
+            enVuelo -= 1;
+            if (mio === turno && sesion) { const m = e instanceof Error ? e.message : 'No se pudo enviar tu voz.'; mostrarAlerta(m); decir({ local: 'No he podido procesarlo. Vuelve a decírmelo.' }); }
             return;
           }
+          enVuelo -= 1;
           if (!j.success) {
             if (j.code === 'voz_no_disponible') { noDisponible = true; finalizar(); mostrarAlerta('La voz del Director no está activa en el servicio: uso la voz del navegador.'); Voz.iniciar(); return; }
-            if (mio === turno && sesion) { mostrarAlerta(j.message || 'No se pudo procesar tu voz.'); poner('escuchando', 'Escuchando…'); }
+            if (mio === turno && sesion) { mostrarAlerta(j.message || 'No se pudo procesar tu voz.'); decir({ local: 'Ha habido un problema. Vuelve a decírmelo.' }); }
             return;
           }
           const v = j.voz || {};
@@ -774,26 +823,37 @@ const activeSection = 'director-ia';
             els.contenedor.appendChild(crearNodoMensaje({ rol: 'director', contenido: a.textoClaro, en: a.generadoEn, estado: a.estado, categoria: a.categoria, tipoIntencion: a.tipoIntencion, naturalezaDatos: a.naturalezaDatos, fuentes: a.fuentes, tareas: a.tareas, solicitudesAutorizacion: a.solicitudesAutorizacion, limitaciones: a.limitaciones, avisos: a.avisos, controles: a.controles, registrada: a.registrada, generadoEn: a.generadoEn }));
           }
           scrollFinal();
-          if (mio !== turno || !sesion) return; // ya se habló encima o se cerró la sesión: se muestra, no se lee
-          if (v.audio && v.audio.base64) { reproducir(`data:${v.audio.mime};base64,${v.audio.base64}`); return; }
-          if (v.vozLocal) { hablarLocal(v.vozLocal); return; }
-          if (v.mensaje) mostrarAlerta(v.mensaje);
-          poner('escuchando', 'Escuchando…');
+          const met = { en: new Date().toISOString(), esperaFinMs, servidorMs: Date.now() - t0, servidor: j.voz && j.voz.medidas ? j.voz.medidas : null, conVozDirector: Boolean(v.audio), estado: v.estado || null };
+          metricas.push(met); if (metricas.length > 50) metricas.shift(); try { console.info('[voz-director]', JSON.stringify(met)); } catch { /* sin consola */ }
+          if (mio !== turno || !sesion) return; // la sesión se cerró o llegó otro turno: se muestra, no se lee
+          let que;
+          if (v.audio && v.audio.base64) que = { url: `data:${v.audio.mime};base64,${v.audio.base64}`, respaldo: resumenHablado(j.respuesta) };
+          else if (v.vozLocal) que = { local: v.vozLocal, nota: 'datos del negocio' };
+          else if (j.respuesta) que = { local: resumenHablado(j.respuesta), nota: v.estado === 'respuesta_solo_texto' ? 'voz del Director no disponible ahora' : null };
+          else que = { local: v.mensaje || 'No te he entendido. Repítelo, por favor.' };
+          if (estado === 'grabando') { pendiente = que; return; } // el propietario está hablando: se dice si lo suyo resulta ser solo ruido
+          decir(que);
         }
 
-        function reproducir(url) {
+        function decir(q) {
+          if (!sesion) return;
+          if (q && q.url) return reproducir(q.url, q.respaldo);
+          return hablarLocal(q && q.local, q && q.nota);
+        }
+        function reproducir(url, respaldo) {
           poner('hablando', 'El Director responde…'); vozDesde = 0;
           const a = new window.Audio(url); reproduccion = a;
-          const fin = () => { if (reproduccion === a) { reproduccion = null; if (sesion && estado === 'hablando') poner('escuchando', 'Escuchando…'); } };
-          a.onended = fin; a.onerror = fin;
-          try { const p = a.play(); if (p && typeof p.catch === 'function') p.catch(fin); } catch { fin(); }
+          const fin = () => { if (reproduccion === a) { reproduccion = null; if (estado === 'hablando') escuchar(); } };
+          const fallo = () => { if (reproduccion === a) { reproduccion = null; if (respaldo) hablarLocal(respaldo, 'no se pudo reproducir el audio'); else fin(); } };
+          a.onended = fin; a.onerror = fallo;
+          try { const p = a.play(); if (p && typeof p.catch === 'function') p.catch(fallo); } catch { fallo(); }
         }
-        function hablarLocal(texto) {
+        function hablarLocal(texto, nota) {
           const S = window.speechSynthesis;
-          if (!S || !window.SpeechSynthesisUtterance) { poner('escuchando', 'Escuchando…'); return; }
-          poner('hablando', 'El Director responde (voz local: datos del negocio)…'); vozDesde = 0;
+          if (!texto || !S || !window.SpeechSynthesisUtterance) { escuchar(); return; }
+          poner('hablando', nota ? `El Director responde (voz local: ${nota})…` : 'El Director responde…'); vozDesde = 0;
           const u = new window.SpeechSynthesisUtterance(texto); u.lang = 'es-ES'; reproduccion = u;
-          const fin = () => { if (reproduccion === u) { reproduccion = null; if (sesion && estado === 'hablando') poner('escuchando', 'Escuchando…'); } };
+          const fin = () => { if (reproduccion === u) { reproduccion = null; if (estado === 'hablando') escuchar(); } };
           u.onend = fin; u.onerror = fin;
           try { S.speak(u); } catch { fin(); }
         }
@@ -805,31 +865,40 @@ const activeSection = 'director-ia';
 
         async function iniciar() {
           if (sesion) { finalizar(); return; }
+          // El contexto de audio se crea DENTRO de la pulsación (antes de esperar el permiso del micrófono): si se crea después, Chrome puede dejarlo
+          // suspendido y el detector solo «oye» ceros.
+          let c = null; try { c = new AC(); if (c.state === 'suspended' && typeof c.resume === 'function') c.resume(); } catch { c = null; }
           try { stream = await nav.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
-          catch { mostrarAlerta('Permiso del micrófono denegado. Concede acceso al micrófono o usa el teclado.'); return; }
-          ctx = new AC(); const fuente = ctx.createMediaStreamSource(stream); analizador = ctx.createAnalyser(); analizador.fftSize = 2048; fuente.connect(analizador); muestras = new Float32Array(analizador.fftSize);
-          sesion = true; turno += 1; poner('escuchando', 'Escuchando…'); mostrarAlerta(null);
+          catch { if (c) { try { c.close(); } catch { /* nada */ } } mostrarAlerta('Permiso del micrófono denegado. Concede acceso al micrófono o usa el teclado.'); return; }
+          ctx = c || new AC(); const fuente = ctx.createMediaStreamSource(stream); analizador = ctx.createAnalyser(); analizador.fftSize = 2048; fuente.connect(analizador); muestras = new Float32Array(analizador.fftSize);
+          for (const t of stream.getTracks()) t.onended = () => { if (sesion) { finalizar(); mostrarAlerta('Se perdió el micrófono: vuelve a pulsar «Hablar».'); } };
+          sesion = true; turno += 1; piso = 0.005; pendiente = null; enVuelo = 0; peticion = null; minimoCal = 1; calibrandoHasta = Date.now() + 600; poner('escuchando', 'Ajustando el micrófono…'); mostrarAlerta(null);
           reloj = setInterval(vigilar, CFG.intervaloMs);
         }
         function finalizar() {
-          sesion = false; turno += 1; cortarRespuesta();
+          sesion = false; turno += 1; pendiente = null; cortarRespuesta();
           if (reloj) { clearInterval(reloj); reloj = null; }
-          if (grabador && grabador.state !== 'inactive') { try { grabador.stop(); } catch { /* nada */ } }
-          grabador = null;
-          if (stream) { for (const t of stream.getTracks()) { try { t.stop(); } catch { /* nada */ } } stream = null; }
+          const g = grabador; grabador = null; if (g && g.state !== 'inactive') { try { g.stop(); } catch { /* nada */ } }
+          if (stream) { for (const t of stream.getTracks()) { try { t.onended = null; t.stop(); } catch { /* nada */ } } stream = null; }
           if (ctx) { try { ctx.close(); } catch { /* nada */ } ctx = null; analizador = null; }
           poner('inactivo', '');
         }
-        function interrumpir() { if (!sesion) return; cortarRespuesta(); if (estado === 'hablando') poner('escuchando', 'Escuchando…'); }
+        /** ■: mientras hablas, envía ya tu intervención; mientras el Director habla, lo corta y vuelve a escuchar. */
+        function interrumpir() { if (!sesion) return; if (estado === 'grabando') { terminar(); return; } cortarRespuesta(); if (estado === 'hablando') escuchar(); }
 
-        return { disponible: () => disponible && !noDisponible, activa: () => sesion, estado: () => estado, iniciar, finalizar, interrumpir, _vigilar: vigilar };
+        return { disponible: () => disponible && !noDisponible, activa: () => sesion, estado: () => estado, iniciar, finalizar, interrumpir, metricas: () => metricas.slice(), _vigilar: vigilar };
       })();
 
       // eventos de voz
       // btnVoz: inicia la sesión (inactivo) o la finaliza inequívocamente (activa). Con grabación disponible se usa la voz del Director;
       // si no, la del navegador (Web Speech).
+      // Modo de voz (se recuerda): «director» = su voz natural (transcribe y habla el Director, ~6–10 s por turno, cuota diaria de voz);
+      // «rapida» = reconocimiento y voz del navegador (~3 s por turno; el navegador puede enviar el audio a su propio servicio de voz).
+      const selModoVoz = document.getElementById('modoVoz');
+      const modoVoz = () => { try { return localStorage.getItem('directorIA.modoVoz') === 'rapida' ? 'rapida' : 'director'; } catch { return 'director'; } };
+      if (selModoVoz) { selModoVoz.value = modoVoz(); selModoVoz.addEventListener('change', () => { try { localStorage.setItem('directorIA.modoVoz', selModoVoz.value === 'rapida' ? 'rapida' : 'director'); } catch { /* sin almacenamiento */ } if (VozDirector.activa()) VozDirector.finalizar(); if (Voz.activa && Voz.activa()) Voz.detener(); }); }
       if (els.btnVoz) els.btnVoz.addEventListener('click', () => {
-        if (VozDirector.activa() || (VozDirector.disponible() && !Voz.silenciado())) { VozDirector.iniciar(); return; }
+        if (VozDirector.activa() || (modoVoz() === 'director' && VozDirector.disponible() && !Voz.silenciado())) { VozDirector.iniciar(); return; }
         if (!Voz.silenciado()) Voz.iniciar();
       });
       // btnDetenerVoz: interrumpe la respuesta del Director y vuelve a escuchar (no finaliza la sesión).
@@ -1195,6 +1264,7 @@ const activeSection = 'director-ia';
       border-color: var(--color-primary, #2563eb);
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
     }
+    .director-ia-modo-voz { font-size: 0.8rem; padding: 0.25rem 0.4rem; border-radius: 6px; border: 1px solid var(--color-borde, #d0d5dd); background: transparent; color: inherit; max-width: 11rem; }
     .director-ia-estado-voz {
       display: flex;
       align-items: center;

@@ -114,12 +114,12 @@ const respuestaVoz = (n, extra = {}) => ({ success: true, conversacion: { id: 'c
 
 test('panel: varios turnos seguidos con una sola pulsación: detecta el final de cada intervención, responde con la voz del Director y vuelve a escuchar', async () => {
   const p = montarPanel(async (c, n) => respuestaVoz(n));
-  await tic(); p.el('btnVoz').click(); await tic();
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
   assert.equal(p.el('textoBtnVoz').textContent, 'Finalizar sesión'); assert.equal(p.sim.reconocimientos, 0, 'no usa el reconocimiento del navegador');
   for (let n = 1; n <= 3; n += 1) {
     await p.pasar(1200, 0.2); // habla 1,2 s
     assert.equal(p.posts().length, n - 1, 'mientras habla no se envía nada');
-    await p.pasar(1000, 0.0); // silencio → fin de la intervención
+    await p.pasar(1500, 0.0); // silencio (≥ 1,3 s) → fin de la intervención
     assert.equal(p.posts().length, n, `turno ${n} enviado al detectar el final`);
     const cuerpo = JSON.parse(p.posts().at(-1).init.body); assert.equal(cuerpo.mime, 'audio/webm;codecs=opus'); assert.ok(cuerpo.segundos >= 1 && cuerpo.segundos <= 3); assert.ok(cuerpo.audio);
     assert.equal(p.posts().at(-1).init.headers['X-Director-IA'], '1');
@@ -132,26 +132,99 @@ test('panel: varios turnos seguidos con una sola pulsación: detecta el final de
 
 test('panel: hablar encima del Director lo interrumpe y graba lo nuevo; el botón de interrumpir corta la voz sin cerrar la sesión', async () => {
   const p = montarPanel(async (c, n) => respuestaVoz(n));
-  await tic(); p.el('btnVoz').click(); await tic();
-  await p.pasar(800, 0.2); await p.pasar(1000, 0); assert.equal(p.sim.audios.length, 1);
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
+  await p.pasar(800, 0.2); await p.pasar(1500, 0); assert.equal(p.sim.audios.length, 1);
   await p.pasar(700, 0.3); // el propietario habla mientras suena la respuesta
   assert.equal(p.sim.audios[0].pausado, true, 'la voz del Director se corta'); assert.equal(p.el('textoEstadoVoz').textContent, 'Te escucho…');
-  await p.pasar(1000, 0); assert.equal(p.posts().length, 2, 'lo dicho encima se envía como nuevo turno');
+  await p.pasar(1500, 0); assert.equal(p.posts().length, 2, 'lo dicho encima se envía como nuevo turno');
   p.el('btnDetenerVoz').click(); await tic(); assert.equal(p.sim.audios[1].pausado, true); assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando…'); assert.equal(p.el('textoBtnVoz').textContent, 'Finalizar sesión');
 });
 
 test('panel: datos reales → voz local del navegador; ruido corto descartado; Director sin voz → pasa a la voz del navegador', async () => {
   const p = montarPanel(async (c, n) => respuestaVoz(n, { audio: null, vozLocal: 'Hay tres hallazgos nuevos.' }));
-  await tic(); p.el('btnVoz').click(); await tic();
-  await p.pasar(200, 0.2); await p.pasar(1000, 0); assert.equal(p.posts().length, 0, 'un ruido de 0,2 s no es una intervención');
-  await p.pasar(900, 0.2); await p.pasar(1000, 0); assert.equal(p.posts().length, 1);
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
+  await p.pasar(200, 0.2); await p.pasar(1500, 0); assert.equal(p.posts().length, 0, 'un ruido de 0,2 s no es una intervención');
+  await p.pasar(900, 0.2); await p.pasar(1500, 0); assert.equal(p.posts().length, 1);
   assert.equal(p.sim.audios.length, 0, 'nada de audio externo'); assert.equal(p.sim.locuciones.at(-1).text, 'Hay tres hallazgos nuevos.'); assert.match(p.el('textoEstadoVoz').textContent, /voz local/);
   const q = montarPanel(async () => ({ success: false, code: 'voz_no_disponible', message: 'x' }));
-  await tic(); q.el('btnVoz').click(); await tic(); await q.pasar(900, 0.2); await q.pasar(1000, 0);
+  await tic(); q.el('btnVoz').click(); await tic(); await q.pasar(700, 0); /* calibración del micrófono */ await q.pasar(900, 0.2); await q.pasar(1500, 0);
   assert.equal(q.sim.reconocimientos, 1, 'continúa con el reconocimiento del navegador'); assert.match(q.el('alertaForm').textContent, /voz del navegador/);
 });
 
 test('panel: sin grabación en el navegador se usa la voz del navegador como antes', async () => {
   const p = montarPanel(async () => ({ success: true }), { conMicrofono: false });
-  await tic(); p.el('btnVoz').click(); await tic(); assert.equal(p.sim.reconocimientos, 1);
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */ assert.equal(p.sim.reconocimientos, 1);
+});
+
+// ───────── reproducciones de los fallos observados por el propietario el 27/11 ─────────
+const lento = (ms, valor) => new Promise((ok) => setTimeout(() => ok(valor), ms));
+
+test('PAUSA NATURAL: una pausa de 0,9 s dentro de la frase NO parte la intervención (antes: dos turnos a 1–4 s)', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
+  await p.pasar(800, 0.2); await p.pasar(900, 0); await p.pasar(800, 0.2); assert.equal(p.posts().length, 0, 'la pausa no cierra el turno');
+  await p.pasar(1500, 0); assert.equal(p.posts().length, 1, 'un solo turno'); assert.ok(JSON.parse(p.posts()[0].init.body).segundos >= 2.4, 'incluye las dos partes');
+});
+
+test('RUIDO DE FONDO: con un ruido constante por encima del umbral fijo antiguo (0,03) el final de la intervención se detecta igual', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
+  await p.pasar(4000, 0.03); await p.pasar(2000, 0.03); assert.equal(p.posts().length, 0, 'un ruido constante que aparece después no se envía como intervención'); assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando…');
+  await p.pasar(1200, 0.3); await p.pasar(1500, 0.03); assert.equal(p.posts().length, 1, 'termina aunque el ruido siga');
+});
+
+test('SIN VOZ DEL DIRECTOR (cuota de síntesis agotada → respuesta_solo_texto): la respuesta se OYE con la voz local, nunca silencio', async () => {
+  const p = montarPanel(async (c, n) => ({ ...respuestaVoz(n, { estado: 'respuesta_solo_texto', audio: null, vozLocal: null }) }));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
+  await p.pasar(900, 0.2); await p.pasar(1500, 0);
+  assert.equal(p.sim.locuciones.at(-1).text, 'Respuesta 1'); assert.match(p.el('textoEstadoVoz').textContent, /voz del Director no disponible/);
+  p.sim.locuciones.at(-1).onend(); await tic(); assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando…');
+});
+
+test('TRANSCRIPCIÓN FALLIDA (503 del proveedor): se reintenta una vez sola y el turno sigue; si vuelve a fallar se avisa en voz alta y se sigue escuchando', async () => {
+  let k = 0; const p = montarPanel(async (c, n) => (++k === 1 ? { success: true, voz: { estado: 'error_transcripcion', mensaje: 'No he podido oírte bien' }, respuesta: null } : respuestaVoz(n)));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */ await p.pasar(900, 0.2); await p.pasar(1500, 0);
+  assert.equal(p.posts().length, 2, 'un reintento automático'); assert.equal(p.posts()[0].init.body, p.posts()[1].init.body, 'mismo audio'); assert.equal(p.sim.audios.length, 1, 'y responde');
+  const q = montarPanel(async () => ({ success: true, voz: { estado: 'error_transcripcion', mensaje: 'No he podido oírte bien: repítelo o escribe.' }, respuesta: null }));
+  await tic(); q.el('btnVoz').click(); await tic(); await q.pasar(700, 0); /* calibración del micrófono */ await q.pasar(900, 0.2); await q.pasar(1500, 0);
+  assert.equal(q.posts().length, 2, 'solo un reintento'); assert.match(q.sim.locuciones.at(-1).text, /oírte bien/); q.sim.locuciones.at(-1).onend(); await tic(); assert.equal(q.el('textoEstadoVoz').textContent, 'Escuchando…', 'la sesión sigue');
+});
+
+test('SIN RESPUESTA DEL SERVIDOR: el turno caduca, se avisa en voz alta y la conversación sigue sin reiniciar', async () => {
+  let k = 0; const p = montarPanel(async (c, n) => (++k === 1 ? new Promise(() => {}) : respuestaVoz(n)));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */ await p.pasar(900, 0.2); await p.pasar(1500, 0);
+  await p.pasar(20000, 0); assert.equal(p.sim.locuciones.length, 0, 'a los 20 s sigue esperando'); assert.match(p.el('textoEstadoVoz').textContent, /pensando/, 'indica que sigue procesando');
+  await p.pasar(16000, 0); await tic();
+  assert.match(p.el('alertaForm').textContent, /no respondió a tiempo/); assert.match(p.sim.locuciones.at(-1).text, /No he podido procesarlo/);
+  p.sim.locuciones.at(-1).onend(); await tic(); assert.equal(p.el('textoEstadoVoz').textContent, 'Escuchando…');
+  await p.pasar(900, 0.2); await p.pasar(1500, 0); assert.equal(p.sim.audios.length, 1, 'el siguiente turno funciona');
+});
+
+test('DOS PREGUNTAS SEGUIDAS: si hablas mientras procesa, la respuesta vieja no se lee encima y solo suena la última, en orden', async () => {
+  let liberar1; const p = montarPanel(async (c, n) => (n === 1 ? new Promise((ok) => { liberar1 = () => ok(respuestaVoz(1)); }) : respuestaVoz(n)));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
+  await p.pasar(900, 0.2); await p.pasar(1500, 0); assert.equal(p.posts().length, 1);
+  await p.pasar(600, 0.2); assert.equal(p.el('textoEstadoVoz').textContent, 'Te escucho…');
+  liberar1(); await tic(); assert.equal(p.sim.audios.length, 0, 'la respuesta 1 llega mientras hablas: no se lee encima de ti');
+  await p.pasar(1500, 0); await tic(); assert.equal(p.posts().length, 2);
+  assert.equal(p.sim.audios.length, 1, 'solo suena una respuesta (la de la última pregunta)'); assert.ok(p.el('contenedorMensajes').children.length >= 4, 'las dos respuestas quedan en el historial');
+});
+
+test('RUIDO MIENTRAS PROCESA: si lo que se oyó era solo ruido, la respuesta pendiente se dice igualmente', async () => {
+  const p = montarPanel(async (c, n) => lento(40, respuestaVoz(n)));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
+  await p.pasar(900, 0.2); await p.pasar(1500, 0); await p.pasar(200, 0.2); await espera(60); await tic();
+  await p.pasar(1500, 0); assert.equal(p.sim.audios.length, 1, 'la respuesta se dice tras descartar el ruido');
+});
+
+test('ENVIAR YA: pulsar ■ mientras hablas envía la intervención sin esperar al silencio', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */ await p.pasar(900, 0.2);
+  p.el('btnDetenerVoz').click(); await tic(); await tic(); assert.equal(p.posts().length, 1);
+});
+
+test('MODO RÁPIDO: elegido «Voz rápida», el botón usa el reconocimiento y la voz del navegador (sin pasar por la transcripción del Director) y se recuerda', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n));
+  await tic(); p.el('modoVoz').value = 'rapida'; p.el('modoVoz').dispatch('change'); p.el('btnVoz').click(); await tic();
+  assert.equal(p.sim.reconocimientos, 1, 'reconocimiento del navegador'); assert.equal(p.sim.grabadores.length, 0, 'no graba audio para el Director');
 });
