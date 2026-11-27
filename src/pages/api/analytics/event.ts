@@ -9,7 +9,7 @@
  */
 import type { APIRoute } from 'astro';
 import { clientIpFrom, trackEvent, type TipoEvento } from '../../../lib/analytics';
-import { esRutaAdmin } from '../../../lib/analyticsFiltros';
+import { esAgenteAutomatico, esRutaAdmin, sesionAnonima } from '../../../lib/analyticsFiltros';
 
 export const prerender = false;
 
@@ -62,8 +62,11 @@ export const POST: APIRoute = async ({ request }) => {
         ? Math.round(payload.amount * 100) / 100
         : undefined;
 
-    // Las páginas del panel (/upayp1b4) no son tráfico del sitio: se aceptan sin registrarlas.
-    if (esRutaAdmin(payload.path)) return json({ success: true }, 202);
+    // Las páginas del panel (/upayp1b4) no son tráfico del sitio, y los agentes automáticos no son visitas: se aceptan sin registrarlas.
+    const userAgent = request.headers.get('user-agent');
+    if (esRutaAdmin(payload.path) || esAgenteAutomatico(userAgent)) return json({ success: true }, 202);
+    // Sesión anónima calculada aquí (lib/analyticsFiltros.ts › sesionAnonima): no se aceptan identificadores del navegador.
+    const ip = clientIpFrom(request); const sessionId = sesionAnonima(ip, userAgent);
 
     // Cola en memoria + persistencia diferida: respuesta inmediata.
     trackEvent(
@@ -71,15 +74,14 @@ export const POST: APIRoute = async ({ request }) => {
         type: payload.type as TipoEvento,
         productId: texto(payload.productId, 160),
         path: texto(payload.path, 300),
-        sessionId: texto(payload.sessionId, 64),
-        visitorId: texto(payload.visitorId, 64),
+        ...(sessionId ? { sessionId } : {}),
         referrer: texto(payload.referrer, 300),
         network: texto(payload.network, 40),
         durationMs,
         amount,
         source: 'api',
       },
-      { ip: clientIpFrom(request) },
+      { ip },
     );
 
     return json({ success: true }, 202);

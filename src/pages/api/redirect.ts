@@ -30,7 +30,7 @@ import { resolveOfferDestination } from '../../lib/offerRedirect';
 import { trackEvent } from '../../lib/analytics';
 import { buildPurchaseUrl } from '../../lib/purchaseUrl';
 import { clientIpFrom } from '../../lib/analytics';
-import { crearDeduplicador, esAgenteAutomatico, idAnalitica } from '../../lib/analyticsFiltros';
+import { crearDeduplicador, esAgenteAutomatico, sesionAnonima } from '../../lib/analyticsFiltros';
 
 /** Mismo clic repetido (doble pulsación o apertura duplicada) en 10 s: cuenta una vez. */
 const clicRepetido = crearDeduplicador(10_000);
@@ -121,19 +121,18 @@ export const GET: APIRoute = async ({ url, request }) => {
   // 1. Registro del clic de salida (cola en memoria, se persiste en segundo plano). Medición corregida (27/11/2026, lib/analyticsFiltros.ts):
   //    · rastreadores, vistas previas y comprobadores de enlaces no cuentan como clics (la redirección se hace igual);
   //    · la IP se pasa para respetar ANALYTICS_IGNORE_IPS (antes los clics del propio equipo contaban);
-  //    · el clic lleva la sesión y el visitante si el navegador los aporta (sid/vid): así la conversión es «sesiones con clic / sesiones»;
+  //    · el clic lleva la sesión anónima del servidor (la misma que sus visitas): así la conversión es «sesiones con clic / sesiones»;
   //    · el mismo clic repetido en 10 s cuenta una vez.
   const ip = request ? clientIpFrom(request) : undefined;
-  const sessionId = idAnalitica(url.searchParams.get('sid')); const visitorId = idAnalitica(url.searchParams.get('vid'));
+  const userAgent = request?.headers?.get?.('user-agent'); const sessionId = sesionAnonima(ip, userAgent);
   const claveClic = `${sessionId ?? ip ?? '-'}|${product.id}|${offerInfo?.offer.offerId ?? network ?? ''}`;
-  if (!esAgenteAutomatico(request?.headers?.get?.('user-agent')) && !clicRepetido(claveClic)) {
+  if (!esAgenteAutomatico(userAgent) && !clicRepetido(claveClic)) {
     trackEvent({
       type: 'outbound_click',
       productId: product.id,
       path: offerInfo ? `/${source || 'ofertas'}/offer:${offerInfo.offer.offerId}` : source ? `/${source}` : undefined,
       source: 'redirect',
       ...(sessionId ? { sessionId } : {}),
-      ...(visitorId ? { visitorId } : {}),
     }, { ip });
   }
 

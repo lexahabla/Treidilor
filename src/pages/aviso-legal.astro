@@ -1,0 +1,38 @@
+---
+/** Aviso legal (LSSI-CE art. 10). Sin datos completos y revisados del titular → 404 (nunca datos ficticios). */
+import PaginaLegal from '../components/legal/PaginaLegal.astro';
+import { cargarDatosLegales } from '../lib/datosLegales';
+export const prerender = false;
+const d = cargarDatosLegales();
+if (!d) return new Response('No disponible.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Robots-Tag': 'noindex' } });
+---
+<PaginaLegal titulo="Aviso legal" descripcion="Identificación del titular de Treidilor y condiciones de uso del sitio." actualizado={d.actualizadoEn}>
+  <h2>Titular del sitio web</h2>
+  <table>
+    <tr><th>Titular</th><td>{d.titular}</td></tr>
+    <tr><th>NIF</th><td>{d.nif}</td></tr>
+    <tr><th>Domicilio</th><td>{d.domicilio}</td></tr>
+    <tr><th>Correo electrónico</th><td><a href={`mailto:${d.email}`}>{d.email}</a></td></tr>
+    {d.telefono && <tr><th>Teléfono</th><td>{d.telefono}</td></tr>}
+    {d.registro && <tr><th>Datos registrales</th><td>{d.registro}</td></tr>}
+    <tr><th>Sitio web</th><td>treidilor.com</td></tr>
+  </table>
+
+  <h2>Actividad</h2>
+  <p>Treidilor es un sitio de información y comparación de productos. Muestra datos que publican las tiendas (precio, disponibilidad, envío, valoraciones) con su fecha de captura y enlaces a esas tiendas. Treidilor <strong>no vende productos</strong>: la compra, el pago, el envío, la garantía y las devoluciones se realizan en la tienda de destino y se rigen por sus condiciones.</p>
+
+  <h2>Enlaces de afiliación</h2>
+  <p>Algunos enlaces son de afiliación: si compras después de pulsarlos, la tienda puede pagar una comisión a Treidilor sin coste añadido para ti. En calidad de Afiliado de Amazon, Treidilor obtiene ingresos por las compras adscritas que cumplen los requisitos aplicables. Treidilor también participa en los programas de afiliación de AliExpress y eBay. Enlazar a una tienda no implica un acuerdo con ella. Más detalle en el <a href="/#aviso-afiliacion">aviso de afiliación</a>.</p>
+
+  <h2>Exactitud de la información</h2>
+  <p>Los precios, la disponibilidad y las condiciones pueden cambiar en cualquier momento en la tienda. Lo que se muestra corresponde a la fecha indicada; comprueba siempre el importe y las condiciones finales en la tienda antes de comprar. Los textos de análisis son orientativos y no son pruebas de producto, salvo que se indique expresamente.</p>
+
+  <h2>Propiedad intelectual</h2>
+  <p>Los textos, el diseño y el código propios del sitio pertenecen al titular. Las marcas, nombres e imágenes de productos pertenecen a sus respectivos propietarios y se muestran solo para identificar los productos.</p>
+
+  <h2>Responsabilidad</h2>
+  <p>El titular no responde de los contenidos, productos ni condiciones de los sitios de terceros a los que se enlaza, ni de las compras realizadas en ellos.</p>
+
+  <h2>Legislación aplicable</h2>
+  <p>Este aviso se rige por la legislación española. Para cualquier consulta, escribe a <a href={`mailto:${d.email}`}>{d.email}</a>.</p>
+</PaginaLegal>

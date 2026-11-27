@@ -1,0 +1,28 @@
+---
+/**
+ * Marco común de las páginas legales. Solo se usa cuando `cargarDatosLegales()` devuelve los datos completos y revisados.
+ */
+import Layout from '../../layouts/Layout.astro';
+interface Props { titulo: string; descripcion: string; actualizado?: string }
+const { titulo, descripcion, actualizado } = Astro.props;
+---
+<Layout title={`${titulo} | Treidilor`} description={descripcion}>
+  <main class="legal container">
+    <nav class="legal-migas" aria-label="Migas de pan"><a href="/">Inicio</a> <span aria-hidden="true">›</span> <span aria-current="page">{titulo}</span></nav>
+    <h1>{titulo}</h1>
+    {actualizado && <p class="legal-fecha">Última actualización: {actualizado}</p>}
+    <div class="legal-cuerpo"><slot /></div>
+    <p class="legal-otros"><a href="/aviso-legal">Aviso legal</a> · <a href="/privacidad">Privacidad</a> · <a href="/cookies">Cookies</a> · <a href="/#aviso-afiliacion">Aviso de afiliación</a></p>
+  </main>
+</Layout>
+
+<style>
+  .legal { max-width: 52rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; line-height: 1.7; color: var(--color-text-main); }
+  .legal h1 { font-size: clamp(1.6rem, 3vw, 2.2rem); margin: 0.5rem 0 0.25rem; }
+  .legal :global(h2) { font-size: 1.2rem; margin: 2rem 0 0.5rem; }
+  .legal :global(table) { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.92rem; }
+  .legal :global(th), .legal :global(td) { border-bottom: 1px solid var(--color-border); padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
+  .legal :global(a) { color: #60a5fa; }
+  .legal-migas, .legal-fecha, .legal-otros { color: var(--color-text-muted); font-size: 0.9rem; }
+  .legal-otros { margin-top: 2.5rem; }
+</style>

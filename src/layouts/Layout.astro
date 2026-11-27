@@ -22,6 +22,7 @@ import { getCategories, type Category } from '../lib/categories';
 // comentario de cabecera de ese fichero sobre por qué es imprescindible.
 import '../styles/tailwind.css';
 import { resolveTopSelectionsNav } from '../lib/topSelections';
+import { cargarDatosLegales } from '../lib/datosLegales';
 
 const {
   title = "Treidilor | Portal de Curación, Recomendaciones y Comparativas de Productos",
@@ -42,6 +43,8 @@ const isBackend = Astro.url.pathname.startsWith('/upayp1b4');
 // resto de páginas los enlaces a "#aviso-afiliacion"/"#aviso-legal" navegan a la home.
 const isHome = Astro.url.pathname === '/';
 const legalAnchorHref = isHome ? '#aviso-legal' : '/#aviso-legal';
+// Páginas legales: solo se enlazan cuando el titular ha completado y revisado sus datos (lib/datosLegales.ts); nunca con datos ficticios.
+const datosLegales = cargarDatosLegales();
 const afiliacionAnchorHref = isHome ? '#aviso-afiliacion' : '/#aviso-afiliacion';
 
 // URLs absolutas para SEO/OG: el social scrapers exigen https:// completo,
@@ -138,13 +141,8 @@ const headerCategoryPanelHtml = `
     <meta name="twitter:image" content={resolvedImage} />
     <meta name="twitter:image:alt" content={imageAlt ?? title} />
 
-    <!-- Tipografía Google Fonts: Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Tipografía Inter y Outfit alojada en la propia web (public/fonts): ningún tercero recibe la IP del visitante al cargar las fuentes -->
+    <link href="/fonts/fuentes.css" rel="stylesheet" />
 
     <!-- Estilos Globales & Sistema de Diseño Treidilor -->
     <style is:global>
@@ -3301,6 +3299,9 @@ const headerCategoryPanelHtml = `
           </div>
           <div class="disclosure-body">
             <p>
+              <strong>En calidad de Afiliado de Amazon, Treidilor obtiene ingresos por las compras adscritas que cumplen los requisitos aplicables.</strong>
+            </p>
+            <p>
               <strong>Declaración de Afiliación:</strong> En cumplimiento de las directrices de la Comisión Federal de Comercio (FTC), la normativa europea de comercio electrónico y las políticas de los programas de asociados: <strong>Treidilor.com</strong> participa en el Programa de Afiliados de <em>Amazon EU Associates</em>, un programa de publicidad para afiliados diseñado para ofrecer a sitios web un modo de obtener comisiones por publicidad mediante la creación de enlaces a Amazon.es. Algunos enlaces a otras tiendas, como AliExpress, también son enlaces de afiliado. Enlazar a una tienda, o disponer de una herramienta para importar sus productos, no implica que exista un acuerdo de afiliación con ella: sólo los enlaces de afiliado pueden generar una comisión.
             </p>
             <p>
@@ -3367,10 +3368,16 @@ const headerCategoryPanelHtml = `
         <div class="footer-col">
           <h4 class="footer-heading">Marco Legal</h4>
           <ul class="footer-links">
-            <li><a href={legalAnchorHref}>Aviso Legal & Términos</a></li>
-            <li><a href={legalAnchorHref}>Política de Privacidad</a></li>
-            <li><a href={legalAnchorHref}>Política de Cookies</a></li>
-            <li><a href={legalAnchorHref}>Contacto & Soporte</a></li>
+            {datosLegales ? (
+              <>
+                <li><a href="/aviso-legal">Aviso legal</a></li>
+                <li><a href="/privacidad">Política de privacidad</a></li>
+                <li><a href="/cookies">Política de cookies</a></li>
+                <li><a href={`mailto:${datosLegales.email}`}>Contacto</a></li>
+              </>
+            ) : (
+              <li><a href={legalAnchorHref}>Aviso de afiliación</a></li>
+            )}
           </ul>
         </div>
         </div>
@@ -3382,7 +3389,6 @@ const headerCategoryPanelHtml = `
           <p>© {currentYear} Treidilor Media. Todos los derechos reservados. Diseñado para maximizar la confianza y el ahorro del comprador.</p>
           <div class="compliance-tags">
             <span class="pill-tag">Amazon Associate</span>
-            <span class="pill-tag">GDPR Compliant</span>
           </div>
         </div>
       </div>
@@ -3734,27 +3740,11 @@ const headerCategoryPanelHtml = `
         // Ajustar estado inicial en carga
         updateHeaderOnScroll();
 
-        // --- Analítica: sesión, visitor id, duración y beacons ---------------
-        const crearId = () =>
-          (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
-            ? crypto.randomUUID()
-            : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-        const leerId = (storage, key) => {
-          try { return storage.getItem(key) || null; } catch { return null; }
-        };
-        const guardarId = (storage, key, value) => {
-          try { storage.setItem(key, value); } catch { /* modo privado */ }
-        };
-        let analyticsSessionId = leerId(sessionStorage, 'tradylor_sid');
-        if (!analyticsSessionId) {
-          analyticsSessionId = crearId();
-          guardarId(sessionStorage, 'tradylor_sid', analyticsSessionId);
-        }
-        let analyticsVisitorId = leerId(localStorage, 'tradylor_vid');
-        if (!analyticsVisitorId) {
-          analyticsVisitorId = crearId();
-          guardarId(localStorage, 'tradylor_vid', analyticsVisitorId);
-        }
+        // --- Analítica: duración y beacons, SIN identificadores en el navegador --------------------------------------------------
+        // La sesión la calcula el servidor de forma anónima (lib/analyticsFiltros.ts › sesionAnonima). Se borran los identificadores que
+        // guardaban versiones anteriores (tradylor_vid persistente y tradylor_sid).
+        try { localStorage.removeItem('tradylor_vid'); } catch { /* modo privado */ }
+        try { sessionStorage.removeItem('tradylor_sid'); } catch { /* modo privado */ }
         const analyticsStartedAt = Date.now();
         const enviarEvento = (payload) => {
           fetch('/api/analytics/event', {
@@ -3762,8 +3752,6 @@ const headerCategoryPanelHtml = `
             headers: { 'Content-Type': 'application/json' },
             keepalive: true,
             body: JSON.stringify({
-              sessionId: analyticsSessionId,
-              visitorId: analyticsVisitorId,
               referrer: document.referrer || '',
               path: window.location.pathname,
               ...payload,
@@ -3783,22 +3771,6 @@ const headerCategoryPanelHtml = `
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'hidden') enviarDuracion();
         });
-        // Las salidas a tienda por /api/redirect llevan la sesión y el visitante (sid/vid) para que el servidor pueda atribuir el clic a una
-        // sesión real (conversión = sesiones con clic / sesiones). Se añaden al pulsar, sin cambiar el destino ni el enlace de afiliado.
-        const conSesion = (enlace) => {
-          try {
-            const u = new URL(enlace.getAttribute('href') || '', window.location.origin);
-            if (u.origin !== window.location.origin || u.pathname !== '/api/redirect') return;
-            u.searchParams.set('sid', analyticsSessionId); u.searchParams.set('vid', analyticsVisitorId);
-            enlace.setAttribute('href', u.pathname + u.search + u.hash);
-          } catch { /* enlace ilegible: se deja igual */ }
-        };
-        for (const tipo of ['click', 'auxclick']) {
-          document.addEventListener(tipo, (event) => {
-            const enlace = event.target && event.target.closest ? event.target.closest('a[href*="/api/redirect"]') : null;
-            if (enlace) conSesion(enlace);
-          }, true);
-        }
         // Las salidas a tienda del flujo interno NO se envían desde aquí: las
         // registra /api/redirect (fuente única, sin doble conteo).
         // En cambio, los CTA de salida directa (.exit-cta) SÍ se registran aquí
@@ -4843,10 +4815,14 @@ const headerCategoryPanelHtml = `
             'google_translate_element',
           );
         };
-        const script = document.createElement('script');
-        script.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
-        script.async = true;
-        document.body.appendChild(script);
+        // El servicio de Google solo se carga si el visitante ha elegido traducir (cookie googtrans puesta por su elección): antes se
+        // cargaba en todas las páginas para todos los visitantes.
+        if (active) {
+          const script = document.createElement('script');
+          script.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+          script.async = true;
+          document.body.appendChild(script);
+        }
 
         /** Último segmento de /es/<idioma> (vacío si no hay cookie). */
         function readTargetCookie(): string {

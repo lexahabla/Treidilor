@@ -63,18 +63,18 @@ test('métricas con el patrón real: sesiones reales, fuentes reales y conversi�
   assert.equal(computeEvolucion(ev).at(-1).visitas, 3);
 });
 
-test('/api/redirect: un robot o comprobador NO cuenta (pero se le redirige igual); un navegador SÍ, con su sesión; el mismo clic repetido en 10 s cuenta una vez', async () => {
+test('/api/redirect: un robot o comprobador NO cuenta (pero se le redirige igual); un navegador SÍ, con la sesión anónima del servidor; el mismo clic repetido en 10 s cuenta una vez', async () => {
   writeCatalog(dir, [{ id: 'amazon-b0prueba01', slug: 'amazon-b0prueba01', title: 'Producto de prueba', price: 10, affiliateUrl: 'https://www.amazon.es/dp/B0PRUEBA01?tag=prueba-21', merchant: 'amazon', category: 'Hogar', status: 'active' }]);
-  const llamar = (ua, extra = '') => redirect.GET({ url: new URL(`http://localhost/api/redirect?id=amazon-b0prueba01&src=checkout${extra}`), request: new Request('http://localhost/api/redirect', { headers: ua ? { 'user-agent': ua } : {} }) });
+  const llamar = (ua, extra = '') => redirect.GET({ url: new URL(`http://localhost/api/redirect?id=amazon-b0prueba01&src=checkout${extra}`), request: new Request('http://localhost/api/redirect', { headers: { ...(ua ? { 'user-agent': ua } : {}), 'x-forwarded-for': '203.0.113.7' } }) });
   const clics = () => getAnalyticsEvents().filter((e) => e.type === 'outbound_click' && e.productId === 'amazon-b0prueba01');
   const antes = clics().length;
   const r1 = await llamar('Mozilla/5.0 (compatible; Googlebot/2.1)'); assert.equal(r1.status, 302); assert.match(r1.headers.get('location'), /amazon\.es/);
   const r2 = await llamar('node'); assert.equal(r2.status, 302);
   assert.equal(clics().length, antes, 'robots y comprobadores no cuentan');
-  const r3 = await llamar(CHROME, '&sid=sesionCCCC1&vid=visitante3'); assert.equal(r3.status, 302); assert.match(r3.headers.get('location'), /tag=prueba-21/, 'el identificador de afiliado se conserva');
-  await llamar(CHROME, '&sid=sesionCCCC1&vid=visitante3');
+  const r3 = await llamar(CHROME, '&sid=inyectado1&vid=inyectado2'); assert.equal(r3.status, 302); assert.match(r3.headers.get('location'), /tag=prueba-21/, 'el identificador de afiliado se conserva');
+  await llamar(CHROME);
   const ahora = clics(); assert.equal(ahora.length, antes + 1, 'el clic repetido en 10 s cuenta una vez');
-  assert.equal(ahora.at(-1).sessionId, 'sesionCCCC1'); assert.equal(ahora.at(-1).visitorId, 'visitante3');
-  await llamar(CHROME, '&sid=<malo>'); assert.equal(clics().at(-1).sessionId, undefined, 'un id no válido no se guarda');
+  assert.match(ahora.at(-1).sessionId, /^sa_[0-9a-f]{32}$/, 'sesión anónima del servidor'); assert.equal(ahora.at(-1).visitorId, undefined, 'sin identificador de visitante');
+  assert.doesNotMatch(JSON.stringify(ahora.at(-1)), /203\.0\.113\.7|inyectado/, 'ni la IP ni identificadores del navegador se guardan');
   void fs;
 });

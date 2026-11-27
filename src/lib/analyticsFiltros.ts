@@ -10,6 +10,32 @@
  * No borran ni modifican datos guardados: deciden qué cuenta en las métricas.
  */
 
+import { createHash, randomBytes } from 'node:crypto';
+
+/**
+ * Eventos concretos que NO deben contar en los indicadores (se conservan en el registro como auditoría).
+ * 27/11/2026 19:53:21 (Madrid): clic de comprobación hecho por Claude al verificar la redirección de afiliado.
+ */
+export const EVENTOS_EXCLUIDOS: ReadonlyArray<{ type: string; productId: string; createdAt: string; motivo: string }> = [
+  { type: 'outbound_click', productId: 'amazon-b0gr1fc3tr', createdAt: '2026-11-27T18:53:21.736Z', motivo: 'clic de prueba técnica (verificación de la redirección)' },
+];
+export const esEventoExcluido = (e: { type?: string; productId?: string; createdAt?: string }): boolean =>
+  EVENTOS_EXCLUIDOS.some((x) => x.type === e.type && x.productId === e.productId && x.createdAt === e.createdAt);
+
+/**
+ * SESIÓN ANÓNIMA SIN ALMACENAMIENTO EN EL NAVEGADOR (27/11/2026). Antes la web guardaba un identificador de visitante persistente
+ * (`tradylor_vid`, localStorage) y otro de sesión (`tradylor_sid`, sessionStorage). Ahora la sesión se deriva en el servidor de
+ * huella(sal del día + IP + navegador): la IP no se guarda, la sal es aleatoria, vive solo en memoria y cambia cada día (UTC), así que el
+ * identificador no permite seguir a nadie de un día a otro ni reconstruir la IP. No hay identificador de visitante.
+ */
+let salDia = { dia: '', sal: Buffer.alloc(0) };
+export function sesionAnonima(ip: string | undefined, userAgent: string | null | undefined, ahora = Date.now()): string | undefined {
+  if (!ip) return undefined;
+  const dia = new Date(ahora).toISOString().slice(0, 10);
+  if (salDia.dia !== dia) salDia = { dia, sal: randomBytes(32) };
+  return 'sa_' + createHash('sha256').update(salDia.sal).update('\n').update(ip).update('\n').update(String(userAgent ?? '')).digest('hex').slice(0, 32);
+}
+
 /** Rutas del panel de administración: nunca son tráfico del sitio. */
 export const RUTA_ADMIN = /^\/upayp1b4(\/|$|\?)/;
 export const esRutaAdmin = (path: unknown): boolean => RUTA_ADMIN.test(String(path ?? ''));
@@ -22,8 +48,9 @@ export function esVistaContable(e: EventoMinimo): boolean {
 }
 
 /** ¿Este evento debe entrar en las métricas de tráfico? Excluye el panel y las vistas duplicadas del servidor. */
-export function cuentaParaTrafico(e: EventoMinimo): boolean {
+export function cuentaParaTrafico(e: EventoMinimo & { productId?: string; createdAt?: string }): boolean {
   if (esRutaAdmin(e.path)) return false;
+  if (esEventoExcluido(e)) return false;
   if (e.type === 'page_view') return esVistaContable(e);
   return true;
 }
