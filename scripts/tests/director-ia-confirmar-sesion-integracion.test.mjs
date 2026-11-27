@@ -86,3 +86,14 @@ test('SENSIBLE (reanudar rutinas): sin contraseña NO se aprueba y nada cambia; 
   assert.equal(ok.status, 200, ok.t); assert.equal(e.m.autonomia.resumen().rutinas[0].estado, 'activa');
   const reg = e.confs().get(c.idConfirmacion); assert.equal(reg.metodo, 'reautenticacion'); assert.equal(reg.por, 'tester');
 });
+
+test('HISTORIAL con el Director real: al recargar, las respuestas del Director siguen en el hilo (el historial real entrega la respuesta como texto)', OP, async () => {
+  const e = await entorno();
+  const env = await e.llamar(e.principal, '/api/admin/director-ia/principal', 'POST', { texto: '¿Qué agentes están activos?' }); assert.equal(env.status, 200, env.t);
+  const g = await e.llamar(e.principal, '/api/admin/director-ia/principal', 'GET'); assert.equal(g.status, 200, g.t);
+  const ms = g.j.conversacion.mensajes; const ultimoUsuario = ms.map((m) => m.rol).lastIndexOf('usuario');
+  assert.ok(ultimoUsuario >= 0); assert.equal(ms[ultimoUsuario].contenido, '¿Qué agentes están activos?');
+  const resp = ms[ultimoUsuario + 1]; assert.ok(resp && resp.rol === 'director', `tras el mensaje del propietario va la respuesta del Director: ${JSON.stringify(ms.slice(-3)).slice(0, 300)}`);
+  assert.ok(String(resp.contenido).trim().length > 0); assert.equal(resp.contenido, env.j.respuesta.textoClaro, 'el historial contiene lo mismo que se mostró al enviar');
+  assert.ok(resp.estado, 'conserva el estado del turno');
+});

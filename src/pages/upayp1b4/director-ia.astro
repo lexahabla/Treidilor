@@ -32,20 +32,38 @@ const activeSection = 'director-ia';
   </Fragment>
   <div class="admin-wrapper">
     <AdminSectionHeader
-      eyebrow="Director IA"
-      titulo="Asistente conversacional"
-      subtitle="Habla con el Director 00 en lenguaje natural. El historial se guarda en el servidor y se recupera al volver."
+      eyebrow="Centro de operaciones y agentes"
+      title="Director IA"
+      subtitle="Gestiona TREIDILOR mediante conversaciones, coordina agentes y supervisa sus tareas, resultados y autorizaciones."
       ids={{ eyebrow: 'directorIaHeaderPill', title: 'directorIaHeaderTitle', subtitle: 'directorIaHeaderSubtitle' }}
     />
     <AdminNav context="catalogo" active={activeSection} user={sessionUser} />
 
-    <main class="director-ia-page">
+    <main class="director-ia-page" id="directorIaApp">
       <aside class="director-ia-sidebar" id="barraChats" aria-label="Chats del Director">
-        <div class="director-ia-sidebar-head director-ia-sidebar-acciones">
-          <button type="button" id="btnNuevoChat" class="btn-primary btn-sm" title="Nuevo chat (Alt+N)">＋ Nuevo chat</button>
-          <button type="button" id="btnNuevoProyecto" class="btn-secondary btn-sm" title="Nuevo proyecto o carpeta">＋ Proyecto</button>
+        <div class="director-ia-sidebar-top">
+          <span class="director-ia-marca">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path></svg>
+            Director IA
+          </span>
+          <button type="button" id="btnContraerBarra" class="director-ia-icono" title="Cerrar la barra lateral" aria-label="Cerrar la barra lateral" aria-controls="barraChats">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><line x1="9" y1="4" x2="9" y2="20"></line></svg>
+          </button>
         </div>
-        <input type="search" id="buscarChats" class="director-ia-buscar" placeholder="Buscar chats… (Ctrl+K)" aria-label="Buscar chats" autocomplete="off" />
+        <div class="director-ia-sidebar-head director-ia-sidebar-acciones">
+          <button type="button" id="btnNuevoChat" class="director-ia-nav-item" title="Nuevo chat (Alt+N)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+            <span>Nuevo chat</span>
+          </button>
+          <label class="director-ia-nav-item director-ia-buscar-wrap">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16.5" y2="16.5"></line></svg>
+            <input type="search" id="buscarChats" class="director-ia-buscar" placeholder="Buscar chats" title="Buscar chats (Ctrl+K)" aria-label="Buscar chats" autocomplete="off" />
+          </label>
+          <button type="button" id="btnNuevoProyecto" class="director-ia-nav-item" title="Nuevo proyecto o carpeta">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path><line x1="12" y1="11" x2="12" y2="16"></line><line x1="9.5" y1="13.5" x2="14.5" y2="13.5"></line></svg>
+            <span>Nuevo proyecto</span>
+          </button>
+        </div>
         <div class="director-ia-vistas" role="tablist" aria-label="Vista de chats">
           <button type="button" role="tab" class="director-ia-vista" data-vista="activos" aria-selected="true">Chats</button>
           <button type="button" role="tab" class="director-ia-vista" data-vista="archivados" aria-selected="false">Archivados</button>
@@ -53,43 +71,69 @@ const activeSection = 'director-ia';
         </div>
         <nav id="listaChats" class="director-ia-lista" aria-label="Lista de chats"></nav>
         <div id="listaConversaciones" hidden></div>
-        <div id="estadoConexion" class="director-ia-estado" role="status" aria-live="polite">
-          <span class="punto punto--desconectado" aria-hidden="true"></span>
-          <span id="textoEstado">Comprobando conexión…</span>
-        </div>
-        <div class="director-ia-config" aria-label="Configuración de conversación">
-          <button type="button" id="btnConfigurarConversacion" class="btn-secondary btn-sm" title="Configurar ID de conversación (para compartir con Telegram)">🔗</button>
-          <div id="panelConfiguracion" class="director-ia-config-panel" hidden>
-            <label class="director-ia-config-label">ID de conversación (Telegram / panel):</label>
-            <input type="text" id="inputConversacionId" placeholder="cv_..." maxlength="64" spellcheck="false" />
-            <button type="button" id="btnGuardarConversacionId" class="btn-primary btn-sm">Guardar</button>
-            <button type="button" id="btnLimpiarConversacionId" class="btn-secondary btn-sm" style="margin-left:0.4rem">Limpiar</button>
-            <div id="alertaConversacionId" class="director-ia-alerta" hidden role="alert" aria-live="assertive"></div>
+        <div class="director-ia-sidebar-pie">
+          <div id="estadoConexion" class="director-ia-estado" role="status" aria-live="polite">
+            <span class="punto punto--desconectado" aria-hidden="true"></span>
+            <span id="textoEstado">Comprobando conexión…</span>
+          </div>
+          <div class="director-ia-config" aria-label="Configuración de conversación">
+            <button type="button" id="btnConfigurarConversacion" class="director-ia-icono" title="Configurar ID de conversación (para compartir con Telegram)" aria-label="Configurar ID de conversación">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg>
+            </button>
+            <div id="panelConfiguracion" class="director-ia-config-panel" hidden>
+              <label class="director-ia-config-label">ID de conversación (Telegram / panel):</label>
+              <input type="text" id="inputConversacionId" placeholder="cv_..." maxlength="64" spellcheck="false" />
+              <button type="button" id="btnGuardarConversacionId" class="btn-primary btn-sm">Guardar</button>
+              <button type="button" id="btnLimpiarConversacionId" class="btn-secondary btn-sm" style="margin-left:0.4rem">Limpiar</button>
+              <div id="alertaConversacionId" class="director-ia-alerta" hidden role="alert" aria-live="assertive"></div>
+            </div>
           </div>
         </div>
       </aside>
 
       <section class="director-ia-chat" aria-label="Chat">
         <div class="director-ia-chat-header">
-          <button type="button" id="btnBarraChats" class="director-ia-btn-barra" aria-controls="barraChats" aria-expanded="false" title="Chats">☰</button>
+          <button type="button" id="btnBarraChats" class="director-ia-btn-barra director-ia-icono" aria-controls="barraChats" aria-expanded="false" title="Abrir la barra lateral" aria-label="Abrir la barra lateral">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><line x1="9" y1="4" x2="9" y2="20"></line></svg>
+          </button>
           <div class="director-ia-chat-titulos">
             <h1 id="tituloConversacion">Director IA</h1>
             <p id="subtituloConversacion" class="director-ia-chat-sub">Conversación principal compartida con Telegram.</p>
           </div>
-          <section id="confirmacionesPendientes" class="director-ia-confirmaciones" hidden aria-live="polite">
-            <h2>Aprobaciones del Director</h2>
+          <div class="director-ia-chat-herr">
+            <button type="button" id="btnMaximizar" class="director-ia-icono" title="Ampliar la conversación a toda la pantalla" aria-label="Ampliar la conversación a toda la pantalla">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+            </button>
+            <button type="button" id="btnCerrarMax" class="director-ia-icono director-ia-cerrar-max" title="Volver al panel (Esc)" aria-label="Cerrar la pantalla completa y volver al panel" hidden>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        </div>
+        <section id="confirmacionesPendientes" class="director-ia-confirmaciones" hidden aria-live="polite">
+          <h2>
+            <button type="button" id="btnPlegarAprobaciones" class="director-ia-plegar" aria-expanded="true" aria-controls="cuerpoAprobaciones">
+              <span class="director-ia-punto-aprob" aria-hidden="true"></span>
+              <span>Aprobaciones del Director</span>
+              <span id="cuentaAprobaciones" class="director-ia-cuenta"></span>
+              <svg class="director-ia-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+          </h2>
+          <div id="cuerpoAprobaciones">
             <p class="director-ia-chat-sub">Operaciones que el Director solo hace con tu aprobación. Las consultas y propuestas se aprueban con tu sesión; las sensibles piden tu contraseña. Horas en hora de Madrid.</p>
             <div id="listaConfirmaciones"></div>
             <details id="historialConfirmaciones" hidden><summary>Resueltas recientemente</summary><div></div></details>
-          </section>
-        </div>
+          </div>
+        </section>
 
         <!-- Solo el hilo se desplaza: la cabecera de arriba y el editor de abajo quedan siempre a la vista. -->
         <div class="director-ia-hilo">
           <div class="director-ia-mensajes" id="contenedorMensajes" role="log" aria-live="polite">
             <div class="director-ia-vacio-centrado">Selecciona o crea una conversación para empezar a hablar con el Director.</div>
           </div>
-          <button type="button" id="btnIrAlFinal" class="director-ia-ir-final" hidden>↓ Mensajes nuevos</button>
+          <button type="button" id="btnIrAlFinal" class="director-ia-ir-final" hidden aria-label="Ir a los mensajes nuevos">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+            <span>Mensajes nuevos</span>
+          </button>
         </div>
         <form id="formMensaje" class="director-ia-form">
           <div id="listaAdjuntos" class="director-ia-adjuntos" aria-label="Archivos adjuntos" hidden></div>
@@ -97,37 +141,36 @@ const activeSection = 'director-ia';
             <textarea
               id="inputMensaje"
               rows="1"
-              placeholder="Escribe al Director… (Enter envía, Mayús+Enter salto de línea)"
+              placeholder="Pregunta lo que quieras al Director"
+              title="Enter envía · Mayús+Enter, salto de línea"
               aria-label="Mensaje al Director IA"
               autocomplete="off"
               spellcheck="true"
               maxlength="2000"
             ></textarea>
-            <button type="button" id="btnVoz" class="btn-secondary btn-sm" title="Hablar con el Director (micrófono)" aria-pressed="false">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <line x1="12" y1="19" x2="12" y2="23"></line>
-                <line x1="8" y1="23" x2="16" y2="23"></line>
+            <button type="button" id="btnAdjuntar" class="director-ia-icono" title="Adjuntar archivos (también puedes arrastrarlos o pegar capturas)" aria-label="Adjuntar archivos">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+            <input type="file" id="inputArchivos" multiple hidden accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.xlsx,.csv,.txt,.md,.json" />
+            <select id="modoVoz" class="director-ia-modo-voz" title="Modo de la conversación por voz" aria-label="Modo de voz">
+              <option value="director">Voz del Director</option>
+              <option value="rapida">Voz rápida</option>
+            </select>
+            <button type="button" id="btnDetenerVoz" class="director-ia-icono" title="Interrumpir al Director y volver a escuchar" hidden aria-label="Interrumpir al Director">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>
+            </button>
+            <button type="button" id="btnVoz" class="director-ia-voz" title="Conversación por voz con el Director" aria-label="Conversación por voz con el Director" aria-pressed="false">
+              <svg class="director-ia-ondas" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                <line class="o1" x1="4" y1="10" x2="4" y2="14"></line>
+                <line class="o2" x1="8" y1="6.5" x2="8" y2="17.5"></line>
+                <line class="o3" x1="12" y1="3.5" x2="12" y2="20.5"></line>
+                <line class="o4" x1="16" y1="7.5" x2="16" y2="16.5"></line>
+                <line class="o5" x1="20" y1="10" x2="20" y2="14"></line>
               </svg>
               <span id="textoBtnVoz" class="texto-btn-voz">Hablar</span>
             </button>
-            <select id="modoVoz" class="director-ia-modo-voz" title="Modo de la conversación por voz" aria-label="Modo de voz">
-              <option value="director">Voz del Director</option>
-              <option value="rapida">Voz rápida (navegador)</option>
-            </select>
-            <button type="button" id="btnDetenerVoz" class="btn-secondary btn-sm" title="Interrumpir al Director y volver a escuchar" hidden aria-label="Interrumpir al Director">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="9" y="9" width="6" height="6"></rect>
-              </svg>
-            </button>
-            <button type="button" id="btnAdjuntar" class="btn-secondary btn-sm" title="Adjuntar archivos (también puedes arrastrarlos o pegar capturas)" aria-label="Adjuntar archivos">📎</button>
-            <input type="file" id="inputArchivos" multiple hidden accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.xlsx,.csv,.txt,.md,.json" />
-            <button type="submit" id="btnEnviar" class="btn-primary btn-sm" disabled>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="22" y1="2" x2="11" y2="13"></line>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-              </svg>
+            <button type="submit" id="btnEnviar" class="director-ia-enviar" disabled title="Enviar (Enter)" aria-label="Enviar mensaje">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
             </button>
           </div>
           <div id="alertaForm" class="director-ia-alerta" hidden role="alert" aria-live="assertive"></div>
@@ -135,6 +178,7 @@ const activeSection = 'director-ia';
             <span class="punto-voz" aria-hidden="true"></span>
             <span id="textoEstadoVoz">Listo para hablar</span>
           </div>
+          <p class="director-ia-aviso-pie">El Director puede equivocarse. Las operaciones sensibles siempre piden tu aprobación.</p>
         </form>
       </section>
     </main>
@@ -215,16 +259,29 @@ const activeSection = 'director-ia';
         if (punto) punto.className = 'punto punto--' + tipo;
       }
 
-      async function cargarConversacionPrincipal() {
+      // Si el Director se está reiniciando (instalación) o la web se está redesplegando, la carga falla unos segundos: antes el aviso se quedaba
+      // fijo hasta recargar la página. Ahora se muestra el motivo, un botón «Reintentar» y se reintenta solo (3 s, 8 s y 20 s). Solo LEE el historial.
+      let reintentoPrincipal = null;
+      async function cargarConversacionPrincipal(intento = 0) {
         if (!els.contenedor) return;
-        els.contenedor.innerHTML = '<div class="director-ia-cargando">Cargando historial…</div>';
+        if (reintentoPrincipal) { clearTimeout(reintentoPrincipal); reintentoPrincipal = null; }
+        const pedidaPara = conversacionIdConfigurada;
+        if (!intento) els.contenedor.innerHTML = '<div class="director-ia-cargando">Cargando historial…</div>';
         try {
           const res = await fetch(urlConConversacionId(`${API_BASE}/principal`), { headers: { 'cache-control': 'no-store' } });
           const j = await leerJson(res);
           if (!j.success) throw new Error(j.message || 'No se pudo cargar el historial');
+          if (pedidaPara !== conversacionIdConfigurada) return; // mientras tanto se abrió otro chat
           renderizarMensajes(j.conversacion);
         } catch (e) {
-          els.contenedor.innerHTML = '<div class="director-ia-error">No se pudo cargar la conversación principal.</div>';
+          if (pedidaPara !== conversacionIdConfigurada) return;
+          const espera = [3000, 8000, 20000][intento] || 0; const motivo = e instanceof Error && e.message ? e.message : '';
+          els.contenedor.innerHTML = '';
+          const caja = document.createElement('div'); caja.className = 'director-ia-error';
+          caja.textContent = 'No se pudo cargar la conversación principal.' + (motivo ? ` (${motivo})` : '') + (espera ? ` Vuelvo a intentarlo en ${Math.round(espera / 1000)} s.` : '');
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-secondary btn-sm director-ia-reintentar'; b.textContent = 'Reintentar';
+          b.addEventListener('click', () => cargarConversacionPrincipal(0)); caja.appendChild(b); els.contenedor.appendChild(caja);
+          if (espera) reintentoPrincipal = setTimeout(() => cargarConversacionPrincipal(intento + 1), espera);
           console.error(e);
         }
       }
@@ -273,13 +330,15 @@ const activeSection = 'director-ia';
         div.className = 'director-ia-burbuja director-ia-burbuja--' + m.rol;
         if (vigiaBurbujas) vigiaBurbujas.observe(div);
         const hora = m.en ? fechaHora(m.en) : '';
+        // Trazabilidad sin mezclarla con la conversación: el estado, el registro y la intención quedan en el texto emergente de la línea de hora.
+        // «no registrada» solo si el Director dice que no se registró (los mensajes del historial vienen de su registro y no traen `controles`).
         const meta = [];
         if (m.rol === 'director') {
-          if (m.estado) meta.push(m.estado);
-          if (!m.controles || m.controles.registrada === false) meta.push('no registrada');
+          if (m.estado) meta.push('estado: ' + m.estado);
+          if (m.registrada === false || (m.controles && m.controles.registrada === false)) meta.push('no registrada');
           if (m.tipoIntencion) meta.push('intención: ' + m.tipoIntencion);
         }
-        const metaHtml = meta.length ? '<span class="director-ia-meta">' + escapeHtml(meta.join(' · ')) + '</span>' : '';
+        const metaHtml = '';
         const cuerpo = document.createElement('div');
         cuerpo.className = 'director-ia-burbuja-cuerpo md';
         cuerpo.innerHTML = renderMarkdown(m.contenido ?? '');
@@ -289,6 +348,7 @@ const activeSection = 'director-ia';
           metaHtml +
           '</div>';
         div.appendChild(cuerpo);
+        if (meta.length && div.firstChild && div.firstChild.setAttribute) div.firstChild.setAttribute('title', meta.join(' · '));
         if (m.rol === 'director') {
           const extras = document.createElement('div');
           extras.innerHTML = renderizarExtrasDirector(m);
@@ -457,7 +517,7 @@ const activeSection = 'director-ia';
           if (!els.input.value) { els.input.value = texto; ajustarAltura(); }
         } finally {
           enVuelo = false;
-          els.btnEnviar.disabled = false;
+          els.btnEnviar.disabled = !els.input.value.trim();
           els.input.disabled = false;
           els.input.focus();
         }
@@ -672,6 +732,7 @@ const activeSection = 'director-ia';
             elsVoz.btn.disabled = ocupado && !sesionActiva;
             elsVoz.btn.setAttribute('aria-pressed', String(estado === 'escuchando'));
             if (elsVoz.textoBtn) elsVoz.textoBtn.textContent = sesionActiva ? 'Finalizar sesión' : 'Hablar';
+            if (elsVoz.btn.classList) { if (sesionActiva) elsVoz.btn.classList.add('en-sesion'); else elsVoz.btn.classList.remove('en-sesion'); }
           }
           if (elsVoz.btnDetener) elsVoz.btnDetener.hidden = !sesionActiva;
           if (elsVoz.input) elsVoz.input.disabled = ocupado || enVuelo;
@@ -927,7 +988,7 @@ const activeSection = 'director-ia';
             elsV.textoEstado.textContent = texto; elsV.estado.hidden = nuevo === 'inactivo';
             const p = elsV.estado.querySelector('.punto-voz'); if (p) p.className = 'punto-voz punto-voz--' + (nuevo === 'grabando' ? 'escuchando' : nuevo === 'recuperando' ? 'procesando' : nuevo);
           }
-          if (elsV.btn) { elsV.btn.disabled = false; elsV.btn.setAttribute('aria-pressed', String(sesion)); if (elsV.textoBtn) elsV.textoBtn.textContent = sesion ? 'Finalizar sesión' : 'Hablar'; }
+          if (elsV.btn) { elsV.btn.disabled = false; elsV.btn.setAttribute('aria-pressed', String(sesion)); if (elsV.textoBtn) elsV.textoBtn.textContent = sesion ? 'Finalizar sesión' : 'Hablar'; if (elsV.btn.classList) { if (sesion) elsV.btn.classList.add('en-sesion'); else elsV.btn.classList.remove('en-sesion'); } }
           if (elsV.btnDetener) { elsV.btnDetener.hidden = !sesion; elsV.btnDetener.title = nuevo === 'grabando' ? 'Enviar ya lo que has dicho' : 'Interrumpir al Director y volver a escuchar'; }
         }
         const escuchar = () => { if (!sesion) return; if (enVuelo > 0) poner('procesando', 'Procesando…'); else poner('escuchando', 'Escuchando…'); };
@@ -1234,7 +1295,7 @@ const activeSection = 'director-ia';
           if (barra && barra.classList) { barra.classList.remove('abierta'); if (btnBarra) btnBarra.setAttribute('aria-expanded', 'false'); }
           const c = actual(); if (els.titulo && c) els.titulo.textContent = c.titulo;
           if (els.subtitulo && c) els.subtitulo.textContent = (c.confidencial ? '🔒 Confidencial: sin modelo externo ni voz. ' : '') + (c.principal ? 'Conversación principal compartida con Telegram.' : (proyectos.find((p) => p.id === c.proyectoId) ? `Proyecto: ${proyectos.find((p) => p.id === c.proyectoId).nombre}` : 'Chat independiente: su propio historial y contexto.'));
-          if (els.btnVoz) { els.btnVoz.disabled = Boolean(c && c.confidencial); els.btnVoz.title = c && c.confidencial ? 'Voz desactivada en un chat confidencial (enviaría tu audio fuera)' : 'Hablar con el Director (micrófono)'; }
+          if (els.btnVoz) { els.btnVoz.disabled = Boolean(c && c.confidencial); els.btnVoz.title = c && c.confidencial ? 'Voz desactivada en un chat confidencial (enviaría tu audio fuera)' : 'Conversación por voz con el Director'; }
           cargarConversacionPrincipal();
         }
         async function cargar() {
@@ -1322,6 +1383,15 @@ const activeSection = 'director-ia';
           aviso.textContent = jr.message || 'No se pudo completar.';
         } catch (e) { aviso.hidden = false; aviso.textContent = e instanceof Error ? e.message : 'No se pudo completar.'; } finally { for (const b of botones) b.disabled = false; }
       }
+      function plegarAprobaciones(plegar, porDefecto) {
+        const sec = document.getElementById('confirmacionesPendientes'); const b = document.getElementById('btnPlegarAprobaciones'); if (!sec || !sec.classList || !b) return;
+        let elegido = null; try { elegido = window.sessionStorage ? sessionStorage.getItem('directorIA.aprobacionesPlegadas') : null; } catch { elegido = null; }
+        const si = plegar !== null ? plegar : elegido !== null ? elegido === '1' : Boolean(porDefecto);
+        if (si) sec.classList.add('plegada'); else sec.classList.remove('plegada'); b.setAttribute('aria-expanded', String(!si));
+        if (plegar !== null) { try { if (window.sessionStorage) sessionStorage.setItem('directorIA.aprobacionesPlegadas', si ? '1' : '0'); } catch { /* sin almacenamiento */ } }
+      }
+      (function () { const b = document.getElementById('btnPlegarAprobaciones'); const sec = document.getElementById('confirmacionesPendientes');
+        if (b && sec && sec.classList) b.addEventListener('click', () => plegarAprobaciones(!sec.classList.contains('plegada'))); })();
       async function cargarConfirmaciones() {
         const sec = document.getElementById('confirmacionesPendientes'); const lista = document.getElementById('listaConfirmaciones'); const hist = document.getElementById('historialConfirmaciones');
         if (!sec || !lista) return;
@@ -1332,6 +1402,12 @@ const activeSection = 'director-ia';
           const pend = (j && j.success && Array.isArray(j.confirmacionesPendientes)) ? j.confirmacionesPendientes : [];
           const recientes = (j && j.success && Array.isArray(j.confirmacionesRecientes)) ? j.confirmacionesRecientes : [];
           lista.textContent = ''; sec.hidden = pend.length === 0 && recientes.length === 0;
+          // plegable: con operaciones PENDIENTES se despliega (no se oculta nada necesario para decidir); solo con historial, plegado. Se respeta lo que elijas.
+          const cuenta = document.getElementById('cuentaAprobaciones'); if (cuenta) cuenta.textContent = pend.length ? `${pend.length} pendiente${pend.length === 1 ? '' : 's'}` : 'sin pendientes';
+          if (sec.classList) { if (pend.length) sec.classList.add('con-pendientes'); else sec.classList.remove('con-pendientes'); }
+          const raizMax = document.documentElement && document.documentElement.classList && document.documentElement.classList.contains('director-ia-max');
+          let movil = false; try { movil = Boolean(window.matchMedia && window.matchMedia('(max-width: 860px)').matches); } catch { movil = false; }
+          plegarAprobaciones(null, pend.length === 0 || !raizMax || movil); // en la vista normal, plegadas con el aviso «N pendientes» a la vista
           for (const c of pend) {
             const fila = nodo('div', 'director-ia-confirmacion'); describirFila(c, fila);
             fila.appendChild(nodo('div', 'director-ia-conf-caduca', `Caduca a las ${horaMadrid(c.caduca)} · ${quedan(c.caduca)}`));
@@ -1362,6 +1438,71 @@ const activeSection = 'director-ia';
       cargarConfirmaciones(); setInterval(cargarConfirmaciones, 60000);
       if (els.contenedor && typeof MutationObserver === 'function') new MutationObserver(() => cargarConfirmaciones()).observe(els.contenedor, { childList: true });
 
+      // ── VISTA AMPLIADA (pantalla completa dentro de la página, como ChatGPT) y BARRA LATERAL contraíble.
+      // Es el MISMO DOM y el MISMO estado: solo cambian clases. No se crea otra conversación, no se repite ninguna petición al Director,
+      // no se tocan el borrador, los adjuntos ni la voz (una grabación o una respuesta hablada siguen igual al ampliar o cerrar).
+      const Vista = (function () {
+        const raiz = document.documentElement; const pagina = document.querySelector ? document.querySelector('.director-ia-page') : null;
+        const bMax = document.getElementById('btnMaximizar'); const bCerrar = document.getElementById('btnCerrarMax');
+        const bContraer = document.getElementById('btnContraerBarra'); const barra = document.getElementById('barraChats'); const btnBarra = document.getElementById('btnBarraChats');
+        const zona = pagina && pagina.querySelector ? pagina.querySelector('.director-ia-chat') : null;
+        const listo = Boolean(raiz && raiz.classList && pagina && pagina.classList);
+        const guardado = (alm, k, v) => { try { const s = window[alm]; if (!s) return null; if (v === undefined) return s.getItem(k); if (v === null) s.removeItem(k); else s.setItem(k, v); } catch { /* sin almacenamiento */ } return null; };
+        const esMovil = () => { try { return Boolean(window.matchMedia && window.matchMedia('(max-width: 860px)').matches); } catch { return false; } };
+        const ampliada = () => listo && raiz.classList.contains('director-ia-max');
+        const recolocar = () => { try { if (typeof window.dispatchEvent === 'function' && typeof Event === 'function') window.dispatchEvent(new Event('resize')); } catch { /* sin eventos */ } };
+        function ampliar(si, { foco = true } = {}) {
+          if (!listo) return;
+          if (si) raiz.classList.add('director-ia-max'); else raiz.classList.remove('director-ia-max');
+          if (bMax) bMax.hidden = si; if (bCerrar) bCerrar.hidden = !si;
+          if (typeof plegarAprobaciones === 'function') plegarAprobaciones(null, !si || esMovil() || !(document.getElementById('confirmacionesPendientes') || {}).classList?.contains('con-pendientes'));
+          guardado('sessionStorage', 'directorIA.ampliada', si ? '1' : null);
+          recolocar(); // la altura útil se recalcula con la misma medida (visualViewport) que la vista normal
+          if (foco) { const destino = si ? els.input : bMax; try { if (destino && !destino.disabled && destino.focus) destino.focus({ preventScroll: true }); } catch { /* foco opcional */ } }
+        }
+        function contraer(si) {
+          if (!listo) return;
+          if (si) pagina.classList.add('barra-contraida'); else pagina.classList.remove('barra-contraida');
+          guardado('localStorage', 'directorIA.barraContraida', si ? '1' : null);
+          if (btnBarra) btnBarra.setAttribute('aria-expanded', String(!si));
+        }
+        if (bMax) bMax.addEventListener('click', () => ampliar(true));
+        if (bCerrar) bCerrar.addEventListener('click', () => ampliar(false));
+        // en escritorio el botón de la barra contrae y despliega; en móvil abre y cierra el panel superpuesto (lo gestiona Chats)
+        if (bContraer) bContraer.addEventListener('click', () => { if (esMovil()) { if (barra && barra.classList) barra.classList.remove('abierta'); if (btnBarra) btnBarra.setAttribute('aria-expanded', 'false'); } else contraer(true); });
+        // en escritorio no hay panel superpuesto: se quita la marca «abierta» que pone el conmutador móvil (si no, Escape y el clic creerían que hay algo encima)
+        if (btnBarra) btnBarra.addEventListener('click', () => { if (!esMovil()) { if (barra && barra.classList) barra.classList.remove('abierta'); contraer(false); } });
+        // Pulsar en una zona VACÍA de la conversación (fondo del hilo, cabecera del chat) la amplía. Nunca sobre controles, enlaces, campos,
+        // mensajes (para poder seleccionar texto), confirmaciones o el editor; ni si hay texto seleccionado.
+        const NO_AMPLIA = ['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT', 'OPTION', 'LABEL', 'SUMMARY', 'DETAILS', 'IMG', 'VIDEO', 'AUDIO', 'FORM'];
+        const CLASES_NO = ['director-ia-burbuja', 'director-ia-confirmaciones', 'director-ia-form', 'director-ia-sidebar', 'director-ia-cargar-anteriores', 'director-ia-ir-final'];
+        function zonaVacia(n) {
+          for (let x = n; x && x !== zona; x = x.parentNode) {
+            if (!x.tagName) return false;
+            if (NO_AMPLIA.includes(String(x.tagName).toUpperCase()) || x.isContentEditable || (x.getAttribute && x.getAttribute('role') === 'button')) return false;
+            if (x.classList && CLASES_NO.some((c) => x.classList.contains(c))) return false;
+          }
+          return true;
+        }
+        if (zona && zona.addEventListener) zona.addEventListener('click', (e) => {
+          if (ampliada() || !e || !e.target || !zonaVacia(e.target)) return;
+          try { const sel = window.getSelection && window.getSelection(); if (sel && String(sel).trim()) return; } catch { /* sin selección */ }
+          if (barra && barra.classList && barra.classList.contains('abierta')) return; // ese toque cierra la barra móvil, no amplía
+          ampliar(true);
+        });
+        // Escape cierra la vista ampliada solo si no hay nada superpuesto encima (barra móvil abierta, diálogo abierto).
+        if (window.addEventListener) window.addEventListener('keydown', (e) => {
+          if (!e || e.key !== 'Escape' || !ampliada()) return;
+          if (barra && barra.classList && barra.classList.contains('abierta')) return;
+          try { if (document.querySelector && document.querySelector('dialog[open]')) return; } catch { /* sin diálogos */ }
+          ampliar(false);
+        }, true);
+        if (guardado('localStorage', 'directorIA.barraContraida') === '1' && !esMovil()) contraer(true);
+        if (guardado('sessionStorage', 'directorIA.ampliada') === '1') ampliar(true, { foco: false }); // al recargar, se respeta la vista elegida
+        return { ampliar, contraer, ampliada };
+      })();
+      void Vista;
+
       comprobarEstado();
       Chats.iniciar();
       setInterval(comprobarEstado, 60000);
@@ -1370,100 +1511,144 @@ const activeSection = 'director-ia';
 
   <style is:global>
     /*
-     * Director IA — estilos GLOBALES a propósito: casi todo el contenido del chat (burbujas, lista de chats, adjuntos, botones de
-     * «ver anteriores», «Reintentar»…) lo crea el JavaScript, y un estilo con ámbito de Astro no llega a esos nodos. Por eso
+     * Director IA — estilos GLOBALES a propósito: casi todo el contenido del chat (mensajes, lista de chats, adjuntos, botones de
+     * «ver anteriores», «Reintentar»…) lo crea el JavaScript, y un estilo con ámbito de Astro no llega a esos nodos. Para no afectar al resto del sitio,
      * cada regla va limitada a clases propias `director-ia-*` o al contenedor `.director-ia-page`.
      *
-     * DISTRIBUCIÓN (tipo ChatGPT): la página no se desplaza. `.director-ia-page` mide exactamente la altura VISIBLE que queda
-     * bajo la cabecera del sitio (`--di-alto`, calculada en el script con visualViewport: teclado virtual, giro, zoom).
-     * Dentro: barra lateral (su propio scroll) | columna del chat = cabecera fija + hilo (ÚNICO scroll) + editor anclado abajo.
-     * Todos los contenedores flexibles llevan `min-height: 0` para que el desbordamiento se quede en el hilo y no empuje el editor.
+     * DISEÑO de referencia: la interfaz de escritorio y móvil de ChatGPT (barra lateral de 260 px, cabecera compacta, columna de lectura de 48rem,
+     * mensajes del usuario en burbuja a la derecha y respuestas sin burbuja, editor redondeado anclado abajo con «+» a la izquierda y, a la derecha,
+     * el botón de conversación por voz con ondas que se convierte en «enviar» al escribir). Colores: la paleta oscura de TREIDILOR.
+     *
+     * DISTRIBUCIÓN: la página no se desplaza. `.director-ia-page` mide exactamente la altura VISIBLE que queda bajo lo que haya encima
+     * (`--di-alto`, calculada en el script con visualViewport: teclado virtual, giro, zoom). Dentro: barra lateral (su propio scroll) | columna del chat =
+     * cabecera fija + hilo (ÚNICO scroll) + editor anclado abajo. Todos los contenedores flexibles llevan `min-height: 0`.
+     * VISTA AMPLIADA (`html.director-ia-max`): se ocultan la cabecera del sitio, la de la sección y el menú del panel; el chat ocupa toda la ventana.
      */
     html.director-ia-app, html.director-ia-app body { height: 100%; overflow: hidden; overscroll-behavior: none; }
     html.director-ia-app .site-footer, html.director-ia-app .back-to-top { display: none !important; }
+    /* mismo contenedor que el resto del panel (Desarrollo IA): ancho máximo centrado, mismos márgenes y separación entre cabecera, menú y contenido */
+    .admin-wrapper { max-width: var(--max-width); margin: 0 auto; padding: 2.5rem 1.25rem 5rem; display: flex; flex-direction: column; gap: 30px; }
     html.director-ia-app .admin-wrapper { padding-bottom: 0 !important; margin-bottom: 0 !important; }
-    /* la cabecera de sección del panel repetiría el título que ya muestra la cabecera del chat: aquí ese espacio es para la conversación */
-    html.director-ia-app .admin-wrapper > .admin-header { display: none !important; }
+    html.director-ia-compacto .admin-wrapper { padding-top: 0.4rem; gap: 0.4rem; }
     /* teclado abierto o pantalla muy baja: también la cabecera del sitio y el menú del panel */
     html.director-ia-compacto .site-header, html.director-ia-compacto .admin-section-nav { display: none !important; }
+    html.director-ia-compacto .admin-wrapper > .admin-header { display: none !important; }
+    /* vista ampliada: solo la conversación */
+    html.director-ia-max .site-header, html.director-ia-max .admin-wrapper > .admin-header, html.director-ia-max .admin-section-nav { display: none !important; }
     .director-ia-page [hidden] { display: none !important; }
 
     .director-ia-page {
-      --di-borde: var(--color-border, #1f2937);
-      --di-texto: var(--color-text-main, #f3f4f6);
-      --di-suave: var(--color-text-muted, #9ca3af);
-      --di-fondo: #0b1120;
-      --di-ancho-hilo: 50rem;
+      --di-borde: #1f2a3d;
+      --di-borde-suave: rgba(148, 163, 184, 0.14);
+      --di-texto: #ececf1;
+      --di-suave: #9aa4b5;
+      --di-fondo: #0d1424;
+      --di-lateral: #080d19;
+      --di-burbuja: #1c2639;
+      --di-editor: #172033;
+      --di-hover: rgba(148, 163, 184, 0.1);
+      --di-activo: rgba(148, 163, 184, 0.16);
+      --di-acento: #3b82f6;
+      --di-ancho-hilo: 48rem;
       position: relative;
       display: flex;
-      gap: 1rem;
+      gap: 0;
       height: var(--di-alto, calc(100dvh - 260px));
       min-height: 0;
-      padding: 0.75rem 1.25rem 0.75rem;
+      margin-top: 0;
+      padding: 0;
       box-sizing: border-box;
       overflow: hidden;
       max-width: 100%;
+      border: 1px solid var(--di-borde);
+      border-radius: 16px;
+      background: var(--di-fondo);
+      color: var(--di-texto);
+      font-size: 16px;
     }
     .director-ia-page *, .director-ia-page *::before, .director-ia-page *::after { box-sizing: border-box; }
+    html.director-ia-max .director-ia-page { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; margin: 0; border: 0; border-radius: 0; }
 
-    /* ── barra lateral: chats y proyectos, independiente del hilo ── */
+    /* botones de icono (como los de ChatGPT: cuadrados redondeados de 36 px, sin borde) */
+    .director-ia-icono { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--di-suave); cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }
+    .director-ia-icono:hover:not(:disabled) { background: var(--di-hover); color: var(--di-texto); }
+    .director-ia-icono:focus-visible, .director-ia-voz:focus-visible, .director-ia-enviar:focus-visible, .director-ia-nav-item:focus-visible { outline: 2px solid var(--di-acento); outline-offset: 2px; }
+    .director-ia-icono:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── barra lateral (como ChatGPT): marca + contraer · nuevo chat · buscar · proyectos · lista ── */
     .director-ia-sidebar {
-      flex: 0 0 280px;
-      width: 280px;
+      flex: 0 0 260px;
+      width: 260px;
       min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.6rem;
+      gap: 0.25rem;
       overflow: hidden;
+      padding: 0.5rem;
+      background: var(--di-lateral);
+      border-right: 1px solid var(--di-borde-suave);
     }
-    .director-ia-sidebar-head, .director-ia-sidebar-acciones { display: flex; flex-direction: row; gap: 0.4rem; flex: none; }
-    .director-ia-sidebar-acciones #btnNuevoChat { flex: 1; }
-    .director-ia-buscar { flex: none; width: 100%; margin: 0; padding: 0.5rem 0.7rem; border: 1px solid var(--di-borde); border-radius: 10px; background: var(--di-fondo); color: inherit; font: inherit; font-size: 0.85rem; }
-    .director-ia-buscar:focus { outline: none; border-color: var(--color-primary, #2563eb); }
-    .director-ia-vistas { display: flex; gap: 0.25rem; flex: none; }
-    .director-ia-vista { flex: 1; font-size: 0.78rem; padding: 0.3rem; border: 1px solid transparent; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; opacity: 0.75; }
-    .director-ia-vista[aria-selected="true"] { border-color: var(--di-borde); background: rgba(255, 255, 255, 0.05); opacity: 1; font-weight: 600; }
+    .director-ia-sidebar-top { display: flex; align-items: center; justify-content: space-between; flex: none; padding: 0.15rem 0.1rem 0.35rem 0.55rem; }
+    .director-ia-marca { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; font-size: 0.95rem; color: var(--di-texto); white-space: nowrap; }
+    .director-ia-marca svg { color: #60a5fa; }
+    .director-ia-sidebar-head, .director-ia-sidebar-acciones { display: flex; flex-direction: column; gap: 1px; flex: none; }
+    .director-ia-nav-item { display: flex; align-items: center; gap: 0.65rem; width: 100%; min-height: 36px; padding: 0 0.6rem; border: 0; border-radius: 10px; background: transparent; color: var(--di-texto); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; }
+    .director-ia-nav-item:hover { background: var(--di-hover); }
+    .director-ia-nav-item svg { flex: none; color: var(--di-texto); opacity: 0.9; }
+    .director-ia-buscar-wrap { cursor: text; }
+    .director-ia-buscar { flex: 1; min-width: 0; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: 0.875rem; outline: none; }
+    .director-ia-buscar::placeholder { color: var(--di-texto); opacity: 1; }
+    .director-ia-buscar:focus::placeholder { color: var(--di-suave); }
+    .director-ia-buscar-wrap:focus-within { background: var(--di-activo); }
+    .director-ia-vistas { display: flex; gap: 0.2rem; flex: none; margin: 0.6rem 0.15rem 0.2rem; }
+    .director-ia-vista { flex: 1; font: inherit; font-size: 0.75rem; padding: 0.3rem 0.2rem; border: 0; border-radius: 8px; background: transparent; color: var(--di-suave); cursor: pointer; }
+    .director-ia-vista:hover { background: var(--di-hover); color: var(--di-texto); }
+    .director-ia-vista[aria-selected="true"] { background: var(--di-activo); color: var(--di-texto); font-weight: 600; }
     .director-ia-lista {
       flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;
       overscroll-behavior: contain;
-      border: 1px solid var(--di-borde);
-      border-radius: var(--border-radius-md, 12px);
-      padding: 0.4rem;
-      background: rgba(17, 24, 39, 0.4);
+      padding: 0 0 0.5rem;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
     }
-    .director-ia-grupo { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--di-suave); margin: 0.7rem 0.4rem 0.25rem; }
-    .director-ia-grupo:first-child { margin-top: 0.25rem; }
-    .director-ia-chat-item { display: flex; align-items: center; gap: 0.2rem; border-radius: 8px; }
-    .director-ia-chat-item:hover { background: rgba(255, 255, 255, 0.04); }
-    .director-ia-chat-item[aria-current="true"] { background: rgba(37, 99, 235, 0.16); }
-    .director-ia-chat-item > .director-ia-chat-abrir { flex: 1; min-width: 0; text-align: left; padding: 0.45rem 0.55rem; background: transparent; border: 0; color: inherit; font: inherit; font-size: 0.86rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 8px; }
-    .director-ia-chat-item > .director-ia-chat-menu { background: transparent; border: 0; color: inherit; cursor: pointer; padding: 0.3rem 0.45rem; border-radius: 6px; opacity: 0.55; }
-    .director-ia-chat-item:hover > .director-ia-chat-menu, .director-ia-chat-menu:focus, .director-ia-chat-menu[aria-expanded="true"] { opacity: 1; }
-    .director-ia-chat-acciones { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.3rem 0.4rem 0.5rem; }
-    .director-ia-chat-acciones button, .director-ia-chat-acciones select { font-size: 0.75rem; }
+    .director-ia-grupo { font-size: 0.75rem; font-weight: 600; color: var(--di-suave); margin: 1rem 0.6rem 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .director-ia-grupo:first-child { margin-top: 0.4rem; }
+    .director-ia-chat-item { display: flex; align-items: center; gap: 0; border-radius: 10px; }
+    .director-ia-chat-item:hover { background: var(--di-hover); }
+    .director-ia-chat-item[aria-current="true"] { background: var(--di-activo); }
+    .director-ia-chat-item > .director-ia-chat-abrir { flex: 1; min-width: 0; text-align: left; min-height: 36px; padding: 0 0.6rem; background: transparent; border: 0; color: inherit; font: inherit; font-size: 0.875rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 10px; }
+    .director-ia-chat-item > .director-ia-chat-menu { background: transparent; border: 0; color: var(--di-suave); cursor: pointer; padding: 0.3rem 0.5rem; border-radius: 8px; opacity: 0; font-size: 1rem; line-height: 1; }
+    .director-ia-chat-item:hover > .director-ia-chat-menu, .director-ia-chat-item[aria-current="true"] > .director-ia-chat-menu, .director-ia-chat-menu:focus, .director-ia-chat-menu[aria-expanded="true"] { opacity: 1; }
+    .director-ia-chat-acciones { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0.15rem 0.3rem 0.4rem; padding: 0.4rem; border: 1px solid var(--di-borde); border-radius: 12px; background: #111a2b; }
+    .director-ia-chat-acciones button, .director-ia-chat-acciones select { font: inherit; font-size: 0.75rem; }
+    .director-ia-chat-acciones select { padding: 0.3rem; border-radius: 8px; border: 1px solid var(--di-borde); background: var(--di-fondo); color: inherit; }
+    .director-ia-sidebar-pie { flex: none; display: flex; align-items: center; gap: 0.35rem; padding-top: 0.4rem; border-top: 1px solid var(--di-borde-suave); position: relative; }
     .director-ia-estado {
-      flex: none;
+      flex: 1;
+      min-width: 0;
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      padding: 0.5rem 0.75rem;
-      border-radius: var(--border-radius-sm, 8px);
-      font-size: 0.8rem;
-      border: 1px solid transparent;
-      background: rgba(17, 24, 39, 0.4);
+      padding: 0.4rem 0.55rem;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      color: var(--di-suave);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .director-ia-estado--conectado { border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.08); color: var(--color-ok, #86efac); }
-    .director-ia-estado--desconectado { border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.08); color: var(--color-error, #f87171); }
+    .director-ia-estado--conectado { color: #a7f3d0; }
+    .director-ia-estado--desconectado { color: #fca5a5; }
     .director-ia-page .punto { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .director-ia-page .punto--conectado { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
-    .director-ia-page .punto--desconectado { background: var(--color-error, #f87171); box-shadow: 0 0 6px var(--color-error, #f87171); }
-    .director-ia-config { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; max-height: 45%; overflow-y: auto; }
-    .director-ia-config-panel { width: 100%; padding: 0.6rem 0.8rem; border: 1px solid var(--di-borde); border-radius: var(--border-radius-sm, 8px); background: rgba(17, 24, 39, 0.4); display: flex; flex-direction: column; gap: 0.5rem; }
-    .director-ia-config-label { font-size: 0.72rem; color: var(--di-suave); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-    .director-ia-config-panel input { min-width: 0; padding: 0.45rem 0.7rem; border: 1px solid var(--di-borde); border-radius: var(--border-radius-sm, 8px); background: var(--di-fondo); color: var(--di-texto); font: inherit; font-size: 0.85rem; }
-    .director-ia-config-panel input:focus { outline: none; border-color: var(--color-primary, #2563eb); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2); }
+    .director-ia-page .punto--conectado { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    .director-ia-page .punto--desconectado { background: #f87171; box-shadow: 0 0 6px #f87171; }
+    .director-ia-config { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
+    .director-ia-config-panel { position: absolute; left: 0; right: 0; bottom: calc(100% + 0.4rem); z-index: 5; padding: 0.7rem 0.8rem; border: 1px solid var(--di-borde); border-radius: 12px; background: #111a2b; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; gap: 0.5rem; }
+    .director-ia-config-label { font-size: 0.72rem; color: var(--di-suave); font-weight: 600; }
+    .director-ia-config-panel input { min-width: 0; padding: 0.45rem 0.7rem; border: 1px solid var(--di-borde); border-radius: 8px; background: var(--di-fondo); color: var(--di-texto); font: inherit; font-size: 0.85rem; }
+    .director-ia-config-panel input:focus { outline: none; border-color: var(--di-acento); }
 
     /* ── columna del chat: cabecera fija · hilo (único scroll) · editor anclado abajo ── */
     .director-ia-chat {
@@ -1473,41 +1658,54 @@ const activeSection = 'director-ia';
       min-height: 0;
       display: flex;
       flex-direction: column;
-      border: 1px solid var(--di-borde);
-      border-radius: var(--border-radius-md, 14px);
       background: var(--di-fondo);
       overflow: hidden;
     }
-    .director-ia-chat.soltando { outline: 2px dashed currentColor; outline-offset: -6px; }
+    .director-ia-chat.soltando { outline: 2px dashed var(--di-acento); outline-offset: -8px; }
     .director-ia-chat-header {
       flex: none;
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      gap: 0.25rem 0.6rem;
-      padding: 0.65rem 1rem;
-      border-bottom: 1px solid var(--di-borde);
-      background: rgba(17, 24, 39, 0.55);
+      gap: 0.35rem;
+      min-height: 52px;
+      padding: 0.35rem 0.6rem 0.35rem 0.75rem;
+      cursor: zoom-in;
     }
-    .director-ia-chat-titulos { flex: 1 1 12rem; min-width: 0; }
-    .director-ia-chat-header h1 { margin: 0; font-size: 1.05rem; line-height: 1.3; color: var(--di-texto); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .director-ia-chat-sub { margin: 0; font-size: 0.78rem; color: var(--di-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .director-ia-confirmaciones { flex: 1 1 100%; max-height: min(28vh, 14rem); overflow-y: auto; overscroll-behavior: contain; }
+    html.director-ia-max .director-ia-chat-header { cursor: default; padding-top: max(0.35rem, env(safe-area-inset-top)); }
+    .director-ia-chat-titulos { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 0.6rem; }
+    .director-ia-chat-header h1 { margin: 0; font-size: 1.125rem; font-weight: 500; line-height: 1.3; color: var(--di-texto); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+    .director-ia-chat-sub { margin: 0; font-size: 0.8rem; color: var(--di-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .director-ia-chat-herr { display: flex; align-items: center; gap: 0.15rem; flex: none; }
+    .director-ia-cerrar-max { color: var(--di-texto); }
+    .director-ia-btn-barra { display: none; }
+    .director-ia-page.barra-contraida .director-ia-btn-barra { display: inline-flex; }
+
+    /* aprobaciones: tarjetas del mismo estilo que el chat, en la columna de lectura; no se oculta nada de lo necesario para decidir */
+    .director-ia-confirmaciones { flex: none; width: 100%; max-width: calc(var(--di-ancho-hilo) + 2rem); margin: 0 auto; padding: 0.6rem 1rem 0.7rem; max-height: min(32vh, 17rem); overflow-y: auto; overscroll-behavior: contain; border-bottom: 1px solid var(--di-borde-suave); }
     .director-ia-confirmaciones .director-ia-chat-sub { white-space: normal; }
-    .director-ia-confirmaciones h2 { margin: 0.3rem 0 0.2rem; font-size: 0.9rem; }
-    .director-ia-confirmacion { border: 1px solid var(--di-borde); border-radius: 8px; padding: 0.4rem 0.55rem; margin: 0.3rem 0; font-size: 0.8rem; }
-    .director-ia-confirmacion.es-historial { opacity: 0.8; }
-    .director-ia-confirmacion input[type="password"] { margin: 0.25rem 0.4rem 0.25rem 0; }
-    .director-ia-confirmacion button { margin: 0.2rem 0.3rem 0 0; }
+    .director-ia-confirmaciones h2 { margin: 0 0 0.15rem; font-size: 0.875rem; font-weight: 600; }
+    .director-ia-plegar { display: inline-flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.2rem 0; border: 0; background: transparent; color: var(--di-texto); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+    .director-ia-cuenta { font-weight: 400; color: var(--di-suave); }
+    .director-ia-confirmaciones.con-pendientes .director-ia-cuenta { color: #fcd34d; font-weight: 600; }
+    .director-ia-punto-aprob { width: 8px; height: 8px; border-radius: 50%; background: var(--di-suave); flex: none; }
+    .director-ia-confirmaciones.con-pendientes .director-ia-punto-aprob { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+    .director-ia-chevron { margin-left: auto; color: var(--di-suave); transition: transform 0.15s ease; }
+    .director-ia-confirmaciones.plegada .director-ia-chevron { transform: rotate(-90deg); }
+    .director-ia-confirmaciones.plegada #cuerpoAprobaciones { display: none; }
+    .director-ia-confirmaciones.plegada { padding-bottom: 0.45rem; }
+    .director-ia-confirmaciones summary { cursor: pointer; font-size: 0.8rem; color: var(--di-suave); margin-top: 0.4rem; }
+    .director-ia-confirmacion { border: 1px solid var(--di-borde); border-radius: 14px; padding: 0.65rem 0.85rem; margin: 0.45rem 0; font-size: 0.85rem; line-height: 1.5; background: #111a2b; }
+    .director-ia-confirmacion.es-historial { opacity: 0.8; background: transparent; }
+    .director-ia-confirmacion input[type="password"] { margin: 0.35rem 0.4rem 0.25rem 0; padding: 0.45rem 0.7rem; border: 1px solid var(--di-borde); border-radius: 10px; background: var(--di-fondo); color: var(--di-texto); font: inherit; font-size: 0.85rem; }
+    .director-ia-confirmacion button { margin: 0.35rem 0.35rem 0 0; }
     .director-ia-conf-titulo { font-weight: 600; }
-    .director-ia-conf-paso { margin: 0.2rem 0; }
+    .director-ia-conf-paso { margin: 0.25rem 0; }
     .director-ia-conf-datos, .director-ia-conf-meta, .director-ia-conf-caduca { color: var(--di-suave); }
-    .director-ia-conf-caduca { font-weight: 600; }
-    .director-ia-conf-consecuencias { margin: 0.2rem 0 0.2rem 1rem; padding: 0; }
-    .director-ia-conf-insignia { display: inline-block; margin-left: 0.35rem; padding: 0 0.35rem; border-radius: 6px; font-size: 0.72rem; border: 1px solid var(--di-borde); }
+    .director-ia-conf-caduca { font-weight: 600; color: var(--di-texto); }
+    .director-ia-conf-consecuencias { margin: 0.25rem 0 0.25rem 1.1rem; padding: 0; }
+    .director-ia-conf-insignia { display: inline-block; margin-left: 0.35rem; padding: 0 0.45rem; border-radius: 999px; font-size: 0.72rem; border: 1px solid var(--di-borde); }
     .director-ia-conf-insignia.es-lectura { color: #86efac; }
     .director-ia-conf-insignia.es-cambio { color: #fca5a5; }
-    .director-ia-btn-barra { display: none; flex: none; background: transparent; border: 1px solid var(--di-borde); border-radius: 8px; padding: 0.25rem 0.6rem; color: inherit; cursor: pointer; font-size: 1rem; }
 
     .director-ia-hilo { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
     .director-ia-mensajes {
@@ -1520,13 +1718,17 @@ const activeSection = 'director-ia';
       scroll-behavior: auto;
       display: flex;
       flex-direction: column;
-      gap: 1rem;
+      gap: 1.25rem;
       /* columna de lectura centrada (como ChatGPT) con la barra de desplazamiento pegada al borde */
-      padding: 1.25rem max(1rem, calc((100% - var(--di-ancho-hilo)) / 2)) 1.5rem;
+      padding: 1.5rem max(1rem, calc((100% - var(--di-ancho-hilo)) / 2)) 2rem;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
     }
-    .director-ia-vacio, .director-ia-vacio-centrado, .director-ia-error, .director-ia-cargando { text-align: center; color: var(--di-suave); font-size: 0.88rem; padding: 1rem; }
-    .director-ia-vacio-centrado { display: flex; align-items: center; justify-content: center; flex: 1; }
-    .director-ia-error { color: var(--color-error, #f87171); font-size: 0.82rem; padding: 0.85rem; border: 1px solid rgba(248, 113, 113, 0.2); border-radius: var(--border-radius-sm, 8px); background: rgba(248, 113, 113, 0.05); }
+    .director-ia-vacio, .director-ia-vacio-centrado, .director-ia-error, .director-ia-cargando { text-align: center; color: var(--di-suave); font-size: 0.875rem; padding: 1rem; }
+    .director-ia-vacio-centrado { display: flex; align-items: center; justify-content: center; flex: 1; font-size: 1.6rem; font-weight: 500; color: var(--di-texto); line-height: 1.35; padding: 1rem 0.5rem; }
+    .director-ia-lista .director-ia-vacio { font-size: 0.8rem; padding: 0.4rem 0.6rem; text-align: left; }
+    .director-ia-error { color: #fca5a5; font-size: 0.875rem; padding: 0.9rem 1rem; border: 1px solid rgba(248, 113, 113, 0.25); border-radius: 14px; background: rgba(248, 113, 113, 0.06); }
+    .director-ia-error .director-ia-reintentar { display: block; margin: 0.6rem auto 0; }
     .director-ia-cargar-anteriores { display: block; align-self: center; margin: 0 auto 0.25rem; font-size: 0.8rem; }
     .director-ia-ir-final {
       position: absolute;
@@ -1534,79 +1736,103 @@ const activeSection = 'director-ia';
       bottom: 0.75rem;
       transform: translateX(-50%);
       z-index: 5;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
       font: inherit;
       font-size: 0.8rem;
-      font-weight: 600;
+      font-weight: 500;
       border-radius: 999px;
-      padding: 0.4rem 0.95rem;
-      border: 1px solid rgba(96, 165, 250, 0.5);
-      background: #1e3a8a;
-      color: #fff;
+      padding: 0.45rem 0.9rem;
+      border: 1px solid var(--di-borde);
+      background: #1a2336;
+      color: var(--di-texto);
       cursor: pointer;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     }
 
-    /* burbujas */
-    .director-ia-burbuja { max-width: min(85%, 44rem); border-radius: 16px; padding: 0.7rem 0.95rem; font-size: 0.93rem; line-height: 1.55; position: relative; overflow-wrap: anywhere; }
-    .director-ia-burbuja--usuario { align-self: flex-end; background: var(--color-primary, #2563eb); color: #fff; border-bottom-right-radius: 5px; }
-    .director-ia-burbuja--director { align-self: flex-start; background: rgba(17, 24, 39, 0.75); border: 1px solid var(--di-borde); color: var(--di-texto); border-bottom-left-radius: 5px; }
-    .director-ia-burbuja--error { outline: 1px dashed #d92d20; }
-    .director-ia-burbuja-cabecera { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem; margin-bottom: 0.3rem; font-size: 0.76rem; font-weight: 700; color: var(--di-suave); }
-    .director-ia-burbuja--usuario .director-ia-burbuja-cabecera { color: rgba(255, 255, 255, 0.85); }
-    .director-ia-burbuja-hora { font-weight: 400; opacity: 0.8; }
+    /* mensajes: los del usuario en burbuja a la derecha; las respuestas del Director sin burbuja, a todo el ancho de lectura (como ChatGPT).
+       La hora, el remitente y los metadatos técnicos van en una línea discreta junto a las acciones, visible al pasar el ratón o al enfocarla. */
+    .director-ia-burbuja { position: relative; display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.5rem; width: 100%; font-size: 1rem; line-height: 1.75; overflow-wrap: anywhere; animation: director-ia-entra 0.18s ease-out; }
+    .director-ia-burbuja > * { flex: 1 1 100%; min-width: 0; }
+    .director-ia-burbuja > .director-ia-burbuja-cabecera { order: 10; flex: 0 1 auto; }
+    .director-ia-burbuja > .director-ia-burbuja-acciones { order: 11; flex: 0 0 auto; }
+    .director-ia-burbuja > .btn-secondary { order: 12; flex: 0 0 auto; margin-top: 0.4rem; }
+    .director-ia-burbuja--director { color: var(--di-texto); }
+    .director-ia-burbuja--usuario { justify-content: flex-end; margin-left: auto; max-width: min(70%, 36rem); }
+    .director-ia-burbuja--usuario > .director-ia-burbuja-cuerpo { flex: 0 1 auto; max-width: 100%; background: var(--di-burbuja); border-radius: 1.4rem; padding: 0.55rem 1.1rem; }
+    .director-ia-burbuja--usuario > .director-ia-burbuja-adjuntos { justify-content: flex-end; }
+    /* salto de línea: la burbuja va sola a la derecha y la hora y las acciones, debajo (si no, compartirían su fila y la desplazarían) */
+    .director-ia-burbuja::after { content: ''; order: 9; flex: 1 1 100%; height: 0; }
+    .director-ia-burbuja--error > .director-ia-burbuja-cuerpo { outline: 1px dashed #f87171; }
+    .director-ia-burbuja-cabecera { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.45rem; margin-top: 0.3rem; font-size: 0.75rem; font-weight: 500; color: var(--di-suave); line-height: 1.4; }
+    .director-ia-burbuja-hora { font-weight: 400; }
+    .director-ia-meta { font-size: 0.72rem; font-weight: 400; opacity: 0.8; }
+    .director-ia-burbuja > .director-ia-burbuja-cabecera, .director-ia-burbuja > .director-ia-burbuja-acciones { opacity: 0; transition: opacity 0.15s ease; }
+    .director-ia-burbuja:hover > .director-ia-burbuja-cabecera, .director-ia-burbuja:hover > .director-ia-burbuja-acciones, .director-ia-burbuja:focus-within > .director-ia-burbuja-cabecera, .director-ia-burbuja:focus-within > .director-ia-burbuja-acciones { opacity: 1; }
+    @media (hover: none) { .director-ia-burbuja > .director-ia-burbuja-cabecera, .director-ia-burbuja > .director-ia-burbuja-acciones { opacity: 0.7; } }
     .director-ia-burbuja-cuerpo { white-space: pre-wrap; overflow-wrap: anywhere; }
     .director-ia-burbuja-cuerpo.md { white-space: normal; }
-    .director-ia-burbuja--director .director-ia-burbuja-cuerpo a { color: #60a5fa; text-decoration: underline; }
-    .director-ia-burbuja--usuario .director-ia-burbuja-cuerpo a { color: #fff; text-decoration: underline; }
-    .director-ia-meta { font-size: 0.72rem; font-weight: 400; opacity: 0.75; }
-    .director-ia-burbuja-cuerpo.md p { margin: 0 0 0.5rem; }
-    .director-ia-burbuja-cuerpo.md p:last-child { margin-bottom: 0; }
-    .director-ia-burbuja-cuerpo.md pre { overflow-x: auto; padding: 0.6rem; border-radius: 8px; background: rgba(127, 127, 127, 0.12); font-size: 0.85em; white-space: pre; }
-    .director-ia-burbuja-cuerpo.md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
-    .director-ia-burbuja-cuerpo.md table { border-collapse: collapse; display: block; overflow-x: auto; margin: 0.4rem 0; max-width: 100%; }
-    .director-ia-burbuja-cuerpo.md th, .director-ia-burbuja-cuerpo.md td { border: 1px solid var(--di-borde); padding: 0.25rem 0.5rem; text-align: left; }
-    .director-ia-burbuja-cuerpo.md ul, .director-ia-burbuja-cuerpo.md ol { margin: 0.2rem 0 0.5rem 1.2rem; padding: 0; }
-    .director-ia-burbuja-acciones { display: flex; gap: 0.3rem; margin-top: 0.4rem; opacity: 0.5; }
-    .director-ia-burbuja:hover .director-ia-burbuja-acciones, .director-ia-burbuja-acciones:focus-within { opacity: 1; }
-    .director-ia-burbuja-acciones button { font: inherit; font-size: 0.72rem; background: transparent; border: 1px solid rgba(156, 163, 175, 0.4); border-radius: 6px; padding: 0.1rem 0.45rem; color: inherit; cursor: pointer; }
-    .director-ia-burbuja > .btn-secondary { margin-top: 0.45rem; }
-    .director-ia-dato, .director-ia-fuentes, .director-ia-tareas, .director-ia-auth, .director-ia-limites, .director-ia-avisos { margin-top: 0.55rem; padding: 0.5rem 0.7rem; border-radius: var(--border-radius-sm, 8px); font-size: 0.78rem; line-height: 1.45; }
-    .director-ia-dato { background: rgba(99, 102, 241, 0.1); border-left: 3px solid #6366f1; color: #a5b4fc; }
-    .director-ia-fuentes { background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10b981; color: #86efac; }
-    .director-ia-tareas { background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; color: #93c5fd; }
-    .director-ia-auth { background: rgba(234, 179, 8, 0.1); border-left: 3px solid #ca8a04; color: #fcd34d; }
-    .director-ia-limites, .director-ia-avisos { background: rgba(248, 113, 113, 0.1); border-left: 3px solid #f87171; color: #fca5a5; }
-    .director-ia-burbuja-adjuntos { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
-    .director-ia-burbuja-adjuntos img { max-width: 220px; max-height: 160px; border-radius: 8px; display: block; }
-    .director-ia-burbuja-adjuntos a { font-size: 0.8rem; color: inherit; }
+    .director-ia-burbuja-cuerpo a { color: #7cb4ff; text-decoration: underline; text-underline-offset: 2px; }
+    .director-ia-burbuja-cuerpo.md > :first-child { margin-top: 0; }
+    .director-ia-burbuja-cuerpo.md p { margin: 0 0 0.9rem; }
+    .director-ia-burbuja-cuerpo.md p:last-child, .director-ia-burbuja-cuerpo.md > :last-child { margin-bottom: 0; }
+    .director-ia-burbuja-cuerpo.md h1, .director-ia-burbuja-cuerpo.md h2, .director-ia-burbuja-cuerpo.md h3, .director-ia-burbuja-cuerpo.md h4 { margin: 1.4rem 0 0.6rem; line-height: 1.35; font-weight: 600; color: var(--di-texto); }
+    .director-ia-burbuja-cuerpo.md h1 { font-size: 1.5rem; } .director-ia-burbuja-cuerpo.md h2 { font-size: 1.3rem; } .director-ia-burbuja-cuerpo.md h3 { font-size: 1.15rem; } .director-ia-burbuja-cuerpo.md h4 { font-size: 1rem; }
+    .director-ia-burbuja-cuerpo.md strong { font-weight: 600; color: #fff; }
+    .director-ia-burbuja-cuerpo.md pre { overflow-x: auto; margin: 0.6rem 0 1rem; padding: 0.9rem 1rem; border-radius: 12px; background: #060a14; border: 1px solid var(--di-borde); font-size: 0.85rem; line-height: 1.55; white-space: pre; }
+    .director-ia-burbuja-cuerpo.md code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.875em; }
+    .director-ia-burbuja-cuerpo.md :not(pre) > code { padding: 0.1rem 0.35rem; border-radius: 6px; background: rgba(148, 163, 184, 0.16); }
+    .director-ia-burbuja-cuerpo.md table { border-collapse: collapse; display: block; overflow-x: auto; margin: 0.6rem 0 1rem; max-width: 100%; font-size: 0.9rem; line-height: 1.5; }
+    .director-ia-burbuja-cuerpo.md th, .director-ia-burbuja-cuerpo.md td { border-bottom: 1px solid var(--di-borde); padding: 0.45rem 0.75rem; text-align: left; overflow-wrap: normal; word-break: normal; } /* sin partir palabras: la tabla se desplaza en horizontal */
+    .director-ia-burbuja-cuerpo.md th { font-weight: 600; border-bottom-color: #334155; }
+    .director-ia-burbuja-cuerpo.md ul, .director-ia-burbuja-cuerpo.md ol { margin: 0.2rem 0 0.9rem 1.4rem; padding: 0; }
+    .director-ia-burbuja-cuerpo.md li { margin: 0.2rem 0; }
+    .director-ia-burbuja-cuerpo.md blockquote { margin: 0.6rem 0; padding-left: 0.9rem; border-left: 3px solid #334155; color: var(--di-suave); }
+    .director-ia-burbuja-cuerpo.md hr { border: 0; border-top: 1px solid var(--di-borde); margin: 1.2rem 0; }
+    .director-ia-burbuja-acciones { display: inline-flex; gap: 0.15rem; margin-top: 0.3rem; }
+    .director-ia-burbuja-acciones button { font: inherit; font-size: 0.75rem; background: transparent; border: 0; border-radius: 8px; padding: 0.2rem 0.5rem; color: var(--di-suave); cursor: pointer; }
+    .director-ia-burbuja-acciones button:hover { background: var(--di-hover); color: var(--di-texto); }
+    /* informes, fuentes, tareas y autorizaciones del Director: tarjetas discretas dentro de la respuesta, con su trazabilidad */
+    .director-ia-dato, .director-ia-fuentes, .director-ia-tareas, .director-ia-auth, .director-ia-limites, .director-ia-avisos { margin-top: 0.75rem; padding: 0.6rem 0.85rem; border-radius: 12px; font-size: 0.85rem; line-height: 1.5; border: 1px solid var(--di-borde); background: #111a2b; color: var(--di-suave); }
+    .director-ia-dato { border-left: 3px solid #6366f1; }
+    .director-ia-fuentes { border-left: 3px solid #10b981; }
+    .director-ia-tareas { border-left: 3px solid #3b82f6; }
+    .director-ia-auth { border-left: 3px solid #ca8a04; color: #fde68a; }
+    .director-ia-limites, .director-ia-avisos { border-left: 3px solid #f87171; color: #fecaca; }
+    .director-ia-burbuja-adjuntos { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+    .director-ia-burbuja-adjuntos img { max-width: 240px; max-height: 180px; border-radius: 12px; display: block; }
+    .director-ia-burbuja-adjuntos a { font-size: 0.85rem; color: var(--di-texto); padding: 0.45rem 0.7rem; border: 1px solid var(--di-borde); border-radius: 12px; text-decoration: none; }
+    @keyframes director-ia-entra { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-    /* ── editor anclado abajo (no forma parte del scroll) ── */
+    /* ── editor anclado abajo (no forma parte del scroll): como el de ChatGPT ── */
     .director-ia-form {
       flex: none;
       display: flex;
       flex-direction: column;
       gap: 0.4rem;
       margin: 0;
-      padding: 0.5rem max(0.75rem, calc((100% - var(--di-ancho-hilo)) / 2)) 0.75rem;
-      background: linear-gradient(to bottom, rgba(11, 17, 32, 0), var(--di-fondo) 0.6rem);
+      padding: 0 max(0.75rem, calc((100% - var(--di-ancho-hilo)) / 2)) max(0.5rem, env(safe-area-inset-bottom));
+      background: var(--di-fondo);
     }
     .director-ia-form > .director-ia-alerta { order: 1; margin: 0; }
     .director-ia-form > .director-ia-estado-voz { order: 2; }
     .director-ia-form > .director-ia-adjuntos { order: 3; }
     .director-ia-form > .director-ia-input-wrap { order: 4; }
+    .director-ia-form > .director-ia-aviso-pie { order: 5; }
     .director-ia-input-wrap {
       display: flex;
       flex-wrap: wrap;
-      justify-content: flex-end; /* si los controles no caben en una fila, enviar y voz siguen a la derecha */
       align-items: center;
-      gap: 0.4rem;
-      padding: 0.45rem 0.5rem 0.45rem 0.75rem;
-      border: 1px solid #334155;
-      border-radius: 1.25rem;
-      background: #111827;
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+      gap: 0.25rem;
+      padding: 0.6rem 0.6rem 0.55rem;
+      border: 1px solid #26324a;
+      border-radius: 28px;
+      background: var(--di-editor);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+      cursor: text;
     }
-    .director-ia-input-wrap:focus-within { border-color: rgba(59, 130, 246, 0.75); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18), 0 6px 24px rgba(0, 0, 0, 0.35); }
+    .director-ia-input-wrap:focus-within { border-color: #36476a; }
     #inputMensaje {
       order: 0;
       flex: 1 1 100%;
@@ -1617,84 +1843,105 @@ const activeSection = 'director-ia';
       background: transparent;
       color: var(--di-texto);
       font: inherit;
-      font-size: 0.95rem;
-      line-height: 1.45;
-      min-height: 2.5rem;
+      font-size: 1rem;
+      line-height: 1.5;
+      min-height: 2.25rem;
       max-height: min(12rem, 30vh);
       overflow-y: auto;
-      padding: 0.35rem 0.25rem;
+      padding: 0.3rem 0.65rem 0.4rem;
+      scrollbar-width: thin;
     }
+    #inputMensaje::placeholder { color: var(--di-suave); }
     #inputMensaje:disabled { opacity: 0.6; }
-    #btnAdjuntar { order: 1; margin-right: auto; }
-    #modoVoz { order: 2; }
+    #btnAdjuntar { order: 1; }
+    #modoVoz { order: 2; margin-right: auto; }
     #btnDetenerVoz { order: 3; }
-    #btnVoz { order: 4; display: inline-flex; align-items: center; gap: 0.35rem; }
-    #btnEnviar { order: 5; display: inline-flex; align-items: center; justify-content: center; min-width: 2.4rem; border-radius: 999px; }
-    #btnVoz[aria-pressed="true"] { background: rgba(37, 99, 235, 0.25); border-color: rgba(59, 130, 246, 0.7); }
-    .director-ia-modo-voz { font-size: 0.8rem; padding: 0.35rem 0.4rem; border-radius: 8px; border: 1px solid var(--di-borde); background: transparent; color: inherit; max-width: 11rem; }
-    .director-ia-modo-voz option { background: #111827; }
+    #btnVoz { order: 4; }
+    #btnEnviar { order: 5; }
+    /* conversación por voz: círculo claro con ondas (como el de ChatGPT); al escribir se sustituye por el botón de enviar */
+    .director-ia-voz, .director-ia-enviar { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; flex: none; height: 36px; min-width: 36px; padding: 0; border: 0; border-radius: 999px; background: #ececf1; color: #0d1424; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, opacity 0.15s ease; }
+    .director-ia-voz:hover:not(:disabled), .director-ia-enviar:hover:not(:disabled) { background: #fff; }
+    .director-ia-voz:disabled { opacity: 0.35; cursor: not-allowed; }
+    .director-ia-enviar:disabled { background: #3a465c; color: #8090a8; cursor: default; }
+    .director-ia-voz .texto-btn-voz { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .director-ia-voz.en-sesion { padding: 0 0.9rem 0 0.7rem; background: var(--di-acento); color: #fff; }
+    .director-ia-voz.en-sesion:hover:not(:disabled) { background: #2563eb; }
+    .director-ia-voz.en-sesion .texto-btn-voz { position: static; width: auto; height: auto; clip: auto; overflow: visible; }
+    .director-ia-voz[aria-pressed="true"] .director-ia-ondas line { animation: director-ia-onda 1s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+    .director-ia-voz[aria-pressed="true"] .director-ia-ondas .o2 { animation-delay: 0.15s; } .director-ia-voz[aria-pressed="true"] .director-ia-ondas .o3 { animation-delay: 0.3s; }
+    .director-ia-voz[aria-pressed="true"] .director-ia-ondas .o4 { animation-delay: 0.45s; } .director-ia-voz[aria-pressed="true"] .director-ia-ondas .o5 { animation-delay: 0.6s; }
+    @keyframes director-ia-onda { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.45); } }
+    /* con texto escrito: «enviar»; sin texto: «voz» (salvo en plena sesión de voz, que siempre se puede finalizar) */
+    .director-ia-input-wrap:has(#btnEnviar:disabled) #btnEnviar { display: none; }
+    .director-ia-input-wrap:has(#btnEnviar:not(:disabled)) #btnVoz:not(.en-sesion) { display: none; }
+    .director-ia-modo-voz { height: 32px; font: inherit; font-size: 0.8rem; padding: 0 0.6rem; border-radius: 999px; border: 1px solid var(--di-borde); background: transparent; color: var(--di-suave); max-width: 10rem; cursor: pointer; }
+    .director-ia-modo-voz:hover { color: var(--di-texto); background: var(--di-hover); }
+    .director-ia-modo-voz option { background: #111827; color: var(--di-texto); }
+    .director-ia-aviso-pie { margin: 0; padding: 0.15rem 0 0; text-align: center; font-size: 0.72rem; color: var(--di-suave); }
     .director-ia-adjuntos { display: flex; flex-wrap: wrap; gap: 0.4rem; max-height: 6.5rem; overflow-y: auto; }
-    .director-ia-adjunto { display: flex; align-items: center; gap: 0.4rem; border: 1px solid var(--di-borde); border-radius: 10px; padding: 0.25rem 0.45rem; font-size: 0.78rem; max-width: 18rem; background: #111827; }
-    .director-ia-adjunto img { width: 38px; height: 38px; object-fit: cover; border-radius: 6px; }
+    .director-ia-adjunto { display: flex; align-items: center; gap: 0.45rem; border: 1px solid var(--di-borde); border-radius: 12px; padding: 0.3rem 0.5rem; font-size: 0.8rem; max-width: 18rem; background: var(--di-editor); }
+    .director-ia-adjunto img { width: 38px; height: 38px; object-fit: cover; border-radius: 8px; }
     .director-ia-adjunto .nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 11rem; }
     .director-ia-adjunto .estado { opacity: 0.7; }
-    .director-ia-adjunto--error { border-color: #d92d20; }
+    .director-ia-adjunto--error { border-color: #f87171; }
     .director-ia-adjunto button { background: transparent; border: 0; color: inherit; cursor: pointer; font-size: 0.9rem; }
-    .director-ia-alerta { margin-top: 0.5rem; font-size: 0.82rem; color: var(--color-error, #f87171); padding: 0.5rem 0.8rem; border: 1px solid rgba(248, 113, 113, 0.25); border-radius: var(--border-radius-sm, 8px); background: rgba(248, 113, 113, 0.07); max-height: 6rem; overflow-y: auto; }
-    .director-ia-estado-voz { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.8rem; border-radius: 999px; font-size: 0.8rem; border: 1px solid var(--di-borde); background: rgba(17, 24, 39, 0.85); align-self: center; }
+    .director-ia-alerta { margin-top: 0.5rem; font-size: 0.82rem; color: #fca5a5; padding: 0.5rem 0.8rem; border: 1px solid rgba(248, 113, 113, 0.25); border-radius: 12px; background: rgba(248, 113, 113, 0.07); max-height: 6rem; overflow-y: auto; }
+    .director-ia-estado-voz { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.85rem; border-radius: 999px; font-size: 0.8rem; border: 1px solid var(--di-borde); background: #111a2b; align-self: center; }
     .director-ia-estado-voz .punto-voz { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .director-ia-page .punto-voz--escuchando { background: var(--color-primary, #2563eb); box-shadow: 0 0 6px var(--color-primary, #2563eb); animation: director-ia-pulso-voz 1.5s infinite; }
+    .director-ia-page .punto-voz--escuchando { background: var(--di-acento); box-shadow: 0 0 6px var(--di-acento); animation: director-ia-pulso-voz 1.5s infinite; }
     .director-ia-page .punto-voz--procesando { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; animation: director-ia-pulso-voz 1.5s infinite; }
-    .director-ia-page .punto-voz--hablando { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
+    .director-ia-page .punto-voz--hablando { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
     .director-ia-page .punto-voz--listo { background: var(--di-suave); }
     @keyframes director-ia-pulso-voz { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
     /* botones del panel (solo dentro de esta página) */
-    .director-ia-page .btn-primary, .director-ia-page .btn-secondary { padding: 0.55rem 0.85rem; border-radius: var(--border-radius-sm, 8px); border: 1px solid transparent; font: inherit; font-weight: 700; font-size: 0.85rem; cursor: pointer; line-height: 1.2; }
-    .director-ia-page .btn-primary { background: var(--color-primary, #2563eb); color: #fff; }
+    .director-ia-page .btn-primary, .director-ia-page .btn-secondary { padding: 0.5rem 0.9rem; border-radius: 999px; border: 1px solid transparent; font: inherit; font-weight: 600; font-size: 0.85rem; cursor: pointer; line-height: 1.2; }
+    .director-ia-page .btn-primary { background: #ececf1; color: #0d1424; }
+    .director-ia-page .btn-primary:hover:not(:disabled) { background: #fff; }
     .director-ia-page .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-    .director-ia-page .btn-secondary { background: rgba(255, 255, 255, 0.06); color: var(--di-texto); border-color: var(--di-borde); }
-    .director-ia-page .btn-secondary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+    .director-ia-page .btn-secondary { background: transparent; color: var(--di-texto); border-color: #334155; }
+    .director-ia-page .btn-secondary:hover:not(:disabled) { background: var(--di-hover); }
     .director-ia-page .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
-    .director-ia-page .btn-sm { padding: 0.45rem 0.65rem; font-size: 0.8rem; }
-    @media (prefers-reduced-motion: reduce) { .director-ia-sidebar { transition: none !important; } }
+    .director-ia-page .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+    @media (prefers-reduced-motion: reduce) { .director-ia-sidebar, .director-ia-burbuja, .director-ia-voz .director-ia-ondas line { transition: none !important; animation: none !important; } }
 
-    /* tableta horizontal y portátiles estrechos: barra algo más estrecha */
-    @media (max-width: 1100px) {
-      .director-ia-sidebar { flex-basis: 240px; width: 240px; }
+    /* escritorio: la barra lateral se contrae y se despliega (como ChatGPT) */
+    @media (min-width: 861px) {
+      .director-ia-page.barra-contraida .director-ia-sidebar { display: none; }
     }
-    /* móvil y tableta vertical: la barra pasa a panel superpuesto dentro del área del chat */
+    /* móvil y tableta vertical: la barra pasa a panel superpuesto dentro del área del chat; el botón de la cabecera la abre */
     @media (max-width: 860px) {
-      .director-ia-page { padding: 0.5rem; gap: 0; }
-      .director-ia-btn-barra { display: inline-block; }
+      .director-ia-page { border-radius: 12px; }
+      .admin-wrapper { padding: 1rem 0.5rem 0; gap: 0.75rem; }
+      .director-ia-btn-barra { display: inline-flex; }
       .director-ia-sidebar {
         position: absolute;
         top: 0;
         bottom: 0;
         left: 0;
         z-index: 40;
-        width: min(85vw, 320px);
-        padding: 0.75rem;
-        background: #0b1120;
-        border-right: 1px solid var(--di-borde);
+        width: min(85vw, 300px);
+        padding-top: max(0.5rem, env(safe-area-inset-top));
+        padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
         transform: translateX(-105%);
-        transition: transform 0.2s ease;
+        transition: transform 0.22s ease;
         visibility: hidden;
       }
-      .director-ia-sidebar.abierta { transform: none; visibility: visible; box-shadow: 0 0 32px rgba(0, 0, 0, 0.6); }
-      .director-ia-sidebar.abierta + .director-ia-chat::after { content: ''; position: absolute; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.45); }
-      .director-ia-burbuja { max-width: 92%; }
-      .director-ia-mensajes { padding: 0.9rem 0.75rem 1.1rem; }
-      .director-ia-form { padding: 0.4rem 0.5rem 0.5rem; }
-      .director-ia-chat-header { padding: 0.5rem 0.65rem; }
+      .director-ia-sidebar.abierta { transform: none; visibility: visible; box-shadow: 0 0 40px rgba(0, 0, 0, 0.6); }
+      .director-ia-sidebar.abierta + .director-ia-chat::after { content: ''; position: absolute; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.5); }
+      .director-ia-chat-header { min-height: 48px; padding-left: 0.4rem; cursor: default; }
+      .director-ia-chat-sub { display: none; }
+      .director-ia-burbuja--usuario { max-width: 85%; }
+      .director-ia-mensajes { padding: 1rem 1rem 1.5rem; gap: 1rem; }
+      .director-ia-form { padding: 0 0.5rem max(0.4rem, env(safe-area-inset-bottom)); }
       #inputMensaje { font-size: 16px; } /* con menos de 16 px, iOS amplía la página al enfocar el campo y descoloca la distribución */
-      .director-ia-modo-voz { max-width: 8.5rem; }
+      .director-ia-modo-voz { max-width: 10.5rem; padding-right: 0.4rem; }
+      .director-ia-vacio-centrado { font-size: 1.3rem; }
     }
+    html.director-ia-max .director-ia-page { border-radius: 0; }
     /* compacto (teclado abierto, pantalla muy baja): lo mínimo arriba para dar sitio al hilo */
-    html.director-ia-compacto .director-ia-page { padding: 0.25rem 0.4rem; }
-    html.director-ia-compacto .director-ia-chat-header { padding: 0.35rem 0.6rem; }
-    html.director-ia-compacto .director-ia-chat-sub { display: none; }
+    html.director-ia-compacto .director-ia-chat-header { min-height: 40px; padding-top: 0.15rem; padding-bottom: 0.15rem; }
     html.director-ia-compacto .director-ia-confirmaciones { max-height: 22vh; }
-    html.director-ia-compacto .director-ia-form { padding-top: 0.3rem; padding-bottom: 0.35rem; }
+    html.director-ia-compacto .director-ia-aviso-pie, html:not(.director-ia-max) .director-ia-aviso-pie { display: none; } /* en la vista integrada, el alto es para el hilo */
   </style>
 </Layout>

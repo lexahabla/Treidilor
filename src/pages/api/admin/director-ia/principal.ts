@@ -152,7 +152,10 @@ export const GET: APIRoute = async ({ request }) => {
     if (typeof turno.texto === 'string' && turno.texto.trim()) {
       partes.push({ rol: 'usuario', contenido: turno.texto, en, via: turno.via ?? null, origen: turno.origen ?? null, ...(Array.isArray(turno.adjuntos) ? { adjuntos: turno.adjuntos.map((a: any) => ({ id: String(a.id ?? ''), nombre: String(a.nombre ?? ''), tipo: String(a.tipo ?? '') })) } : {}) });
     }
-    const resp = turno.respuesta || {};
+    // El historial REAL del Director (tai-chat/1) entrega `respuesta` como TEXTO, con `tipo` y `estado` en el propio turno; otros
+    // clientes la entregan como objeto { mensaje, tipo, estado, fuentes }. Se aceptan las dos formas: antes, con el Director real,
+    // al recargar el historial se perdían todas las respuestas y solo quedaban los mensajes del propietario.
+    const resp = typeof turno.respuesta === 'string' ? { mensaje: turno.respuesta, estado: turno.estado, tipo: turno.tipo } : (turno.respuesta || {});
     if (typeof resp.mensaje === 'string' && resp.mensaje.trim()) {
       partes.push({
         rol: 'director',
