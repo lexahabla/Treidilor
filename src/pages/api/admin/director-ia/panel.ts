@@ -72,6 +72,7 @@ export const GET: APIRoute = async ({ request }) => {
     directrices: Array.isArray(panel.directrices) ? panel.directrices : [],
     encargos: Array.isArray(panel.encargos) ? panel.encargos : [],
     confirmacionesPendientes: Array.isArray(panel.confirmacionesPendientes) ? panel.confirmacionesPendientes : [],
+    confirmacionesRecientes: Array.isArray(panel.confirmacionesRecientes) ? panel.confirmacionesRecientes : [],
     hoy: panel.hoy ?? null,
     investigacionesProgramadas: panel.investigacionesProgramadas ?? null,
     informesDeAgentes: panel.informesDeAgentes ?? null,

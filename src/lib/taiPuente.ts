@@ -114,6 +114,40 @@ export interface TurnoDirector {
 }
 
 /** Panel de estado del Director (sólo lectura): agentes, encargos, confirmaciones, directrices, informes. */
+
+/** Quién decide una confirmación y con qué garantía (lo valida el Director). */
+export interface AdministradorDecision {
+  id: string;
+  usuario: string;
+  /** Reautenticación con contraseña (reciente). */
+  reautenticadoEn?: string;
+  /** 1.3.6: «sesion» = sesión del propietario verificada ahora por la web (solo con huella). */
+  metodo?: 'sesion' | 'reautenticacion';
+  verificadoEn?: string;
+}
+
+/** Confirmación descrita por el Director 1.3.6 (campos opcionales: un Director anterior solo envía id, tipo y caducidad). */
+export interface ConfirmacionDescrita {
+  idConfirmacion: string;
+  tipo: string;
+  caduca: string | null;
+  titulo?: string;
+  estado?: string;
+  origen?: string;
+  encargo?: { id: string | null; texto: string | null; estado: string; firma: string | null; vence: string | null } | null;
+  pasos?: Array<{ agente: string; nombreAgente: string | null; capacidad: string; descripcion: string | null; clase: string; efecto: string; soloLectura: boolean; datosReales: boolean; datos: string; nivel: string | null; cargaSobreProduccion: boolean }>;
+  clase?: 'consulta' | 'propuesta' | 'modificacion' | 'sensible';
+  efecto?: string;
+  soloLectura?: boolean;
+  datosReales?: boolean;
+  gasto?: boolean;
+  afectaProduccion?: boolean;
+  consecuencias?: string[];
+  riesgo?: 'ordinaria' | 'reforzada';
+  confirmacion?: 'sesion' | 'reautenticacion';
+  huella?: string;
+}
+
 export interface PanelDirector {
   esquema: string;
   en: string;
@@ -125,7 +159,9 @@ export interface PanelDirector {
   prioridades: unknown[];
   directrices: unknown[];
   encargos: Array<{ id: string; texto: string; estado: string; progreso: { completados: number; total: number } | null }>;
-  confirmacionesPendientes: Array<{ idConfirmacion: string; tipo: string; caduca: string | null }>;
+  /** Desde Director 1.3.6 cada confirmación llega DESCRITA (agente, tarea, efecto, consecuencias, riesgo y huella); antes solo id, tipo y caducidad. */
+  confirmacionesPendientes: Array<ConfirmacionDescrita>;
+  confirmacionesRecientes?: Array<ConfirmacionDescrita & { resueltaEn?: string | null; por?: string | null; metodo?: string | null }>;
   hoy: unknown;
   investigacionesProgramadas?: unknown;
   informesDeAgentes?: unknown;
@@ -321,14 +357,15 @@ export class TaiPuenteClient {
    * Usa SOLO el token de alcance `confirmar` (nunca el de `chat`, nunca en el navegador). El Director comprueba caducidad, un solo uso y
    * reautenticación reciente, aplica el cambio con su política y registra en el ledger QUIÉN confirmó.
    */
-  async decidirConfirmacion(idConfirmacion: string, decision: 'confirmar' | 'rechazar', administrador: { id: string; usuario: string; reautenticadoEn: string }): Promise<unknown> {
+  async decidirConfirmacion(idConfirmacion: string, decision: 'confirmar' | 'rechazar', administrador: AdministradorDecision, huella?: string): Promise<unknown> {
+    if (huella !== undefined && !/^sha256:[0-9a-f]{64}$/.test(huella)) throw new TaiPuenteError('solicitud_invalida', 400, 'Huella de la operación no válida.');
     if (!/^cf_[0-9A-HJKMNP-TV-Z]{26}$/i.test(String(idConfirmacion))) throw new TaiPuenteError('confirmacion_invalida', 400, 'Identificador de confirmación no válido.');
     if (decision !== 'confirmar' && decision !== 'rechazar') throw new TaiPuenteError('decision_invalida', 400, 'La decisión debe ser confirmar o rechazar.');
     if (!this.config.tokenConfirmar) throw new TaiPuenteError('confirmacion_no_configurada', 503, 'Las confirmaciones desde el panel no están configuradas en el servidor.');
     const r = await this.peticion<{ resultado?: unknown }>('/tai/v1/chat/confirmar', {
       method: 'POST',
       headers: { ...this.authHeaders(), authorization: `Bearer ${this.config.tokenConfirmar}` },
-      body: JSON.stringify({ idConfirmacion, decision, administrador }),
+      body: JSON.stringify({ idConfirmacion, decision, administrador, ...(huella !== undefined ? { huella } : {}) }),
     });
     return r?.resultado ?? null;
   }

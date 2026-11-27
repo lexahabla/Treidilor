@@ -77,9 +77,10 @@ const activeSection = 'director-ia';
             <p id="subtituloConversacion" class="director-ia-chat-sub">Conversación principal compartida con Telegram.</p>
           </div>
           <section id="confirmacionesPendientes" class="director-ia-confirmaciones" hidden aria-live="polite">
-            <h2>Confirmaciones pendientes</h2>
-            <p class="director-ia-chat-sub">Operaciones que el Director solo aplica con tu confirmación. Se te pedirá la contraseña.</p>
+            <h2>Aprobaciones del Director</h2>
+            <p class="director-ia-chat-sub">Operaciones que el Director solo hace con tu aprobación. Las consultas y propuestas se aprueban con tu sesión; las sensibles piden tu contraseña. Horas en hora de Madrid.</p>
             <div id="listaConfirmaciones"></div>
+            <details id="historialConfirmaciones" hidden><summary>Resueltas recientemente</summary><div></div></details>
           </section>
         </div>
 
@@ -472,7 +473,7 @@ const activeSection = 'director-ia';
         if (!iso) return '';
         try {
           const d = new Date(iso);
-          return d.toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+          return d.toLocaleString('es-ES', { timeZone: 'Europe/Madrid', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         } catch { return iso; }
       }
 
@@ -480,7 +481,7 @@ const activeSection = 'director-ia';
         if (!iso) return '';
         try {
           const d = new Date(iso);
-          return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          return d.toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' });
         } catch { return iso; }
       }
 
@@ -1275,34 +1276,86 @@ const activeSection = 'director-ia';
       })();
 
       // iniciar
-      // ── confirmaciones pendientes (opción A: reautenticación con contraseña; el token de confirmar NUNCA llega aquí) ──
+      // ── confirmaciones (Director 1.3.6): cada una DESCRITA; las ordinarias se aprueban con la sesión, las sensibles piden contraseña. El token de confirmar NUNCA llega aquí ──
+      const ZONA = 'Europe/Madrid';
+      /** Hora en Europe/Madrid con su etiqueta; si no es hoy, también el día. Nunca mezcla UTC ni cuenta atrás. */
+      function horaMadrid(iso) {
+        const d = new Date(iso); if (!iso || Number.isNaN(d.getTime())) return '—';
+        const dia = (x) => x.toLocaleDateString('es-ES', { timeZone: ZONA });
+        const h = d.toLocaleTimeString('es-ES', { timeZone: ZONA, hour: '2-digit', minute: '2-digit' });
+        return `${dia(d) === dia(new Date()) ? h : `${d.toLocaleDateString('es-ES', { timeZone: ZONA, day: 'numeric', month: 'short' })}, ${h}`} (hora de Madrid)`;
+      }
+      /** Cuenta atrás aparte de la hora absoluta. */
+      function quedan(iso) { const ms = Date.parse(iso || '') - Date.now(); if (!Number.isFinite(ms)) return ''; if (ms <= 0) return 'caducada'; const m = Math.ceil(ms / 60000); return m < 60 ? `quedan ${m} min` : `quedan ${Math.floor(m / 60)} h ${m % 60} min`; }
+      const ESTADO_CONF = { pendiente: 'pendiente', confirmada: 'aprobada', rechazada: 'rechazada', caducada: 'caducada', fallida: 'con error' };
+      const METODO_CONF = { sesion: 'con tu sesión', reautenticacion: 'con contraseña' };
+      const nodo = (tag, clase, texto) => { const e = document.createElement(tag); if (clase) e.className = clase; if (texto !== undefined) e.textContent = texto; return e; };
+      function describirFila(c, fila) {
+        fila.appendChild(nodo('div', 'director-ia-conf-titulo', `${c.titulo || String(c.tipo || '').replace(/_/g, ' ')}${c.estado && c.estado !== 'pendiente' ? ` · ${ESTADO_CONF[c.estado] || c.estado}` : ''}`));
+        for (const p of (Array.isArray(c.pasos) ? c.pasos : [])) {
+          const linea = nodo('div', 'director-ia-conf-paso');
+          linea.appendChild(nodo('strong', '', `Agente ${p.agente}${p.nombreAgente ? ` (${p.nombreAgente})` : ''}`));
+          linea.appendChild(document.createTextNode(` — ${p.descripcion || p.capacidad}`));
+          linea.appendChild(nodo('span', `director-ia-conf-insignia ${p.soloLectura ? 'es-lectura' : 'es-cambio'}`, p.soloLectura ? (p.clase === 'propuesta' ? 'Propone, no cambia nada' : 'Solo lectura') : (p.clase === 'sensible' ? 'Sensible' : 'Modifica datos')));
+          linea.appendChild(nodo('div', 'director-ia-conf-datos', `Datos: ${p.datos}${p.datosReales ? '' : ' — no son datos reales del negocio'}`));
+          fila.appendChild(linea);
+        }
+        const meta = [];
+        if (c.encargo && c.encargo.id) meta.push(`Encargo ${c.encargo.id}${c.encargo.texto ? `: «${String(c.encargo.texto).slice(0, 140)}»` : ''}`);
+        if (c.origen) meta.push(`Origen: ${c.origen}`);
+        if (c.clase) meta.push(`${c.gasto ? 'Puede consumir créditos' : 'Sin gasto'} · ${c.afectaProduccion ? 'afecta a producción' : 'sin cambios en producción'}`);
+        for (const m of meta) fila.appendChild(nodo('div', 'director-ia-conf-meta', m));
+        if (Array.isArray(c.consecuencias) && c.consecuencias.length) { const ul = nodo('ul', 'director-ia-conf-consecuencias'); for (const x of c.consecuencias) ul.appendChild(nodo('li', '', x)); fila.appendChild(ul); }
+      }
+      async function decidir(c, decision, clave, aviso, botones) {
+        const necesitaClave = !c.huella || c.confirmacion === 'reautenticacion';
+        if (decision === 'confirmar' && necesitaClave && !clave.value) { clave.hidden = false; aviso.hidden = false; aviso.textContent = 'Esta operación es sensible: escribe tu contraseña para aprobarla.'; clave.focus(); return; }
+        for (const b of botones) b.disabled = true;
+        try {
+          const cuerpo = { idConfirmacion: c.idConfirmacion, decision, ...(c.huella ? { huella: c.huella } : {}), ...(clave.value ? { password: clave.value } : {}) };
+          const r = await enviarConCabeceraSegura(`${API_BASE}/confirmar`, { method: 'POST', body: JSON.stringify(cuerpo) });
+          const jr = await leerJson(r); clave.value = '';
+          aviso.hidden = false;
+          if (jr.success) { aviso.textContent = decision === 'confirmar' ? 'Aprobado. El Director lo pone en marcha.' : 'Rechazado. No se hará.'; setTimeout(() => { cargarConfirmaciones(); cargarConversacionPrincipal(); }, 800); return; }
+          if (jr.code === 'reautenticacion_requerida') { clave.hidden = false; clave.focus(); aviso.textContent = jr.message || 'Escribe tu contraseña para aprobarla.'; return; }
+          if (jr.code === 'confirmacion_modificada') { aviso.textContent = 'La operación ha cambiado desde que la viste: se ha recargado, revísala de nuevo.'; setTimeout(cargarConfirmaciones, 800); return; }
+          aviso.textContent = jr.message || 'No se pudo completar.';
+        } catch (e) { aviso.hidden = false; aviso.textContent = e instanceof Error ? e.message : 'No se pudo completar.'; } finally { for (const b of botones) b.disabled = false; }
+      }
       async function cargarConfirmaciones() {
-        const sec = document.getElementById('confirmacionesPendientes'); const lista = document.getElementById('listaConfirmaciones');
+        const sec = document.getElementById('confirmacionesPendientes'); const lista = document.getElementById('listaConfirmaciones'); const hist = document.getElementById('historialConfirmaciones');
         if (!sec || !lista) return;
+        // no se repinta mientras el propietario escribe su contraseña
+        if (document.activeElement && document.activeElement.type === 'password' && lista.contains(document.activeElement)) return;
         try {
           const res = await fetch(`${API_BASE}/panel`, { headers: { 'cache-control': 'no-store' } }); const j = await leerJson(res);
           const pend = (j && j.success && Array.isArray(j.confirmacionesPendientes)) ? j.confirmacionesPendientes : [];
-          lista.textContent = ''; sec.hidden = pend.length === 0;
+          const recientes = (j && j.success && Array.isArray(j.confirmacionesRecientes)) ? j.confirmacionesRecientes : [];
+          lista.textContent = ''; sec.hidden = pend.length === 0 && recientes.length === 0;
           for (const c of pend) {
-            const fila = document.createElement('div'); fila.className = 'director-ia-confirmacion';
-            const t = document.createElement('div'); t.textContent = `${String(c.tipo || '').replace(/_/g, ' ')} · caduca ${c.caduca ? new Date(c.caduca).toLocaleTimeString('es-ES') : '—'}`; fila.appendChild(t);
-            const clave = document.createElement('input'); clave.type = 'password'; clave.placeholder = 'Tu contraseña'; clave.autocomplete = 'current-password'; fila.appendChild(clave);
-            const aviso = document.createElement('div'); aviso.className = 'director-ia-alerta'; aviso.hidden = true;
+            const fila = nodo('div', 'director-ia-confirmacion'); describirFila(c, fila);
+            fila.appendChild(nodo('div', 'director-ia-conf-caduca', `Caduca a las ${horaMadrid(c.caduca)} · ${quedan(c.caduca)}`));
+            const necesitaClave = !c.huella || c.confirmacion === 'reautenticacion';
+            fila.appendChild(nodo('div', 'director-ia-conf-meta', necesitaClave ? 'Aprobarla pide tu contraseña.' : 'Se aprueba con tu sesión, sin contraseña.'));
+            const clave = document.createElement('input'); clave.type = 'password'; clave.placeholder = 'Tu contraseña'; clave.autocomplete = 'current-password'; clave.hidden = !necesitaClave; fila.appendChild(clave);
+            const aviso = nodo('div', 'director-ia-alerta'); aviso.hidden = true; const botones = [];
             for (const decision of ['confirmar', 'rechazar']) {
-              const b = document.createElement('button'); b.type = 'button'; b.className = decision === 'confirmar' ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'; b.textContent = decision === 'confirmar' ? 'Confirmar' : 'Rechazar';
-              b.addEventListener('click', async () => {
-                if (!clave.value) { aviso.hidden = false; aviso.textContent = 'Escribe tu contraseña.'; return; }
-                b.disabled = true;
-                try {
-                  const r = await enviarConCabeceraSegura(`${API_BASE}/confirmar`, { method: 'POST', body: JSON.stringify({ idConfirmacion: c.idConfirmacion, decision, password: clave.value }) });
-                  const jr = await leerJson(r); clave.value = '';
-                  aviso.hidden = false; aviso.textContent = jr.success ? (decision === 'confirmar' ? 'Confirmado y aplicado por el Director.' : 'Rechazado.') : (jr.message || 'No se pudo completar.');
-                  if (jr.success) setTimeout(() => { cargarConfirmaciones(); cargarConversacionPrincipal(); }, 800);
-                } catch (e) { aviso.hidden = false; aviso.textContent = e instanceof Error ? e.message : 'No se pudo completar.'; } finally { b.disabled = false; }
-              });
-              fila.appendChild(b);
+              const b = nodo('button', decision === 'confirmar' ? 'btn-primary btn-sm' : 'btn-secondary btn-sm', decision === 'confirmar' ? 'Aprobar' : 'Rechazar'); b.type = 'button';
+              b.addEventListener('click', () => decidir(c, decision, clave, aviso, botones)); botones.push(b); fila.appendChild(b);
             }
             fila.appendChild(aviso); lista.appendChild(fila);
+          }
+          if (pend.length === 0) lista.appendChild(nodo('p', 'director-ia-chat-sub', 'No hay nada pendiente de tu aprobación.'));
+          if (hist) {
+            hist.hidden = recientes.length === 0; const cuerpo = hist.querySelector('div');
+            if (cuerpo) {
+              cuerpo.textContent = '';
+              for (const c of recientes) {
+                const fila = nodo('div', 'director-ia-confirmacion es-historial'); describirFila(c, fila);
+                fila.appendChild(nodo('div', 'director-ia-conf-meta', c.resueltaEn ? `${ESTADO_CONF[c.estado] || c.estado} a las ${horaMadrid(c.resueltaEn)}${c.por ? ` por ${c.por}` : ''}${c.metodo ? ` ${METODO_CONF[c.metodo] || ''}` : ''}` : `${ESTADO_CONF[c.estado] || c.estado} (caducó a las ${horaMadrid(c.caduca)})`));
+                cuerpo.appendChild(fila);
+              }
+            }
           }
         } catch { /* sin panel: la sección queda oculta */ }
       }
@@ -1442,6 +1495,18 @@ const activeSection = 'director-ia';
     .director-ia-confirmaciones { flex: 1 1 100%; max-height: min(28vh, 14rem); overflow-y: auto; overscroll-behavior: contain; }
     .director-ia-confirmaciones .director-ia-chat-sub { white-space: normal; }
     .director-ia-confirmaciones h2 { margin: 0.3rem 0 0.2rem; font-size: 0.9rem; }
+    .director-ia-confirmacion { border: 1px solid var(--di-borde); border-radius: 8px; padding: 0.4rem 0.55rem; margin: 0.3rem 0; font-size: 0.8rem; }
+    .director-ia-confirmacion.es-historial { opacity: 0.8; }
+    .director-ia-confirmacion input[type="password"] { margin: 0.25rem 0.4rem 0.25rem 0; }
+    .director-ia-confirmacion button { margin: 0.2rem 0.3rem 0 0; }
+    .director-ia-conf-titulo { font-weight: 600; }
+    .director-ia-conf-paso { margin: 0.2rem 0; }
+    .director-ia-conf-datos, .director-ia-conf-meta, .director-ia-conf-caduca { color: var(--di-suave); }
+    .director-ia-conf-caduca { font-weight: 600; }
+    .director-ia-conf-consecuencias { margin: 0.2rem 0 0.2rem 1rem; padding: 0; }
+    .director-ia-conf-insignia { display: inline-block; margin-left: 0.35rem; padding: 0 0.35rem; border-radius: 6px; font-size: 0.72rem; border: 1px solid var(--di-borde); }
+    .director-ia-conf-insignia.es-lectura { color: #86efac; }
+    .director-ia-conf-insignia.es-cambio { color: #fca5a5; }
     .director-ia-btn-barra { display: none; flex: none; background: transparent; border: 1px solid var(--di-borde); border-radius: 8px; padding: 0.25rem 0.6rem; color: inherit; cursor: pointer; font-size: 1rem; }
 
     .director-ia-hilo { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
