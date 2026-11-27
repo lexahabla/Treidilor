@@ -342,7 +342,7 @@ export class TaiPuenteClient {
    * `conversacion` es el id de la conversación principal (fuente de verdad).
    * `origen` solo admite 'texto' o 'voz'; confirmar es un control aparte (no en esta fase).
    */
-  async enviarMensaje(texto: string, { conversacion, id = idMensaje(), via = 'panel', origen = 'texto', confianza = 0, idioma = 'es' }: { conversacion: string; id?: string; via?: 'telegram' | 'panel'; origen?: 'texto' | 'voz'; confianza?: number; idioma?: string }): Promise<RespuestaDirector> {
+  async enviarMensaje(texto: string, { conversacion, id = idMensaje(), via = 'panel', origen = 'texto', confianza = 0, idioma = 'es', adjuntos, proyecto }: { conversacion: string; id?: string; via?: 'telegram' | 'panel'; origen?: 'texto' | 'voz'; confianza?: number; idioma?: string; adjuntos?: unknown[]; proyecto?: { nombre: string; instrucciones: string } | null }): Promise<RespuestaDirector> {
     if (!conversacion || typeof conversacion !== 'string') {
       throw new TaiPuenteError('conversacion_invalida', 400, 'Se requiere el identificador de la conversación del Director.');
     }
@@ -368,6 +368,8 @@ export class TaiPuenteClient {
         origen,
         confianza: typeof confianza === 'number' ? Math.max(0, Math.min(1, confianza)) : 0,
         idioma,
+        ...(adjuntos && adjuntos.length ? { adjuntos } : {}),
+        ...(proyecto ? { proyecto } : {}),
       }),
     });
 

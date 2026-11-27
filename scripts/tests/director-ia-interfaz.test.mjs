@@ -105,3 +105,22 @@ test('COMPATIBLE: sin la API de chats (servidor antiguo) abre la conversación p
   assert.ok(p.peticiones.some((x) => x.url.endsWith('/principal') && !x.init.method), 'pide la principal sin conversacionId');
   assert.equal(p.el('contenedorMensajes').children.filter((x) => String(x.className).includes('director-ia-burbuja')).length, 3);
 });
+
+test('ADJUNTOS en la interfaz: elegir archivos los sube al chat abierto, el mensaje los lleva, pegar una captura la adjunta y al cambiar de chat se descartan los no enviados', async () => {
+  let k = 0; const borrados = [];
+  const p = montar(async (url, init) => {
+    if (url.includes('/adjuntos') && init.method === 'POST') { const nombre = decodeURIComponent(init.headers['X-Nombre-Archivo']); return { success: true, adjunto: { id: `ad_${String(++k).padStart(16, '0')}`, nombre, tipo: nombre.endsWith('.png') ? 'png' : 'pdf', texto: { estado: nombre.endsWith('.png') ? 'no_disponible' : 'ok' } } }; }
+    if (url.includes('/adjuntos') && init.method === 'DELETE') { borrados.push(url); return { success: true }; }
+    if (url.includes('/chats')) return CHATS; if (init.method === 'POST') return respuesta('recibido'); return historia(0);
+  });
+  await tic(); await tic();
+  const input = p.el('inputArchivos'); input.files = [{ name: 'contrato.pdf', size: 2048, type: 'application/pdf' }]; input.dispatch('change'); await tic();
+  const subida = p.peticiones.find((x) => x.url.includes('/adjuntos') && x.init.method === 'POST'); assert.match(subida.url, /conversacionId=cv_aaaaaaaaaaaaaaaa/); assert.equal(subida.init.headers['X-Director-IA'], '1');
+  assert.match(textoDe(p.el('listaAdjuntos')), /contrato\.pdf/); assert.match(textoDe(p.el('listaAdjuntos')), /listo para leer/);
+  p.el('inputMensaje').value = ''; p.el('inputMensaje').dispatch('keydown', { key: 'Enter' }); await tic();
+  const env = JSON.parse(p.posts().at(-1).init.body); assert.deepEqual(env.adjuntos, ['ad_0000000000000001'], 'se puede enviar solo con adjuntos'); assert.equal(p.el('listaAdjuntos').hidden, true, 'tras enviar, la lista se vacía');
+  p.el('inputMensaje').dispatch('paste', { clipboardData: { files: [{ name: 'captura.png', size: 900, type: 'image/png' }] } }); await tic();
+  assert.match(textoDe(p.el('listaAdjuntos')), /captura\.png/); assert.match(textoDe(p.el('listaAdjuntos')), /sin análisis visual/, 'se dice que no hay análisis visual');
+  const buscar = (e, txt) => (e.className === 'director-ia-chat-abrir' && e.textContent.includes(txt) ? e : e.children.map((x) => buscar(x, txt)).find(Boolean)); buscar(p.el('listaChats'), 'Precios').click(); await tic();
+  assert.equal(borrados.length, 1, 'el adjunto sin enviar del chat anterior se borra'); assert.match(borrados[0], /id=ad_0000000000000002/);
+});

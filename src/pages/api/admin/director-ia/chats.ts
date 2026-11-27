@@ -17,6 +17,7 @@ import { findUserById } from '../../../../lib/userStore';
 import { sameOrigin } from '../../../../lib/alertsHttp';
 import { createRateLimiter } from '../../../../lib/rateLimit';
 import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
+import { purgarAdjuntosHuerfanos } from '../../../../lib/directorIaAdjuntos';
 import { ErrorChats, ID_CONVERSACION_RE, asegurarPrincipal, crearProyecto, eliminarProyecto, listarChats, modificarChat, modificarProyecto, registrarChat } from '../../../../lib/directorIaChats';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
@@ -42,7 +43,7 @@ export const GET: APIRoute = async ({ request }) => {
   // la conversación principal (Telegram) se registra/actualiza en cada carga; si el Director no responde, se lista lo que ya hay
   const c = cliente(); let aviso: string | null = null;
   if (c) { try { asegurarPrincipal(p.userId, await c.conversacionPrincipalDelDirector()); } catch (e) { if (e instanceof ErrorChats) return fallo(e); aviso = 'No se pudo consultar la conversación principal del Director.'; } }
-  try { return json({ success: true, ...vista(p.userId), aviso }); } catch (e) { return fallo(e); }
+  try { const v = vista(p.userId); try { purgarAdjuntosHuerfanos(p.userId, new Set(v.chats.map((c) => c.id))); } catch { /* limpieza diferida */ } return json({ success: true, ...v, aviso }); } catch (e) { return fallo(e); }
 };
 
 export const POST: APIRoute = async ({ request }) => {

@@ -87,6 +87,7 @@ const activeSection = 'director-ia';
 
         <button type="button" id="btnIrAlFinal" class="director-ia-ir-final" hidden>↓ Mensajes nuevos</button>
         <form id="formMensaje" class="director-ia-form">
+          <div id="listaAdjuntos" class="director-ia-adjuntos" aria-label="Archivos adjuntos" hidden></div>
           <div class="director-ia-input-wrap">
             <textarea
               id="inputMensaje"
@@ -115,7 +116,8 @@ const activeSection = 'director-ia';
                 <rect x="9" y="9" width="6" height="6"></rect>
               </svg>
             </button>
-            <button type="button" id="btnAdjuntar" class="btn-secondary btn-sm" title="Opciones de la conversación">⋮</button>
+            <button type="button" id="btnAdjuntar" class="btn-secondary btn-sm" title="Adjuntar archivos (también puedes arrastrarlos o pegar capturas)" aria-label="Adjuntar archivos">📎</button>
+            <input type="file" id="inputArchivos" multiple hidden accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.xlsx,.csv,.txt,.md,.json" />
             <button type="submit" id="btnEnviar" class="btn-primary btn-sm" disabled>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -281,6 +283,15 @@ const activeSection = 'director-ia';
           extras.innerHTML = renderizarExtrasDirector(m);
           div.appendChild(extras);
         }
+        if (Array.isArray(m.adjuntos) && m.adjuntos.length) {
+          const caja = document.createElement('div'); caja.className = 'director-ia-burbuja-adjuntos';
+          for (const a of m.adjuntos) {
+            if (!/^ad_[0-9a-f]{16}$/.test(String(a.id))) continue; const url = `${API_BASE}/adjuntos?id=${encodeURIComponent(a.id)}`;
+            if (['png', 'jpg', 'webp'].includes(a.tipo)) { const im = document.createElement('img'); im.src = url; im.alt = a.nombre || 'imagen adjunta'; im.loading = 'lazy'; caja.appendChild(im); }
+            else { const ln = document.createElement('a'); ln.href = url; ln.textContent = '📄 ' + (a.nombre || 'documento'); ln.setAttribute('download', a.nombre || 'documento'); caja.appendChild(ln); }
+          }
+          div.appendChild(caja);
+        }
         const acc = document.createElement('div'); acc.className = 'director-ia-burbuja-acciones';
         const bCopiar = document.createElement('button'); bCopiar.type = 'button'; bCopiar.textContent = 'Copiar'; bCopiar.setAttribute('aria-label', 'Copiar el mensaje');
         bCopiar.addEventListener('click', () => copiarTexto(m.contenido ?? '', bCopiar));
@@ -382,8 +393,9 @@ const activeSection = 'director-ia';
       async function enviarMensaje(e) {
         e.preventDefault();
         if (enVuelo) return;
+        const listos = Adjuntos.listos(); if (Adjuntos.subiendo()) { mostrarAlerta('Espera a que terminen de subirse los archivos.'); return; }
         const texto = els.input.value.trim();
-        if (!texto) return;
+        if (!texto && !listos.length) return;
         enVuelo = true;
         els.btnEnviar.disabled = true;
         els.input.disabled = true;
@@ -391,7 +403,7 @@ const activeSection = 'director-ia';
 
         // mensaje de usuario optimista
         const ahora = new Date().toISOString();
-        const nodoUsuario = crearNodoMensaje({ rol: 'usuario', contenido: texto, en: ahora });
+        const nodoUsuario = crearNodoMensaje({ rol: 'usuario', contenido: texto || 'Te adjunto estos documentos.', en: ahora, adjuntos: listos });
         els.contenedor.appendChild(nodoUsuario);
         els.input.value = ''; ajustarAltura();
         scrollFinal(true);
@@ -400,10 +412,11 @@ const activeSection = 'director-ia';
         try {
           const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), {
             method: 'POST',
-            body: JSON.stringify({ texto }),
+            body: JSON.stringify({ texto, ...(listos.length ? { adjuntos: listos.map((a) => a.id) } : {}) }),
           });
           const j = await leerJson(res);
           if (!j.success) throw new Error(j.message || 'Error del servidor');
+          Adjuntos.vaciar(false);
 
           const nodoDirector = crearNodoMensaje({
             rol: 'director',
@@ -492,15 +505,67 @@ const activeSection = 'director-ia';
           ajustarAltura();
         });
         els.input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!enVuelo && els.input.value.trim()) enviarMensaje({ preventDefault() {} }); }
+          if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!enVuelo && (els.input.value.trim() || Adjuntos.listos().length)) enviarMensaje({ preventDefault() {} }); }
         });
       }
 
-      if (els.btnAdjuntar) {
-        els.btnAdjuntar.addEventListener('click', () => {
-          mostrarAlerta('Funciones adicionales pendientes (adjuntar contexto de ficha/categoría).');
+      // ── ADJUNTOS: selector, arrastrar y soltar y pegar capturas; se suben al chat abierto (nunca al catálogo) y se envían con el mensaje ──
+      const Adjuntos = (function () {
+        const MAX = 8; const MAX_BYTES = 10 * 1024 * 1024; let items = []; let n = 0;
+        const caja = document.getElementById('listaAdjuntos'); const input = document.getElementById('inputArchivos');
+        const tam = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+        const textoEstado = (it) => it.estado === 'subiendo' ? 'subiendo…' : it.estado === 'error' ? (it.motivo || 'error') : (['png', 'jpg', 'webp'].includes(it.tipo) ? 'imagen (sin análisis visual)' : it.texto && it.texto.estado === 'ok' ? 'listo para leer' : it.texto && it.texto.estado === 'truncado' ? 'listo (texto recortado)' : (it.texto && it.texto.motivo) || 'sin texto legible');
+        function pintar() {
+          if (!caja) return; caja.textContent = ''; caja.hidden = !items.length;
+          for (const it of items) {
+            const f = document.createElement('div'); f.className = 'director-ia-adjunto' + (it.estado === 'error' ? ' director-ia-adjunto--error' : ''); f.setAttribute('role', 'group'); f.setAttribute('aria-label', `Adjunto ${it.nombre}`);
+            if (it.vista) { const im = document.createElement('img'); im.src = it.vista; im.alt = ''; f.appendChild(im); }
+            const t = document.createElement('div'); const nm = document.createElement('div'); nm.className = 'nombre'; nm.textContent = it.nombre; nm.title = it.nombre;
+            const es = document.createElement('div'); es.className = 'estado'; es.textContent = `${tam(it.bytes)} · ${textoEstado(it)}`; t.appendChild(nm); t.appendChild(es); f.appendChild(t);
+            const q = document.createElement('button'); q.type = 'button'; q.textContent = '✕'; q.setAttribute('aria-label', `Quitar ${it.nombre}`); q.addEventListener('click', () => quitar(it)); f.appendChild(q);
+            caja.appendChild(f);
+          }
+        }
+        async function subir(it) {
+          const chat = conversacionIdConfigurada; if (!chat) { it.estado = 'error'; it.motivo = 'abre un chat primero'; pintar(); return; }
+          try {
+            const r = await fetch(`${API_BASE}/adjuntos?conversacionId=${encodeURIComponent(chat)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Director-IA': '1', 'X-Nombre-Archivo': encodeURIComponent(it.nombre) }, body: it.archivo });
+            const j = await leerJson(r); if (!j.success) throw new Error(j.message || 'no se pudo subir');
+            Object.assign(it, { estado: 'listo', id: j.adjunto.id, tipo: j.adjunto.tipo, texto: j.adjunto.texto, chat });
+          } catch (e) { it.estado = 'error'; it.motivo = e instanceof Error ? e.message : 'no se pudo subir'; }
+          pintar();
+        }
+        function anadir(lista) {
+          const archivos = Array.from(lista || []); if (!archivos.length) return;
+          for (const a of archivos) {
+            if (items.length >= MAX) { mostrarAlerta(`Hasta ${MAX} archivos por mensaje.`); break; }
+            const it = { clave: ++n, archivo: a, nombre: a.name || `captura-${n}.png`, bytes: a.size || 0, estado: 'subiendo', vista: null };
+            if (it.bytes > MAX_BYTES) { it.estado = 'error'; it.motivo = 'supera 10 MB'; }
+            if (/^image\/(png|jpeg|webp)$/.test(a.type || '') && window.URL && URL.createObjectURL) { try { it.vista = URL.createObjectURL(a); } catch { it.vista = null; } }
+            items.push(it); if (it.estado === 'subiendo') subir(it);
+          }
+          pintar();
+        }
+        async function quitar(it) {
+          items = items.filter((x) => x !== it); if (it.vista && window.URL && URL.revokeObjectURL) URL.revokeObjectURL(it.vista); pintar();
+          if (it.id) { try { await enviarConCabeceraSegura(`${API_BASE}/adjuntos?id=${encodeURIComponent(it.id)}`, { method: 'DELETE' }); } catch { /* se limpiará con el chat */ } }
+        }
+        /** Tras enviar (false) se olvidan las fichas; al cambiar de chat (true) además se borran del servidor los no enviados. */
+        function vaciar(borrar) { const antes = items; items = []; pintar(); for (const it of antes) { if (it.vista && window.URL && URL.revokeObjectURL) URL.revokeObjectURL(it.vista); if (borrar && it.id) enviarConCabeceraSegura(`${API_BASE}/adjuntos?id=${encodeURIComponent(it.id)}`, { method: 'DELETE' }).catch(() => {}); } }
+        if (els.btnAdjuntar && input) els.btnAdjuntar.addEventListener('click', () => input.click());
+        if (input) input.addEventListener('change', () => { anadir(input.files); input.value = ''; });
+        const zona = document.querySelector ? document.querySelector('.director-ia-chat') : null;
+        if (zona && zona.addEventListener) {
+          zona.addEventListener('dragover', (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); zona.classList.add('soltando'); } });
+          zona.addEventListener('dragleave', () => zona.classList.remove('soltando'));
+          zona.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) { e.preventDefault(); zona.classList.remove('soltando'); anadir(e.dataTransfer.files); } });
+        }
+        if (els.input) els.input.addEventListener('paste', (e) => {
+          const fs = e.clipboardData && e.clipboardData.files ? Array.from(e.clipboardData.files).filter((f) => /^image\//.test(f.type || '')) : [];
+          if (fs.length) { e.preventDefault(); anadir(fs.map((f, i) => (f.name && f.name !== 'image.png' ? f : new File([f], `captura-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}-${i + 1}.png`, { type: f.type })))); }
         });
-      }
+        return { anadir, vaciar, listos: () => items.filter((x) => x.estado === 'listo').map(({ id, nombre, tipo }) => ({ id, nombre, tipo })), subiendo: () => items.some((x) => x.estado === 'subiendo'), _items: () => items };
+      })();
 
       // ── voz: sesión continua tipo chat (Web Speech API del navegador, gratuita, sin servicios de pago) ──
       const Voz = (function () {
@@ -1103,6 +1168,7 @@ const activeSection = 'director-ia';
         function seleccionar(id) {
           if (!id) return;
           if (typeof VozDirector !== 'undefined' && VozDirector.activa && VozDirector.activa()) VozDirector.finalizar(); // la voz se queda en el chat donde empezó
+          if (actualId && actualId !== id && typeof Adjuntos !== 'undefined') Adjuntos.vaciar(true);
           actualId = id; guardarConversacionId(id); abiertoMenu = null; pintar();
           if (barra && barra.classList) { barra.classList.remove('abierta'); if (btnBarra) btnBarra.setAttribute('aria-expanded', 'false'); }
           const c = actual(); if (els.titulo && c) els.titulo.textContent = c.titulo;
@@ -1496,6 +1562,17 @@ const activeSection = 'director-ia';
       .director-ia-sidebar { position: fixed; inset: 0 auto 0 0; width: min(85vw, 320px); z-index: 40; transform: translateX(-105%); transition: transform 0.2s ease; overflow-y: auto; }
       .director-ia-sidebar.abierta { transform: none; box-shadow: 0 0 24px rgba(0, 0, 0, 0.25); }
     }
+    .director-ia-adjuntos { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.3rem 0 0.5rem; }
+    .director-ia-adjunto { display: flex; align-items: center; gap: 0.4rem; border: 1px solid var(--color-borde, #d0d5dd); border-radius: 10px; padding: 0.25rem 0.45rem; font-size: 0.78rem; max-width: 18rem; }
+    .director-ia-adjunto img { width: 38px; height: 38px; object-fit: cover; border-radius: 6px; }
+    .director-ia-adjunto .nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 11rem; }
+    .director-ia-adjunto .estado { opacity: 0.7; }
+    .director-ia-adjunto--error { border-color: #d92d20; }
+    .director-ia-adjunto button { background: transparent; border: 0; color: inherit; cursor: pointer; font-size: 0.9rem; }
+    .director-ia-burbuja-adjuntos { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+    .director-ia-burbuja-adjuntos img { max-width: 220px; max-height: 160px; border-radius: 8px; display: block; }
+    .director-ia-burbuja-adjuntos a { font-size: 0.8rem; }
+    .director-ia-chat.soltando { outline: 2px dashed currentColor; outline-offset: -6px; }
     .director-ia-modo-voz { font-size: 0.8rem; padding: 0.25rem 0.4rem; border-radius: 6px; border: 1px solid var(--color-borde, #d0d5dd); background: transparent; color: inherit; max-width: 11rem; }
     .director-ia-estado-voz {
       display: flex;

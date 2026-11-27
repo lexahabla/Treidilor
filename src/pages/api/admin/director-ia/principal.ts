@@ -27,7 +27,8 @@ import { findUserById } from '../../../../lib/userStore';
 import { sameOrigin } from '../../../../lib/alertsHttp';
 import { listarConversaciones, guardarConversacionPrincipal } from '../../../../lib/directorIaStore';
 import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
-import { chatPermitido, tocarChat, asegurarPrincipal } from '../../../../lib/directorIaChats';
+import { chatPermitido, tocarChat, asegurarPrincipal, listarChats } from '../../../../lib/directorIaChats';
+import { obtenerAdjunto, paraDirector, marcarEnviados, LIMITES_ADJUNTOS } from '../../../../lib/directorIaAdjuntos';
 
 const MAX_TEXTO = 2000;
 /** Una frase hablada: hasta 60 s de audio comprimido del navegador (en base64). */
@@ -149,7 +150,7 @@ export const GET: APIRoute = async ({ request }) => {
     const en = turno.en || null;
     const partes: Array<any> = [];
     if (typeof turno.texto === 'string' && turno.texto.trim()) {
-      partes.push({ rol: 'usuario', contenido: turno.texto, en, via: turno.via ?? null, origen: turno.origen ?? null });
+      partes.push({ rol: 'usuario', contenido: turno.texto, en, via: turno.via ?? null, origen: turno.origen ?? null, ...(Array.isArray(turno.adjuntos) ? { adjuntos: turno.adjuntos.map((a: any) => ({ id: String(a.id ?? ''), nombre: String(a.nombre ?? ''), tipo: String(a.tipo ?? '') })) } : {}) });
     }
     const resp = turno.respuesta || {};
     if (typeof resp.mensaje === 'string' && resp.mensaje.trim()) {
@@ -193,14 +194,17 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Validar la entrada ANTES de tocar el Director.
-  let body: { texto?: unknown; origen?: unknown; confianza?: unknown; audio?: unknown; mime?: unknown; segundos?: unknown };
+  let body: { texto?: unknown; origen?: unknown; confianza?: unknown; audio?: unknown; mime?: unknown; segundos?: unknown; adjuntos?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return json({ success: false, code: 'json_no_valido', message: 'Cuerpo JSON no válido.' }, 400);
   }
   if (body.audio !== undefined) return turnoHablado(request, p.user.id, body);
-  const texto = typeof body.texto === 'string' ? body.texto.trim() : '';
+  const idsAdjuntos = Array.isArray(body.adjuntos) ? body.adjuntos.filter((x): x is string => typeof x === 'string') : [];
+  if (Array.isArray(body.adjuntos) && (idsAdjuntos.length !== body.adjuntos.length || idsAdjuntos.length > LIMITES_ADJUNTOS.porMensaje)) return json({ success: false, code: 'adjuntos_no_validos', message: `Hasta ${LIMITES_ADJUNTOS.porMensaje} adjuntos por mensaje.` }, 400);
+  let texto = typeof body.texto === 'string' ? body.texto.trim() : '';
+  if (!texto && idsAdjuntos.length) texto = 'Te adjunto estos documentos.';
   if (!texto) return json({ success: false, code: 'texto_vacio', message: 'El mensaje no puede ir vacío.' }, 400);
   if (texto.length > MAX_TEXTO) {
     return json({ success: false, code: 'texto_demasiado_largo', message: `El mensaje supera los ${MAX_TEXTO} caracteres.` }, 400);
@@ -214,16 +218,30 @@ export const POST: APIRoute = async ({ request }) => {
 
   let principal: { conversacion: string; principal: boolean };
   let respuesta: Awaited<ReturnType<TaiPuenteClient['enviarMensaje']>>;
+  let avisoVersion = false;
   try {
     const r = await resolverConversacion(cliente, p.user.id, request);
     principal = r.principal;
+    // adjuntos del chat (solo del propietario y de ESTA conversación) e instrucciones del proyecto del chat
+    const adjuntos = []; for (const id of idsAdjuntos) { const a = obtenerAdjunto(p.user.id, id, principal.conversacion); if (!a) return json({ success: false, code: 'adjunto_no_autorizado', message: 'Un adjunto no existe o no pertenece a este chat.' }, 403); adjuntos.push(a); }
+    const chatMeta = listarChats(p.user.id); const ch = chatMeta.chats.find((c) => c.id === principal.conversacion); const pr = ch?.proyectoId ? chatMeta.proyectos.find((x) => x.id === ch.proyectoId) : null;
+    const extra = { adjuntos: adjuntos.map(paraDirector), proyecto: pr ? { nombre: pr.nombre, instrucciones: pr.instrucciones } : null };
+    const enviar = async (conv: string) => {
+      try { return await cliente.enviarMensaje(texto, { conversacion: conv, origen, confianza, ...extra }); }
+      catch (e) {
+        // Director anterior a 1.3.4: no admite adjuntos ni proyecto → se envía el texto y se avisa (no se pierde el mensaje)
+        if (e instanceof TaiPuenteError && e.status === 400 && /Campos no permitidos/.test(e.message) && (extra.adjuntos.length || extra.proyecto)) { avisoVersion = true; return cliente.enviarMensaje(texto, { conversacion: conv, origen, confianza }); }
+        throw e;
+      }
+    };
     try {
-      respuesta = await cliente.enviarMensaje(texto, { conversacion: principal.conversacion, origen, confianza });
+      respuesta = await enviar(principal.conversacion);
     } catch (e) {
       if (!(r.deCache && esConversacionDesconocida(e))) throw e;
       principal = await sustituirConversacionCaducada(cliente, p.user.id);
-      respuesta = await cliente.enviarMensaje(texto, { conversacion: principal.conversacion, origen, confianza });
+      respuesta = await enviar(principal.conversacion);
     }
+    if (!avisoVersion && adjuntos.length) marcarEnviados(adjuntos.map((a) => a.id));
   } catch (e) {
     return errorDePuente(e);
   }
@@ -247,7 +265,7 @@ export const POST: APIRoute = async ({ request }) => {
       alternativas: respuesta.alternativas,
       consecuencias: respuesta.consecuencias,
       limitaciones: respuesta.limitaciones,
-      avisos: respuesta.avisos,
+      avisos: avisoVersion ? [...(respuesta.avisos ?? []), 'El Director instalado todavía no lee adjuntos ni instrucciones de proyecto (llega con la versión 1.3.4): he enviado solo tu texto.'] : respuesta.avisos,
       controles: respuesta.controles,
       registrada: respuesta.registrada,
       resumenHablado: respuesta.resumenHablado,
