@@ -72,8 +72,10 @@ const activeSection = 'director-ia';
       <section class="director-ia-chat" aria-label="Chat">
         <div class="director-ia-chat-header">
           <button type="button" id="btnBarraChats" class="director-ia-btn-barra" aria-controls="barraChats" aria-expanded="false" title="Chats">☰</button>
-          <h1 id="tituloConversacion">Director IA</h1>
-          <p id="subtituloConversacion" class="director-ia-chat-sub">Conversación principal compartida con Telegram.</p>
+          <div class="director-ia-chat-titulos">
+            <h1 id="tituloConversacion">Director IA</h1>
+            <p id="subtituloConversacion" class="director-ia-chat-sub">Conversación principal compartida con Telegram.</p>
+          </div>
           <section id="confirmacionesPendientes" class="director-ia-confirmaciones" hidden aria-live="polite">
             <h2>Confirmaciones pendientes</h2>
             <p class="director-ia-chat-sub">Operaciones que el Director solo aplica con tu confirmación. Se te pedirá la contraseña.</p>
@@ -81,11 +83,13 @@ const activeSection = 'director-ia';
           </section>
         </div>
 
-        <div class="director-ia-mensajes" id="contenedorMensajes" role="log" aria-live="polite">
-          <div class="director-ia-vacio-centrado">Selecciona o crea una conversación para empezar a hablar con el Director.</div>
+        <!-- Solo el hilo se desplaza: la cabecera de arriba y el editor de abajo quedan siempre a la vista. -->
+        <div class="director-ia-hilo">
+          <div class="director-ia-mensajes" id="contenedorMensajes" role="log" aria-live="polite">
+            <div class="director-ia-vacio-centrado">Selecciona o crea una conversación para empezar a hablar con el Director.</div>
+          </div>
+          <button type="button" id="btnIrAlFinal" class="director-ia-ir-final" hidden>↓ Mensajes nuevos</button>
         </div>
-
-        <button type="button" id="btnIrAlFinal" class="director-ia-ir-final" hidden>↓ Mensajes nuevos</button>
         <form id="formMensaje" class="director-ia-form">
           <div id="listaAdjuntos" class="director-ia-adjuntos" aria-label="Archivos adjuntos" hidden></div>
           <div class="director-ia-input-wrap">
@@ -227,7 +231,12 @@ const activeSection = 'director-ia';
       // ── historial: carga progresiva y desplazamiento que respeta la posición del lector ──
       const POR_BLOQUE = 40;
       let mensajesActuales = []; let mostradosDesde = 0;
-      function cercaDelFinal() { const c = els.contenedor; return !c || (c.scrollHeight - c.scrollTop - c.clientHeight) < 140; }
+      // pegadoAlFinal: lo actualiza el desplazamiento real; mantiene el final a la vista cuando cambia el TAMAÑO del hilo (teclado, campo que crece, adjuntos).
+      // siguiendoHasta: mientras dura el desplazamiento suave hacia lo nuevo, sigues «al final» aunque la animación aún no haya llegado.
+      let pegadoAlFinal = true; let siguiendoHasta = 0;
+      // Una burbuja que cambia de alto después de pintarse (fuente que termina de cargar, imagen adjunta) no te despega del final.
+      const vigiaBurbujas = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { const c = els.contenedor; if (c && pegadoAlFinal && Date.now() >= siguiendoHasta) c.scrollTop = c.scrollHeight; }) : null;
+      function cercaDelFinal() { const c = els.contenedor; return !c || (c.scrollHeight - c.scrollTop - c.clientHeight) < 140 || Date.now() < siguiendoHasta; }
       function botonAnteriores() {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-secondary btn-sm director-ia-cargar-anteriores';
         b.textContent = `Ver ${Math.min(POR_BLOQUE, mostradosDesde)} mensajes anteriores`;
@@ -261,6 +270,7 @@ const activeSection = 'director-ia';
       function crearNodoMensaje(m) {
         const div = document.createElement('div');
         div.className = 'director-ia-burbuja director-ia-burbuja--' + m.rol;
+        if (vigiaBurbujas) vigiaBurbujas.observe(div);
         const hora = m.en ? fechaHora(m.en) : '';
         const meta = [];
         if (m.rol === 'director') {
@@ -435,8 +445,7 @@ const activeSection = 'director-ia';
             registrada: j.respuesta.registrada,
             generadoEn: j.respuesta.generadoEn,
           });
-          els.contenedor.appendChild(nodoDirector);
-          scrollFinal();
+          alHilo(nodoDirector);
         } catch (err) {
           mostrarAlerta(err instanceof Error ? err.message : 'No se pudo enviar el mensaje.');
           // no se pierde lo escrito: el mensaje queda marcado y se puede reintentar (o se recupera en el campo de escritura)
@@ -484,20 +493,67 @@ const activeSection = 'director-ia';
           .replace(/'/g, '&#039;');
       }
 
-      /** Baja al final solo si se fuerza (lo que acabas de enviar, cambio de chat) o si ya estabas cerca del final; si no, avisa. */
-      function scrollFinal(forzar = false) {
-        if (!els.contenedor) return;
+      /**
+       * Baja al final solo si se fuerza (lo que acabas de enviar, cambio de chat) o si estabas al final ANTES de que llegara lo nuevo
+       * (`estaba`, medido antes de añadirlo: una respuesta larga ya no te «despega»); si estabas leyendo más arriba, no te mueve y avisa.
+       * Lo forzado es inmediato; acompañar una respuesta nueva, suave.
+       */
+      function scrollFinal(forzar = false, estaba = cercaDelFinal()) {
+        const c = els.contenedor; if (!c) return;
         const btn = document.getElementById('btnIrAlFinal');
-        if (forzar || cercaDelFinal()) { els.contenedor.scrollTop = els.contenedor.scrollHeight; if (btn) btn.hidden = true; }
-        else if (btn) btn.hidden = false;
+        if (forzar || estaba) {
+          pegadoAlFinal = true;
+          if (!forzar && typeof c.scrollTo === 'function') { siguiendoHasta = Date.now() + 900; c.scrollTo({ top: c.scrollHeight, behavior: 'smooth' }); } else c.scrollTop = c.scrollHeight;
+          if (btn) btn.hidden = true;
+        } else if (btn) btn.hidden = false;
       }
-      function ajustarAltura() { const t = els.input; if (!t || !t.style) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight || 0, 192) + 'px'; }
+      /** Añade mensajes al hilo respetando dónde estabas leyendo. */
+      function alHilo(...nodos) { const estaba = cercaDelFinal(); for (const n of nodos) if (n) els.contenedor.appendChild(n); scrollFinal(false, estaba); }
+      function mantenerFinal(fn) { const c = els.contenedor; const estaba = pegadoAlFinal; fn(); if (c && estaba) c.scrollTop = c.scrollHeight; }
+      /** El campo crece con lo escrito hasta un tope (≤ 192 px y ≤ 30 % de la altura visible); a partir de ahí, scroll interno. */
+      function ajustarAltura() {
+        const t = els.input; if (!t || !t.style) return;
+        const visible = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 800;
+        mantenerFinal(() => { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight || 0, 192, Math.max(64, Math.round(visible * 0.3))) + 'px'; });
+      }
 
       // ── eventos ──
       if (els.form) els.form.addEventListener('submit', enviarMensaje);
       const btnFinal = document.getElementById('btnIrAlFinal');
-      if (btnFinal) btnFinal.addEventListener('click', () => scrollFinal(true));
-      if (els.contenedor && els.contenedor.addEventListener) els.contenedor.addEventListener('scroll', () => { if (btnFinal && cercaDelFinal()) btnFinal.hidden = true; });
+      if (btnFinal) btnFinal.addEventListener('click', () => { const c = els.contenedor; pegadoAlFinal = true; if (c && typeof c.scrollTo === 'function') { siguiendoHasta = Date.now() + 900; c.scrollTo({ top: c.scrollHeight, behavior: 'smooth' }); } else scrollFinal(true); btnFinal.hidden = true; });
+      if (els.contenedor && els.contenedor.addEventListener) els.contenedor.addEventListener('scroll', () => { pegadoAlFinal = cercaDelFinal(); if (btnFinal && pegadoAlFinal) btnFinal.hidden = true; }, { passive: true });
+
+      // ── DISTRIBUCIÓN tipo aplicación: la página no se desplaza; el área del chat ocupa exactamente la altura VISIBLE que queda bajo la
+      // cabecera del sitio (teclado virtual, giro, zoom). Con el teclado abierto o una pantalla muy baja se recogen
+      // la cabecera del sitio y el menú del panel, para que el editor nunca quede tapado ni fuera de la vista.
+      (function distribucion() {
+        const raiz = document.documentElement; const pagina = document.querySelector ? document.querySelector('.director-ia-page') : null;
+        if (!pagina || !raiz || !raiz.classList || !pagina.getBoundingClientRect || !pagina.style || !window.addEventListener) return;
+        raiz.classList.add('director-ia-app');
+        const vv = window.visualViewport || null; let pedido = false;
+        function medir() {
+          pedido = false;
+          const visible = vv ? vv.height : window.innerHeight;
+          mantenerFinal(() => {
+            raiz.classList.toggle('director-ia-compacto', visible < 560);
+            // sin teclado, la ventana debe estar arriba (p. ej. tras restaurar una posición antigua)
+            if (window.scrollY && visible >= window.innerHeight * 0.9 && window.scrollTo) window.scrollTo(0, 0);
+            const fondo = vv ? vv.offsetTop + vv.height : window.innerHeight;
+            pagina.style.setProperty('--di-alto', Math.max(200, Math.floor(fondo - pagina.getBoundingClientRect().top)) + 'px');
+          });
+        }
+        const pedir = () => { if (pedido) return; pedido = true; (window.requestAnimationFrame || setTimeout)(medir); };
+        medir();
+        window.addEventListener('resize', pedir); window.addEventListener('orientationchange', pedir); window.addEventListener('load', pedir);
+        if (vv && vv.addEventListener) { vv.addEventListener('resize', pedir); vv.addEventListener('scroll', pedir); }
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(pedir).catch(() => {});
+        if (typeof ResizeObserver === 'function') {
+          const ro = new ResizeObserver(pedir); for (const s of ['.site-header', '.admin-header', '.admin-section-nav']) { const e = document.querySelector(s); if (e) ro.observe(e); }
+          // el editor cambia de alto (campo que crece, adjuntos, estado de voz): si estabas al final, sigues viéndolo
+          const ro2 = new ResizeObserver(() => { const c = els.contenedor; if (c && pegadoAlFinal) c.scrollTop = c.scrollHeight; });
+          if (els.form) ro2.observe(els.form); if (els.contenedor) ro2.observe(els.contenedor);
+        }
+      })();
       if (els.input) {
         els.input.addEventListener('input', () => {
           els.btnEnviar.disabled = !els.input.value.trim() || enVuelo;
@@ -758,8 +814,7 @@ const activeSection = 'director-ia';
 
           const ahora = new Date().toISOString();
           const nodoUsuario = crearNodoMensaje({ rol: 'usuario', contenido: texto, en: ahora });
-          els.contenedor.appendChild(nodoUsuario);
-          scrollFinal();
+          alHilo(nodoUsuario);
 
           try {
             const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), {
@@ -786,8 +841,7 @@ const activeSection = 'director-ia';
               registrada: j.respuesta.registrada,
               generadoEn: j.respuesta.generadoEn,
             });
-            els.contenedor.appendChild(nodoDirector);
-            scrollFinal();
+            alHilo(nodoDirector);
 
             // Una respuesta que llega después de finalizar la sesión se muestra, pero no se lee en voz
             // alta ni reactiva la escucha.
@@ -975,12 +1029,13 @@ const activeSection = 'director-ia';
             return;
           }
           const v = j.voz || {};
+          const estabaAlFinal = cercaDelFinal();
           if (v.transcripcion) els.contenedor.appendChild(crearNodoMensaje({ rol: 'usuario', contenido: v.transcripcion, en: new Date().toISOString() }));
           if (j.respuesta) {
             const a = j.respuesta;
             els.contenedor.appendChild(crearNodoMensaje({ rol: 'director', contenido: a.textoClaro, en: a.generadoEn, estado: a.estado, categoria: a.categoria, tipoIntencion: a.tipoIntencion, naturalezaDatos: a.naturalezaDatos, fuentes: a.fuentes, tareas: a.tareas, solicitudesAutorizacion: a.solicitudesAutorizacion, limitaciones: a.limitaciones, avisos: a.avisos, controles: a.controles, registrada: a.registrada, generadoEn: a.generadoEn }));
           }
-          scrollFinal();
+          scrollFinal(false, estabaAlFinal);
           const met = { en: new Date().toISOString(), esperaFinMs, servidorMs: Date.now() - t0, servidor: j.voz && j.voz.medidas ? j.voz.medidas : null, conVozDirector: Boolean(v.audio), estado: v.estado || null };
           metricas.push(met); if (metricas.length > 50) metricas.shift(); try { console.info('[voz-director]', JSON.stringify(met)); } catch { /* sin consola */ }
           if (mio !== turno || !sesion) return; // la sesión se cerró o llegó otro turno: se muestra, no se lee
@@ -1207,6 +1262,11 @@ const activeSection = 'director-ia';
         const bn = document.getElementById('btnNuevoChat'); if (bn) bn.addEventListener('click', () => nuevo());
         const bp = document.getElementById('btnNuevoProyecto'); if (bp) bp.addEventListener('click', () => nuevoProyecto());
         if (btnBarra && barra) btnBarra.addEventListener('click', () => { const abierta = barra.classList.toggle('abierta'); btnBarra.setAttribute('aria-expanded', String(abierta)); });
+        // en móvil la barra es un panel superpuesto: se cierra al tocar fuera o con Escape
+        const cerrarBarra = () => { if (barra && barra.classList && barra.classList.contains('abierta')) { barra.classList.remove('abierta'); if (btnBarra) btnBarra.setAttribute('aria-expanded', 'false'); } };
+        const zonaChat = document.querySelector ? document.querySelector('.director-ia-chat') : null;
+        if (zonaChat && zonaChat.addEventListener) zonaChat.addEventListener('click', (e) => { if (btnBarra && e.target && btnBarra.contains && btnBarra.contains(e.target)) return; cerrarBarra(); });
+        if (document.addEventListener) document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarBarra(); });
         if (document.addEventListener) document.addEventListener('keydown', (e) => {
           if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { if (buscar) { e.preventDefault(); buscar.focus(); } }
           else if (e.altKey && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); nuevo(); }
@@ -1255,361 +1315,321 @@ const activeSection = 'director-ia';
     })();
   </script>
 
-  <style>
+  <style is:global>
+    /*
+     * Director IA — estilos GLOBALES a propósito: casi todo el contenido del chat (burbujas, lista de chats, adjuntos, botones de
+     * «ver anteriores», «Reintentar»…) lo crea el JavaScript, y un estilo con ámbito de Astro no llega a esos nodos. Por eso
+     * cada regla va limitada a clases propias `director-ia-*` o al contenedor `.director-ia-page`.
+     *
+     * DISTRIBUCIÓN (tipo ChatGPT): la página no se desplaza. `.director-ia-page` mide exactamente la altura VISIBLE que queda
+     * bajo la cabecera del sitio (`--di-alto`, calculada en el script con visualViewport: teclado virtual, giro, zoom).
+     * Dentro: barra lateral (su propio scroll) | columna del chat = cabecera fija + hilo (ÚNICO scroll) + editor anclado abajo.
+     * Todos los contenedores flexibles llevan `min-height: 0` para que el desbordamiento se quede en el hilo y no empuje el editor.
+     */
+    html.director-ia-app, html.director-ia-app body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+    html.director-ia-app .site-footer, html.director-ia-app .back-to-top { display: none !important; }
+    html.director-ia-app .admin-wrapper { padding-bottom: 0 !important; margin-bottom: 0 !important; }
+    /* la cabecera de sección del panel repetiría el título que ya muestra la cabecera del chat: aquí ese espacio es para la conversación */
+    html.director-ia-app .admin-wrapper > .admin-header { display: none !important; }
+    /* teclado abierto o pantalla muy baja: también la cabecera del sitio y el menú del panel */
+    html.director-ia-compacto .site-header, html.director-ia-compacto .admin-section-nav { display: none !important; }
+    .director-ia-page [hidden] { display: none !important; }
+
     .director-ia-page {
+      --di-borde: var(--color-border, #1f2937);
+      --di-texto: var(--color-text-main, #f3f4f6);
+      --di-suave: var(--color-text-muted, #9ca3af);
+      --di-fondo: #0b1120;
+      --di-ancho-hilo: 50rem;
+      position: relative;
       display: flex;
       gap: 1rem;
-      padding: 1rem 1.5rem 2rem;
+      height: var(--di-alto, calc(100dvh - 260px));
+      min-height: 0;
+      padding: 0.75rem 1.25rem 0.75rem;
+      box-sizing: border-box;
+      overflow: hidden;
       max-width: 100%;
     }
+    .director-ia-page *, .director-ia-page *::before, .director-ia-page *::after { box-sizing: border-box; }
+
+    /* ── barra lateral: chats y proyectos, independiente del hilo ── */
     .director-ia-sidebar {
-      flex: 0 0 320px;
-      max-width: 320px;
+      flex: 0 0 280px;
+      width: 280px;
+      min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
+      gap: 0.6rem;
+      overflow: hidden;
     }
-    .director-ia-sidebar-head {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-direction: column;
-    }
-    .director-ia-sidebar-title {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--color-text-main, #f3f4f6);
-    }
-    .director-ia-sidebar-tipo {
-      font-size: 0.72rem;
-      color: var(--color-text-muted, #9ca3af);
-      margin-top: 0.15rem;
-    }
+    .director-ia-sidebar-head, .director-ia-sidebar-acciones { display: flex; flex-direction: row; gap: 0.4rem; flex: none; }
+    .director-ia-sidebar-acciones #btnNuevoChat { flex: 1; }
+    .director-ia-buscar { flex: none; width: 100%; margin: 0; padding: 0.5rem 0.7rem; border: 1px solid var(--di-borde); border-radius: 10px; background: var(--di-fondo); color: inherit; font: inherit; font-size: 0.85rem; }
+    .director-ia-buscar:focus { outline: none; border-color: var(--color-primary, #2563eb); }
+    .director-ia-vistas { display: flex; gap: 0.25rem; flex: none; }
+    .director-ia-vista { flex: 1; font-size: 0.78rem; padding: 0.3rem; border: 1px solid transparent; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; opacity: 0.75; }
+    .director-ia-vista[aria-selected="true"] { border-color: var(--di-borde); background: rgba(255, 255, 255, 0.05); opacity: 1; font-weight: 600; }
     .director-ia-lista {
-      flex: 1;
+      flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
-      border: 1px solid var(--color-border, #1f2937);
+      overscroll-behavior: contain;
+      border: 1px solid var(--di-borde);
       border-radius: var(--border-radius-md, 12px);
-      padding: 0.5rem;
+      padding: 0.4rem;
       background: rgba(17, 24, 39, 0.4);
-      display: none;
     }
-    .director-ia-vacio, .director-ia-vacio-centrado, .director-ia-error, .director-ia-cargando {
-      text-align: center;
-      color: var(--color-text-muted, #9ca3af);
-      font-size: 0.88rem;
-      padding: 1rem;
-    }
-    .director-ia-vacio-centrado {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: var(--color-text-muted, #9ca3af);
-    }
-    .director-ia-error {
-      color: var(--color-error, #f87171);
-      font-size: 0.82rem;
-      padding: 0.85rem;
-      border: 1px solid rgba(248, 113, 113, 0.2);
-      border-radius: var(--border-radius-sm, 8px);
-      background: rgba(248, 113, 113, 0.05);
-    }
-    .director-ia-cargando {
-      font-size: 0.85rem;
-      color: var(--color-text-muted, #9ca3af);
-    }
+    .director-ia-grupo { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--di-suave); margin: 0.7rem 0.4rem 0.25rem; }
+    .director-ia-grupo:first-child { margin-top: 0.25rem; }
+    .director-ia-chat-item { display: flex; align-items: center; gap: 0.2rem; border-radius: 8px; }
+    .director-ia-chat-item:hover { background: rgba(255, 255, 255, 0.04); }
+    .director-ia-chat-item[aria-current="true"] { background: rgba(37, 99, 235, 0.16); }
+    .director-ia-chat-item > .director-ia-chat-abrir { flex: 1; min-width: 0; text-align: left; padding: 0.45rem 0.55rem; background: transparent; border: 0; color: inherit; font: inherit; font-size: 0.86rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 8px; }
+    .director-ia-chat-item > .director-ia-chat-menu { background: transparent; border: 0; color: inherit; cursor: pointer; padding: 0.3rem 0.45rem; border-radius: 6px; opacity: 0.55; }
+    .director-ia-chat-item:hover > .director-ia-chat-menu, .director-ia-chat-menu:focus, .director-ia-chat-menu[aria-expanded="true"] { opacity: 1; }
+    .director-ia-chat-acciones { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.3rem 0.4rem 0.5rem; }
+    .director-ia-chat-acciones button, .director-ia-chat-acciones select { font-size: 0.75rem; }
     .director-ia-estado {
+      flex: none;
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      padding: 0.55rem 0.8rem;
+      padding: 0.5rem 0.75rem;
       border-radius: var(--border-radius-sm, 8px);
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       border: 1px solid transparent;
       background: rgba(17, 24, 39, 0.4);
     }
-    .director-ia-estado--conectado {
-      border-color: rgba(34, 197, 94, 0.35);
-      background: rgba(34, 197, 94, 0.08);
-      color: var(--color-ok, #86efac);
-    }
-    .director-ia-estado--desconectado {
-      border-color: rgba(248, 113, 113, 0.35);
-      background: rgba(248, 113, 113, 0.08);
-      color: var(--color-error, #f87171);
-    }
-    .punto {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .punto--conectado { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
-    .punto--desconectado { background: var(--color-error, #f87171); box-shadow: 0 0 6px var(--color-error, #f87171); }
+    .director-ia-estado--conectado { border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.08); color: var(--color-ok, #86efac); }
+    .director-ia-estado--desconectado { border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.08); color: var(--color-error, #f87171); }
+    .director-ia-page .punto { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .director-ia-page .punto--conectado { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
+    .director-ia-page .punto--desconectado { background: var(--color-error, #f87171); box-shadow: 0 0 6px var(--color-error, #f87171); }
+    .director-ia-config { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; max-height: 45%; overflow-y: auto; }
+    .director-ia-config-panel { width: 100%; padding: 0.6rem 0.8rem; border: 1px solid var(--di-borde); border-radius: var(--border-radius-sm, 8px); background: rgba(17, 24, 39, 0.4); display: flex; flex-direction: column; gap: 0.5rem; }
+    .director-ia-config-label { font-size: 0.72rem; color: var(--di-suave); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .director-ia-config-panel input { min-width: 0; padding: 0.45rem 0.7rem; border: 1px solid var(--di-borde); border-radius: var(--border-radius-sm, 8px); background: var(--di-fondo); color: var(--di-texto); font: inherit; font-size: 0.85rem; }
+    .director-ia-config-panel input:focus { outline: none; border-color: var(--color-primary, #2563eb); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2); }
 
+    /* ── columna del chat: cabecera fija · hilo (único scroll) · editor anclado abajo ── */
     .director-ia-chat {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .director-ia-chat-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      margin-bottom: 0.5rem;
-    }
-    .director-ia-chat-header h1 {
-      margin: 0;
-      font-size: 1.15rem;
-      color: var(--color-text-main, #f3f4f6);
-    }
-    .director-ia-chat-sub {
-      margin: 0;
-      font-size: 0.82rem;
-      color: var(--color-text-muted, #9ca3af);
-    }
-    .director-ia-mensajes {
-      flex: 1;
-      overflow-y: auto;
-      border: 1px solid var(--color-border, #1f2937);
-      border-radius: var(--border-radius-md, 12px);
-      padding: 1rem;
-      background: #0b1120;
-      display: flex;
-      flex-direction: column;
-      gap: 0.85rem;
-      min-height: 0;
-    }
-    .director-ia-burbuja {
-      max-width: 82%;
-      border-radius: var(--border-radius-md, 12px);
-      padding: 0.75rem 1rem;
-      font-size: 0.92rem;
-      line-height: 1.5;
       position: relative;
-    }
-    .director-ia-burbuja--usuario {
-      align-self: flex-end;
-      background: var(--color-primary, #2563eb);
-      color: #fff;
-      border-bottom-right-radius: 4px;
-    }
-    .director-ia-burbuja--director {
-      align-self: flex-start;
-      background: rgba(17, 24, 39, 0.6);
-      border: 1px solid var(--color-border, #1f2937);
-      color: var(--color-text-main, #f3f4f6);
-      border-bottom-left-radius: 4px;
-    }
-    .director-ia-burbuja-cabecera {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
       display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 0.5rem;
-      margin-bottom: 0.35rem;
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: var(--color-text-muted, #9ca3af);
+      flex-direction: column;
+      border: 1px solid var(--di-borde);
+      border-radius: var(--border-radius-md, 14px);
+      background: var(--di-fondo);
+      overflow: hidden;
     }
-    .director-ia-burbuja--usuario .director-ia-burbuja-cabecera { color: rgba(255,255,255,0.85); }
+    .director-ia-chat.soltando { outline: 2px dashed currentColor; outline-offset: -6px; }
+    .director-ia-chat-header {
+      flex: none;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.25rem 0.6rem;
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid var(--di-borde);
+      background: rgba(17, 24, 39, 0.55);
+    }
+    .director-ia-chat-titulos { flex: 1 1 12rem; min-width: 0; }
+    .director-ia-chat-header h1 { margin: 0; font-size: 1.05rem; line-height: 1.3; color: var(--di-texto); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .director-ia-chat-sub { margin: 0; font-size: 0.78rem; color: var(--di-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .director-ia-confirmaciones { flex: 1 1 100%; max-height: min(28vh, 14rem); overflow-y: auto; overscroll-behavior: contain; }
+    .director-ia-confirmaciones .director-ia-chat-sub { white-space: normal; }
+    .director-ia-confirmaciones h2 { margin: 0.3rem 0 0.2rem; font-size: 0.9rem; }
+    .director-ia-btn-barra { display: none; flex: none; background: transparent; border: 1px solid var(--di-borde); border-radius: 8px; padding: 0.25rem 0.6rem; color: inherit; cursor: pointer; font-size: 1rem; }
+
+    .director-ia-hilo { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+    .director-ia-mensajes {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      overflow-anchor: none; /* la posición al cargar «anteriores» la conserva el script; el anclaje del navegador la duplicaría */
+      scroll-behavior: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      /* columna de lectura centrada (como ChatGPT) con la barra de desplazamiento pegada al borde */
+      padding: 1.25rem max(1rem, calc((100% - var(--di-ancho-hilo)) / 2)) 1.5rem;
+    }
+    .director-ia-vacio, .director-ia-vacio-centrado, .director-ia-error, .director-ia-cargando { text-align: center; color: var(--di-suave); font-size: 0.88rem; padding: 1rem; }
+    .director-ia-vacio-centrado { display: flex; align-items: center; justify-content: center; flex: 1; }
+    .director-ia-error { color: var(--color-error, #f87171); font-size: 0.82rem; padding: 0.85rem; border: 1px solid rgba(248, 113, 113, 0.2); border-radius: var(--border-radius-sm, 8px); background: rgba(248, 113, 113, 0.05); }
+    .director-ia-cargar-anteriores { display: block; align-self: center; margin: 0 auto 0.25rem; font-size: 0.8rem; }
+    .director-ia-ir-final {
+      position: absolute;
+      left: 50%;
+      bottom: 0.75rem;
+      transform: translateX(-50%);
+      z-index: 5;
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 0.4rem 0.95rem;
+      border: 1px solid rgba(96, 165, 250, 0.5);
+      background: #1e3a8a;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    }
+
+    /* burbujas */
+    .director-ia-burbuja { max-width: min(85%, 44rem); border-radius: 16px; padding: 0.7rem 0.95rem; font-size: 0.93rem; line-height: 1.55; position: relative; overflow-wrap: anywhere; }
+    .director-ia-burbuja--usuario { align-self: flex-end; background: var(--color-primary, #2563eb); color: #fff; border-bottom-right-radius: 5px; }
+    .director-ia-burbuja--director { align-self: flex-start; background: rgba(17, 24, 39, 0.75); border: 1px solid var(--di-borde); color: var(--di-texto); border-bottom-left-radius: 5px; }
+    .director-ia-burbuja--error { outline: 1px dashed #d92d20; }
+    .director-ia-burbuja-cabecera { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem; margin-bottom: 0.3rem; font-size: 0.76rem; font-weight: 700; color: var(--di-suave); }
+    .director-ia-burbuja--usuario .director-ia-burbuja-cabecera { color: rgba(255, 255, 255, 0.85); }
     .director-ia-burbuja-hora { font-weight: 400; opacity: 0.8; }
-    .director-ia-burbuja-cuerpo { white-space: pre-wrap; word-wrap: break-word; }
-    .director-ia-burbuja--director .director-ia-burbuja-cuerpo a {
-      color: #60a5fa; text-decoration: underline;
-    }
-    .director-ia-meta {
-      font-size: 0.72rem;
-      opacity: 0.75;
-      margin-top: 0.25rem;
-      display: block;
-    }
-    .director-ia-dato, .director-ia-fuentes, .director-ia-tareas, .director-ia-auth, .director-ia-limites, .director-ia-avisos {
-      margin-top: 0.55rem;
-      padding: 0.55rem 0.75rem;
-      border-radius: var(--border-radius-sm, 8px);
-      font-size: 0.78rem;
-      line-height: 1.45;
-    }
+    .director-ia-burbuja-cuerpo { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .director-ia-burbuja-cuerpo.md { white-space: normal; }
+    .director-ia-burbuja--director .director-ia-burbuja-cuerpo a { color: #60a5fa; text-decoration: underline; }
+    .director-ia-burbuja--usuario .director-ia-burbuja-cuerpo a { color: #fff; text-decoration: underline; }
+    .director-ia-meta { font-size: 0.72rem; font-weight: 400; opacity: 0.75; }
+    .director-ia-burbuja-cuerpo.md p { margin: 0 0 0.5rem; }
+    .director-ia-burbuja-cuerpo.md p:last-child { margin-bottom: 0; }
+    .director-ia-burbuja-cuerpo.md pre { overflow-x: auto; padding: 0.6rem; border-radius: 8px; background: rgba(127, 127, 127, 0.12); font-size: 0.85em; white-space: pre; }
+    .director-ia-burbuja-cuerpo.md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+    .director-ia-burbuja-cuerpo.md table { border-collapse: collapse; display: block; overflow-x: auto; margin: 0.4rem 0; max-width: 100%; }
+    .director-ia-burbuja-cuerpo.md th, .director-ia-burbuja-cuerpo.md td { border: 1px solid var(--di-borde); padding: 0.25rem 0.5rem; text-align: left; }
+    .director-ia-burbuja-cuerpo.md ul, .director-ia-burbuja-cuerpo.md ol { margin: 0.2rem 0 0.5rem 1.2rem; padding: 0; }
+    .director-ia-burbuja-acciones { display: flex; gap: 0.3rem; margin-top: 0.4rem; opacity: 0.5; }
+    .director-ia-burbuja:hover .director-ia-burbuja-acciones, .director-ia-burbuja-acciones:focus-within { opacity: 1; }
+    .director-ia-burbuja-acciones button { font: inherit; font-size: 0.72rem; background: transparent; border: 1px solid rgba(156, 163, 175, 0.4); border-radius: 6px; padding: 0.1rem 0.45rem; color: inherit; cursor: pointer; }
+    .director-ia-burbuja > .btn-secondary { margin-top: 0.45rem; }
+    .director-ia-dato, .director-ia-fuentes, .director-ia-tareas, .director-ia-auth, .director-ia-limites, .director-ia-avisos { margin-top: 0.55rem; padding: 0.5rem 0.7rem; border-radius: var(--border-radius-sm, 8px); font-size: 0.78rem; line-height: 1.45; }
     .director-ia-dato { background: rgba(99, 102, 241, 0.1); border-left: 3px solid #6366f1; color: #a5b4fc; }
     .director-ia-fuentes { background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10b981; color: #86efac; }
     .director-ia-tareas { background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; color: #93c5fd; }
     .director-ia-auth { background: rgba(234, 179, 8, 0.1); border-left: 3px solid #ca8a04; color: #fcd34d; }
     .director-ia-limites, .director-ia-avisos { background: rgba(248, 113, 113, 0.1); border-left: 3px solid #f87171; color: #fca5a5; }
+    .director-ia-burbuja-adjuntos { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+    .director-ia-burbuja-adjuntos img { max-width: 220px; max-height: 160px; border-radius: 8px; display: block; }
+    .director-ia-burbuja-adjuntos a { font-size: 0.8rem; color: inherit; }
 
+    /* ── editor anclado abajo (no forma parte del scroll) ── */
     .director-ia-form {
-      margin-top: 0.5rem;
-      display: flex;
-      gap: 0.5rem;
-      align-items: flex-end;
-    }
-    .director-ia-input-wrap {
-      flex: 1;
-      position: relative;
-      display: flex;
-      gap: 0.4rem;
-      align-items: center;
-    }
-    .director-ia-input-wrap input {
-      flex: 1;
-      min-width: 0;
-      padding: 0.62rem 0.9rem;
-      border: 1px solid var(--color-border, #1f2937);
-      border-radius: var(--border-radius-md, 12px);
-      background: #0b1120;
-      color: var(--color-text-main, #f3f4f6);
-      font: inherit;
-      font-size: 0.92rem;
-    }
-    .director-ia-input-wrap input:focus {
-      outline: none;
-      border-color: var(--color-primary, #2563eb);
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
-    }
-    .director-ia-input-wrap input:disabled { opacity: 0.6; cursor: not-allowed; }
-    .btn-primary, .btn-secondary {
-      padding: 0.62rem 0.85rem;
-      border-radius: var(--border-radius-sm, 8px);
-      border: 1px solid transparent;
-      font: inherit;
-      font-weight: 700;
-      font-size: 0.85rem;
-      cursor: pointer;
-    }
-    .btn-primary { background: var(--color-primary, #2563eb); color: #fff; }
-    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
-    .btn-secondary { background: rgba(255,255,255,0.06); color: var(--color-text-main, #f3f4f6); border-color: var(--color-border, #1f2937); }
-    .btn-secondary:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
-    .btn-sm { padding: 0.5rem 0.65rem; font-size: 0.8rem; }
-
-    .director-ia-alerta {
-      margin-top: 0.5rem;
-      font-size: 0.82rem;
-      color: var(--color-error, #f87171);
-      padding: 0.55rem 0.8rem;
-      border: 1px solid rgba(248, 113, 113, 0.2);
-      border-radius: var(--border-radius-sm, 8px);
-      background: rgba(248, 113, 113, 0.05);
-    }
-
-    .director-ia-config {
-      margin-top: 0.6rem;
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-    .director-ia-config-panel {
-      margin-top: 0.5rem;
-      padding: 0.6rem 0.8rem;
-      border: 1px solid var(--color-border, #1f2937);
-      border-radius: var(--border-radius-sm, 8px);
-      background: rgba(17, 24, 39, 0.4);
+      flex: none;
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: 0.4rem;
+      margin: 0;
+      padding: 0.5rem max(0.75rem, calc((100% - var(--di-ancho-hilo)) / 2)) 0.75rem;
+      background: linear-gradient(to bottom, rgba(11, 17, 32, 0), var(--di-fondo) 0.6rem);
     }
-    .director-ia-config-label {
-      font-size: 0.72rem;
-      color: var(--color-text-muted, #9ca3af);
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+    .director-ia-form > .director-ia-alerta { order: 1; margin: 0; }
+    .director-ia-form > .director-ia-estado-voz { order: 2; }
+    .director-ia-form > .director-ia-adjuntos { order: 3; }
+    .director-ia-form > .director-ia-input-wrap { order: 4; }
+    .director-ia-input-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end; /* si los controles no caben en una fila, enviar y voz siguen a la derecha */
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.45rem 0.5rem 0.45rem 0.75rem;
+      border: 1px solid #334155;
+      border-radius: 1.25rem;
+      background: #111827;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
     }
-    .director-ia-config-panel input {
-      flex: 1;
+    .director-ia-input-wrap:focus-within { border-color: rgba(59, 130, 246, 0.75); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18), 0 6px 24px rgba(0, 0, 0, 0.35); }
+    #inputMensaje {
+      order: 0;
+      flex: 1 1 100%;
       min-width: 0;
-      padding: 0.45rem 0.7rem;
-      border: 1px solid var(--color-border, #1f2937);
-      border-radius: var(--border-radius-sm, 8px);
-      background: #0b1120;
-      color: var(--color-text-main, #f3f4f6);
-      font: inherit;
-      font-size: 0.85rem;
-    }
-    .director-ia-config-panel input:focus {
+      resize: none;
+      border: 0;
       outline: none;
-      border-color: var(--color-primary, #2563eb);
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+      background: transparent;
+      color: var(--di-texto);
+      font: inherit;
+      font-size: 0.95rem;
+      line-height: 1.45;
+      min-height: 2.5rem;
+      max-height: min(12rem, 30vh);
+      overflow-y: auto;
+      padding: 0.35rem 0.25rem;
     }
-    .director-ia-sidebar-acciones { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-    .director-ia-buscar { width: 100%; margin: 0.5rem 0; padding: 0.4rem 0.6rem; border: 1px solid var(--color-borde, #d0d5dd); border-radius: 8px; background: transparent; color: inherit; }
-    .director-ia-vistas { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
-    .director-ia-vista { flex: 1; font-size: 0.78rem; padding: 0.25rem; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; opacity: 0.75; }
-    .director-ia-vista[aria-selected="true"] { border-color: var(--color-borde, #d0d5dd); opacity: 1; font-weight: 600; }
-    .director-ia-lista { overflow-y: auto; flex: 1; min-height: 0; }
-    .director-ia-grupo { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; margin: 0.7rem 0.2rem 0.25rem; }
-    .director-ia-chat-item { display: flex; align-items: center; gap: 0.2rem; border-radius: 8px; }
-    .director-ia-chat-item[aria-current="true"] { background: rgba(127, 127, 127, 0.14); }
-    .director-ia-chat-item > .director-ia-chat-abrir { flex: 1; min-width: 0; text-align: left; padding: 0.4rem 0.5rem; background: transparent; border: 0; color: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 8px; }
-    .director-ia-chat-item > .director-ia-chat-menu { background: transparent; border: 0; color: inherit; cursor: pointer; padding: 0.3rem 0.45rem; border-radius: 6px; opacity: 0.6; }
-    .director-ia-chat-item:hover > .director-ia-chat-menu, .director-ia-chat-menu:focus { opacity: 1; }
-    .director-ia-chat-acciones { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.3rem 0.4rem 0.5rem; }
-    .director-ia-chat-acciones button, .director-ia-chat-acciones select { font-size: 0.75rem; }
-    .director-ia-mensajes { overflow-y: auto; overscroll-behavior: contain; scroll-behavior: auto; }
-    .director-ia-cargar-anteriores { display: block; margin: 0.4rem auto 0.8rem; font-size: 0.8rem; }
-    .director-ia-burbuja-cuerpo.md p { margin: 0 0 0.5rem; } .director-ia-burbuja-cuerpo.md p:last-child { margin-bottom: 0; }
-    .director-ia-burbuja-cuerpo.md pre { overflow-x: auto; padding: 0.6rem; border-radius: 8px; background: rgba(127, 127, 127, 0.12); font-size: 0.85em; }
-    .director-ia-burbuja-cuerpo.md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
-    .director-ia-burbuja-cuerpo.md table { border-collapse: collapse; display: block; overflow-x: auto; margin: 0.4rem 0; }
-    .director-ia-burbuja-cuerpo.md th, .director-ia-burbuja-cuerpo.md td { border: 1px solid var(--color-borde, #d0d5dd); padding: 0.25rem 0.5rem; text-align: left; }
-    .director-ia-burbuja-cuerpo.md ul, .director-ia-burbuja-cuerpo.md ol { margin: 0.2rem 0 0.5rem 1.2rem; }
-    .director-ia-burbuja-acciones { display: flex; gap: 0.3rem; margin-top: 0.35rem; opacity: 0.55; }
-    .director-ia-burbuja:hover .director-ia-burbuja-acciones, .director-ia-burbuja-acciones:focus-within { opacity: 1; }
-    .director-ia-burbuja-acciones button { font-size: 0.72rem; background: transparent; border: 1px solid var(--color-borde, #d0d5dd); border-radius: 6px; padding: 0.1rem 0.45rem; color: inherit; cursor: pointer; }
-    .director-ia-burbuja--error { outline: 1px dashed #d92d20; }
-    #inputMensaje { resize: none; min-height: 2.4rem; max-height: 12rem; overflow-y: auto; line-height: 1.4; font: inherit; flex: 1; padding: 0.55rem 0.7rem; border-radius: 10px; }
-    .director-ia-ir-final { position: sticky; bottom: 0.5rem; margin: 0 auto; display: block; font-size: 0.8rem; border-radius: 999px; padding: 0.25rem 0.8rem; }
-    .director-ia-btn-barra { display: none; background: transparent; border: 1px solid var(--color-borde, #d0d5dd); border-radius: 8px; padding: 0.2rem 0.55rem; color: inherit; cursor: pointer; margin-right: 0.5rem; }
-    @media (max-width: 860px) {
-      .director-ia-btn-barra { display: inline-block; }
-      .director-ia-sidebar { position: fixed; inset: 0 auto 0 0; width: min(85vw, 320px); z-index: 40; transform: translateX(-105%); transition: transform 0.2s ease; overflow-y: auto; }
-      .director-ia-sidebar.abierta { transform: none; box-shadow: 0 0 24px rgba(0, 0, 0, 0.25); }
-    }
-    .director-ia-adjuntos { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.3rem 0 0.5rem; }
-    .director-ia-adjunto { display: flex; align-items: center; gap: 0.4rem; border: 1px solid var(--color-borde, #d0d5dd); border-radius: 10px; padding: 0.25rem 0.45rem; font-size: 0.78rem; max-width: 18rem; }
+    #inputMensaje:disabled { opacity: 0.6; }
+    #btnAdjuntar { order: 1; margin-right: auto; }
+    #modoVoz { order: 2; }
+    #btnDetenerVoz { order: 3; }
+    #btnVoz { order: 4; display: inline-flex; align-items: center; gap: 0.35rem; }
+    #btnEnviar { order: 5; display: inline-flex; align-items: center; justify-content: center; min-width: 2.4rem; border-radius: 999px; }
+    #btnVoz[aria-pressed="true"] { background: rgba(37, 99, 235, 0.25); border-color: rgba(59, 130, 246, 0.7); }
+    .director-ia-modo-voz { font-size: 0.8rem; padding: 0.35rem 0.4rem; border-radius: 8px; border: 1px solid var(--di-borde); background: transparent; color: inherit; max-width: 11rem; }
+    .director-ia-modo-voz option { background: #111827; }
+    .director-ia-adjuntos { display: flex; flex-wrap: wrap; gap: 0.4rem; max-height: 6.5rem; overflow-y: auto; }
+    .director-ia-adjunto { display: flex; align-items: center; gap: 0.4rem; border: 1px solid var(--di-borde); border-radius: 10px; padding: 0.25rem 0.45rem; font-size: 0.78rem; max-width: 18rem; background: #111827; }
     .director-ia-adjunto img { width: 38px; height: 38px; object-fit: cover; border-radius: 6px; }
     .director-ia-adjunto .nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 11rem; }
     .director-ia-adjunto .estado { opacity: 0.7; }
     .director-ia-adjunto--error { border-color: #d92d20; }
     .director-ia-adjunto button { background: transparent; border: 0; color: inherit; cursor: pointer; font-size: 0.9rem; }
-    .director-ia-burbuja-adjuntos { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
-    .director-ia-burbuja-adjuntos img { max-width: 220px; max-height: 160px; border-radius: 8px; display: block; }
-    .director-ia-burbuja-adjuntos a { font-size: 0.8rem; }
-    .director-ia-chat.soltando { outline: 2px dashed currentColor; outline-offset: -6px; }
-    .director-ia-modo-voz { font-size: 0.8rem; padding: 0.25rem 0.4rem; border-radius: 6px; border: 1px solid var(--color-borde, #d0d5dd); background: transparent; color: inherit; max-width: 11rem; }
-    .director-ia-estado-voz {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.55rem 0.8rem;
-      border-radius: var(--border-radius-sm, 8px);
-      font-size: 0.82rem;
-      border: 1px solid transparent;
-      background: rgba(17, 24, 39, 0.4);
-      margin-top: 0.4rem;
-    }
-    .director-ia-estado-voz .punto-voz {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .punto-voz--escuchando { background: var(--color-primary, #2563eb); box-shadow: 0 0 6px var(--color-primary, #2563eb); animation: pulso-voz 1.5s infinite; }
-    .punto-voz--procesando { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; animation: pulso-voz 1.5s infinite; }
-    .punto-voz--hablando { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
-    .punto-voz--listo { background: var(--color-text-muted, #9ca3af); }
-    @keyframes pulso-voz {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
+    .director-ia-alerta { margin-top: 0.5rem; font-size: 0.82rem; color: var(--color-error, #f87171); padding: 0.5rem 0.8rem; border: 1px solid rgba(248, 113, 113, 0.25); border-radius: var(--border-radius-sm, 8px); background: rgba(248, 113, 113, 0.07); max-height: 6rem; overflow-y: auto; }
+    .director-ia-estado-voz { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.8rem; border-radius: 999px; font-size: 0.8rem; border: 1px solid var(--di-borde); background: rgba(17, 24, 39, 0.85); align-self: center; }
+    .director-ia-estado-voz .punto-voz { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .director-ia-page .punto-voz--escuchando { background: var(--color-primary, #2563eb); box-shadow: 0 0 6px var(--color-primary, #2563eb); animation: director-ia-pulso-voz 1.5s infinite; }
+    .director-ia-page .punto-voz--procesando { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; animation: director-ia-pulso-voz 1.5s infinite; }
+    .director-ia-page .punto-voz--hablando { background: var(--color-ok, #22c55e); box-shadow: 0 0 6px var(--color-ok, #22c55e); }
+    .director-ia-page .punto-voz--listo { background: var(--di-suave); }
+    @keyframes director-ia-pulso-voz { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-    @media (max-width: 900px) {
-      .director-ia-page { flex-direction: column; padding: 0.75rem; }
-      .director-ia-sidebar { flex: 0 0 auto; max-width: 100%; }
-      .director-ia-burbuja { max-width: 90%; }
+    /* botones del panel (solo dentro de esta página) */
+    .director-ia-page .btn-primary, .director-ia-page .btn-secondary { padding: 0.55rem 0.85rem; border-radius: var(--border-radius-sm, 8px); border: 1px solid transparent; font: inherit; font-weight: 700; font-size: 0.85rem; cursor: pointer; line-height: 1.2; }
+    .director-ia-page .btn-primary { background: var(--color-primary, #2563eb); color: #fff; }
+    .director-ia-page .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .director-ia-page .btn-secondary { background: rgba(255, 255, 255, 0.06); color: var(--di-texto); border-color: var(--di-borde); }
+    .director-ia-page .btn-secondary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+    .director-ia-page .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .director-ia-page .btn-sm { padding: 0.45rem 0.65rem; font-size: 0.8rem; }
+    @media (prefers-reduced-motion: reduce) { .director-ia-sidebar { transition: none !important; } }
+
+    /* tableta horizontal y portátiles estrechos: barra algo más estrecha */
+    @media (max-width: 1100px) {
+      .director-ia-sidebar { flex-basis: 240px; width: 240px; }
     }
+    /* móvil y tableta vertical: la barra pasa a panel superpuesto dentro del área del chat */
+    @media (max-width: 860px) {
+      .director-ia-page { padding: 0.5rem; gap: 0; }
+      .director-ia-btn-barra { display: inline-block; }
+      .director-ia-sidebar {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 40;
+        width: min(85vw, 320px);
+        padding: 0.75rem;
+        background: #0b1120;
+        border-right: 1px solid var(--di-borde);
+        transform: translateX(-105%);
+        transition: transform 0.2s ease;
+        visibility: hidden;
+      }
+      .director-ia-sidebar.abierta { transform: none; visibility: visible; box-shadow: 0 0 32px rgba(0, 0, 0, 0.6); }
+      .director-ia-sidebar.abierta + .director-ia-chat::after { content: ''; position: absolute; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.45); }
+      .director-ia-burbuja { max-width: 92%; }
+      .director-ia-mensajes { padding: 0.9rem 0.75rem 1.1rem; }
+      .director-ia-form { padding: 0.4rem 0.5rem 0.5rem; }
+      .director-ia-chat-header { padding: 0.5rem 0.65rem; }
+      #inputMensaje { font-size: 16px; } /* con menos de 16 px, iOS amplía la página al enfocar el campo y descoloca la distribución */
+      .director-ia-modo-voz { max-width: 8.5rem; }
+    }
+    /* compacto (teclado abierto, pantalla muy baja): lo mínimo arriba para dar sitio al hilo */
+    html.director-ia-compacto .director-ia-page { padding: 0.25rem 0.4rem; }
+    html.director-ia-compacto .director-ia-chat-header { padding: 0.35rem 0.6rem; }
+    html.director-ia-compacto .director-ia-chat-sub { display: none; }
+    html.director-ia-compacto .director-ia-confirmaciones { max-height: 22vh; }
+    html.director-ia-compacto .director-ia-form { padding-top: 0.3rem; padding-bottom: 0.35rem; }
   </style>
 </Layout>
