@@ -196,6 +196,21 @@ export class TaiPuenteError extends Error {
   }
 }
 
+/**
+ * «Naturaleza» de una respuesta, para el PROPIETARIO: solo lo que le sirve para entenderla (datos reales, sus documentos, chat confidencial, simulación…).
+ * Antes se mostraban TODAS las claves técnicas de `datos` (modo, conversacion, esquema, modelo, tokensEntrada, tokensSalida, costeEur, simulado, descartadas,
+ * marcadoresInvalidos) mezcladas con la respuesta. Esos datos siguen en los registros técnicos del Director (manifiestos y consumo); aquí no se muestran ni se leen.
+ */
+export function naturalezaLegible(datos: unknown): Array<{ etiqueta: string; detalle: string }> {
+  if (!datos || typeof datos !== 'object') return [];
+  const d = datos as Record<string, unknown>; const n: Array<{ etiqueta: string; detalle: string }> = [];
+  if (d.modo === 'documentos') n.push({ etiqueta: 'Tus documentos (leídos en local)', detalle: 'documentos' });
+  else if (d.datosReales === true) n.push({ etiqueta: 'Datos reales del negocio (no salen del sistema)', detalle: 'datosReales' });
+  if (d.confidencial === true) n.push({ etiqueta: 'Chat confidencial', detalle: 'confidencial' });
+  if (d.simulado === true) n.push({ etiqueta: 'Respuesta simulada (sin modelo real)', detalle: 'simulado' });
+  return n;
+}
+
 /** Cliente del puente de chat del Director. Una instancia por configuración. */
 export class TaiPuenteClient {
   private readonly config: TaiPuenteConfig;
@@ -442,9 +457,7 @@ export class TaiPuenteClient {
     const encargos = Array.isArray(turno.controles) ? turno.controles.filter((c: any) => c?.tipo === 'encargo') : [];
     const fuentes = Array.isArray(resp?.fuentes) ? resp.fuentes : [];
     const datos = resp?.datos;
-    const naturalezaDatos: Array<{ etiqueta: string; detalle: string }> = datos && typeof datos === 'object'
-      ? Object.entries(datos).filter(([, v]) => v !== undefined && v !== null).map(([etiqueta, detalle]) => ({ etiqueta: String(etiqueta), detalle: String(detalle) }))
-      : [];
+    const naturalezaDatos = naturalezaLegible(datos);
 
     return {
       ok: true,
