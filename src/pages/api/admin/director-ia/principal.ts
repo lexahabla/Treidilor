@@ -27,6 +27,7 @@ import { findUserById } from '../../../../lib/userStore';
 import { sameOrigin } from '../../../../lib/alertsHttp';
 import { listarConversaciones, guardarConversacionPrincipal } from '../../../../lib/directorIaStore';
 import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
+import { chatPermitido, tocarChat, asegurarPrincipal } from '../../../../lib/directorIaChats';
 
 const MAX_TEXTO = 2000;
 /** Una frase hablada: hasta 60 s de audio comprimido del navegador (en base64). */
@@ -91,6 +92,16 @@ async function resolverConversacion(cliente: TaiPuenteClient, userId: string, re
   const explicita = new URL(request.url).searchParams.get('conversacionId') ?? '';
   if (explicita && !ID_CONVERSACION_RE.test(explicita)) {
     throw new TaiPuenteError('conversacion_invalida', 400, 'Identificador de conversación no válido.');
+  }
+  if (explicita) {
+    // Chats: solo conversaciones registradas por el propietario (o la principal real del Director). Nunca un id arbitrario.
+    let chat = chatPermitido(userId, explicita);
+    if (!chat) {
+      const principalReal = await cliente.conversacionPrincipalDelDirector();
+      if (principalReal !== explicita) throw new TaiPuenteError('conversacion_no_autorizada', 403, 'Esa conversación no es uno de tus chats.');
+      chat = asegurarPrincipal(userId, principalReal);
+    }
+    return { principal: { conversacion: explicita, principal: chat.principal }, deCache: false };
   }
   const guardada = listarConversaciones(userId)[0]?.id;
   const id = explicita || guardada;
@@ -217,6 +228,7 @@ export const POST: APIRoute = async ({ request }) => {
     return errorDePuente(e);
   }
 
+  tocarChat(p.user.id, principal.conversacion, texto);
   // Se devuelve la respuesta del Director TAL CUAL (lo mostrado = lo registrado).
   return json({
     success: true,
@@ -281,6 +293,7 @@ async function turnoHablado(request: Request, userId: string, body: { audio?: un
   } catch (e) {
     return errorDePuente(e);
   }
+  tocarChat(userId, principal.conversacion, r.transcripcion || '');
   return json({
     success: true,
     conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: principal.principal },

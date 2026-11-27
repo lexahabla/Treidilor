@@ -318,6 +318,20 @@ export class TaiPuenteClient {
     return r?.resultado ?? null;
   }
 
+  /** Conversación PRINCIPAL real del Director (la de Telegram), sin usar la que recuerda el cliente. */
+  async conversacionPrincipalDelDirector(): Promise<string> {
+    const r = await this.peticion<{ conversacion?: string }>('/tai/v1/chat/conversacion', { method: 'POST', headers: this.authHeaders(), body: JSON.stringify({ principal: true }) });
+    if (!r || !r.conversacion) throw new TaiPuenteError('respuesta_invalida', 502, 'El servicio no devolvió la conversación principal.');
+    return String(r.conversacion);
+  }
+
+  /** Crea una conversación NUEVA e independiente en el Director (otro chat: su propio historial y contexto). */
+  async crearConversacionNueva(): Promise<string> {
+    const r = await this.peticion<{ conversacion?: string }>('/tai/v1/chat/conversacion', { method: 'POST', headers: this.authHeaders(), body: '{}' });
+    if (!r || !r.conversacion) throw new TaiPuenteError('respuesta_invalida', 502, 'El servicio no creó la conversación.');
+    return String(r.conversacion);
+  }
+
   /** Olvida la conversación recordada (p. ej. si el Director ya no la conoce). */
   olvidarConversacionPrincipal(): void {
     this._conversacionPrincipal = null;

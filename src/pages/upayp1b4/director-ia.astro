@@ -40,14 +40,19 @@ const activeSection = 'director-ia';
     <AdminNav context="catalogo" active={activeSection} user={sessionUser} />
 
     <main class="director-ia-page">
-      <aside class="director-ia-sidebar" aria-label="Conversación del Director">
-        <div class="director-ia-sidebar-head">
-          <h2 class="director-ia-sidebar-title">Conversación</h2>
-          <div class="director-ia-sidebar-tipo">Principal · compartida con Telegram</div>
+      <aside class="director-ia-sidebar" id="barraChats" aria-label="Chats del Director">
+        <div class="director-ia-sidebar-head director-ia-sidebar-acciones">
+          <button type="button" id="btnNuevoChat" class="btn-primary btn-sm" title="Nuevo chat (Alt+N)">＋ Nuevo chat</button>
+          <button type="button" id="btnNuevoProyecto" class="btn-secondary btn-sm" title="Nuevo proyecto o carpeta">＋ Proyecto</button>
         </div>
-        <div id="listaConversaciones" class="director-ia-lista" role="list" aria-hidden="true">
-          <div class="director-ia-vacio">Una sola conversación principal (compartida con Telegram).</div>
+        <input type="search" id="buscarChats" class="director-ia-buscar" placeholder="Buscar chats… (Ctrl+K)" aria-label="Buscar chats" autocomplete="off" />
+        <div class="director-ia-vistas" role="tablist" aria-label="Vista de chats">
+          <button type="button" role="tab" class="director-ia-vista" data-vista="activos" aria-selected="true">Chats</button>
+          <button type="button" role="tab" class="director-ia-vista" data-vista="archivados" aria-selected="false">Archivados</button>
+          <button type="button" role="tab" class="director-ia-vista" data-vista="papelera" aria-selected="false">Papelera</button>
         </div>
+        <nav id="listaChats" class="director-ia-lista" aria-label="Lista de chats"></nav>
+        <div id="listaConversaciones" hidden></div>
         <div id="estadoConexion" class="director-ia-estado" role="status" aria-live="polite">
           <span class="punto punto--desconectado" aria-hidden="true"></span>
           <span id="textoEstado">Comprobando conexión…</span>
@@ -66,6 +71,7 @@ const activeSection = 'director-ia';
 
       <section class="director-ia-chat" aria-label="Chat">
         <div class="director-ia-chat-header">
+          <button type="button" id="btnBarraChats" class="director-ia-btn-barra" aria-controls="barraChats" aria-expanded="false" title="Chats">☰</button>
           <h1 id="tituloConversacion">Director IA</h1>
           <p id="subtituloConversacion" class="director-ia-chat-sub">Conversación principal compartida con Telegram.</p>
           <section id="confirmacionesPendientes" class="director-ia-confirmaciones" hidden aria-live="polite">
@@ -79,17 +85,18 @@ const activeSection = 'director-ia';
           <div class="director-ia-vacio-centrado">Selecciona o crea una conversación para empezar a hablar con el Director.</div>
         </div>
 
+        <button type="button" id="btnIrAlFinal" class="director-ia-ir-final" hidden>↓ Mensajes nuevos</button>
         <form id="formMensaje" class="director-ia-form">
           <div class="director-ia-input-wrap">
-            <input
-              type="text"
+            <textarea
               id="inputMensaje"
-              placeholder="Escribe tu mensaje al Director…"
+              rows="1"
+              placeholder="Escribe al Director… (Enter envía, Mayús+Enter salto de línea)"
               aria-label="Mensaje al Director IA"
               autocomplete="off"
-              spellcheck="false"
+              spellcheck="true"
               maxlength="2000"
-            />
+            ></textarea>
             <button type="button" id="btnVoz" class="btn-secondary btn-sm" title="Hablar con el Director (micrófono)" aria-pressed="false">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"></path>
@@ -215,19 +222,38 @@ const activeSection = 'director-ia';
         }
       }
 
+      // ── historial: carga progresiva y desplazamiento que respeta la posición del lector ──
+      const POR_BLOQUE = 40;
+      let mensajesActuales = []; let mostradosDesde = 0;
+      function cercaDelFinal() { const c = els.contenedor; return !c || (c.scrollHeight - c.scrollTop - c.clientHeight) < 140; }
+      function botonAnteriores() {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-secondary btn-sm director-ia-cargar-anteriores';
+        b.textContent = `Ver ${Math.min(POR_BLOQUE, mostradosDesde)} mensajes anteriores`;
+        b.addEventListener('click', () => {
+          const c = els.contenedor; const antes = c.scrollHeight; const desde = Math.max(0, mostradosDesde - POR_BLOQUE);
+          const nodos = mensajesActuales.slice(desde, mostradosDesde).map(crearNodoMensaje);
+          const ref = b.nextSibling || null; if (b.parentNode) b.parentNode.removeChild(b);
+          for (const n of nodos) { if (c.insertBefore) c.insertBefore(n, ref); else c.appendChild(n); }
+          mostradosDesde = desde;
+          if (desde > 0) { const nb = botonAnteriores(); if (c.insertBefore) c.insertBefore(nb, c.firstChild || null); else c.appendChild(nb); }
+          c.scrollTop += c.scrollHeight - antes; // conserva lo que estabas leyendo
+        });
+        return b;
+      }
+
       function renderizarMensajes(conversacion) {
         if (!els.contenedor || !els.titulo || !els.subtitulo) return;
-        els.titulo.textContent = conversacion.titulo || 'Director IA';
+        els.titulo.textContent = (Chats.actual() && Chats.actual().titulo) || conversacion.titulo || 'Director IA';
         els.subtitulo.textContent = conversacion.mensajes && conversacion.mensajes.length
           ? conversacion.mensajes.length + ' mensaje' + (conversacion.mensajes.length === 1 ? '' : 's') + ' · ' + fechaLegera(conversacion.actualizadoEn)
           : 'Sin mensajes aún.';
         els.contenedor.innerHTML = '';
-        if (conversacion.mensajes && conversacion.mensajes.length) {
-          for (const m of conversacion.mensajes) {
-            els.contenedor.appendChild(crearNodoMensaje(m));
-          }
-        }
-        scrollFinal();
+        mensajesActuales = Array.isArray(conversacion.mensajes) ? conversacion.mensajes : [];
+        mostradosDesde = Math.max(0, mensajesActuales.length - POR_BLOQUE);
+        if (mostradosDesde > 0) els.contenedor.appendChild(botonAnteriores());
+        for (const m of mensajesActuales.slice(mostradosDesde)) els.contenedor.appendChild(crearNodoMensaje(m));
+        if (!mensajesActuales.length) { const v = document.createElement('div'); v.className = 'director-ia-vacio-centrado'; v.textContent = 'Escribe o habla para empezar esta conversación con el Director.'; els.contenedor.appendChild(v); }
+        scrollFinal(true);
       }
 
       function crearNodoMensaje(m) {
@@ -242,8 +268,8 @@ const activeSection = 'director-ia';
         }
         const metaHtml = meta.length ? '<span class="director-ia-meta">' + escapeHtml(meta.join(' · ')) + '</span>' : '';
         const cuerpo = document.createElement('div');
-        cuerpo.className = 'director-ia-burbuja-cuerpo';
-        cuerpo.textContent = m.contenido ?? '';
+        cuerpo.className = 'director-ia-burbuja-cuerpo md';
+        cuerpo.innerHTML = renderMarkdown(m.contenido ?? '');
         div.innerHTML =
           '<div class="director-ia-burbuja-cabecera">' +
           (m.rol === 'usuario' ? 'Tú' : 'Director IA') + ' <span class="director-ia-burbuja-hora">' + escapeHtml(hora) + '</span>' +
@@ -255,7 +281,56 @@ const activeSection = 'director-ia';
           extras.innerHTML = renderizarExtrasDirector(m);
           div.appendChild(extras);
         }
+        const acc = document.createElement('div'); acc.className = 'director-ia-burbuja-acciones';
+        const bCopiar = document.createElement('button'); bCopiar.type = 'button'; bCopiar.textContent = 'Copiar'; bCopiar.setAttribute('aria-label', 'Copiar el mensaje');
+        bCopiar.addEventListener('click', () => copiarTexto(m.contenido ?? '', bCopiar));
+        const bReusar = document.createElement('button'); bReusar.type = 'button'; bReusar.textContent = 'Reutilizar'; bReusar.setAttribute('aria-label', 'Llevar el mensaje al campo de escritura');
+        bReusar.addEventListener('click', () => { if (els.input) { els.input.value = String(m.contenido ?? '').slice(0, 2000); ajustarAltura(); if (els.btnEnviar) els.btnEnviar.disabled = !els.input.value.trim() || enVuelo; els.input.focus(); } });
+        acc.appendChild(bCopiar); acc.appendChild(bReusar); div.appendChild(acc);
         return div;
+      }
+
+      async function copiarTexto(texto, boton) {
+        let ok = false;
+        try { if (window.navigator && navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(String(texto)); ok = true; } } catch { ok = false; }
+        if (!ok) { try { const t = document.createElement('textarea'); t.value = String(texto); document.body.appendChild(t); t.select(); ok = document.execCommand('copy'); t.remove(); } catch { ok = false; } }
+        if (boton) { const antes = boton.textContent; boton.textContent = ok ? 'Copiado' : 'No se pudo copiar'; setTimeout(() => { boton.textContent = antes; }, 1500); }
+      }
+
+      /**
+       * Markdown SEGURO: primero se escapa TODO el texto (ningún HTML del mensaje llega al DOM) y después se aplica un subconjunto:
+       * párrafos, títulos, negrita, cursiva, código en línea y en bloque, listas, tablas y enlaces http(s) (abren aparte, sin referer).
+       */
+      function renderMarkdown(texto) {
+        const lineas = String(texto ?? '').replace(/\r\n?/g, '\n').split('\n'); const salida = []; let i = 0;
+        const enlinea = (t) => escapeHtml(t)
+          .replace(/`([^`]+)`/g, '<code>$1</code>')
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+          .replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+          .replace(/\[([^\]]{1,200})\]\((https?:\/\/[^\s)"'<>]{1,500})\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer nofollow">$1</a>')
+          .replace(/(^|[\s(])(https?:\/\/[^\s<)"']{1,500})/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer nofollow">$2</a>');
+        const esTabla = (l) => /^\s*\|.*\|\s*$/.test(l);
+        const celdas = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+        const especial = /^```|^#{1,6}\s|^\s*([-*•]|\d+[.)])\s+/;
+        while (i < lineas.length) {
+          const l = lineas[i];
+          if (/^```/.test(l)) { const cod = []; i += 1; while (i < lineas.length && !/^```/.test(lineas[i])) { cod.push(lineas[i]); i += 1; } i += 1; salida.push('<pre><code>' + escapeHtml(cod.join('\n')) + '</code></pre>'); continue; }
+          const h = /^(#{1,6})\s+(.*)$/.exec(l); if (h) { const n = Math.min(6, h[1].length + 2); salida.push('<h' + n + '>' + enlinea(h[2]) + '</h' + n + '>'); i += 1; continue; }
+          if (esTabla(l) && i + 1 < lineas.length && /^\s*\|?\s*:?-{2,}/.test(lineas[i + 1])) {
+            const cab = celdas(l); i += 2; const filas = []; while (i < lineas.length && esTabla(lineas[i])) { filas.push(celdas(lineas[i])); i += 1; }
+            salida.push('<table><thead><tr>' + cab.map((c) => '<th>' + enlinea(c) + '</th>').join('') + '</tr></thead><tbody>' + filas.map((f) => '<tr>' + f.map((c) => '<td>' + enlinea(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>'); continue;
+          }
+          if (/^\s*([-*•]|\d+[.)])\s+/.test(l)) {
+            const ordenada = /^\s*\d+[.)]/.test(l); const items = [];
+            while (i < lineas.length && /^\s*([-*•]|\d+[.)])\s+/.test(lineas[i])) { items.push(lineas[i].replace(/^\s*([-*•]|\d+[.)])\s+/, '')); i += 1; }
+            salida.push((ordenada ? '<ol>' : '<ul>') + items.map((x) => '<li>' + enlinea(x) + '</li>').join('') + (ordenada ? '</ol>' : '</ul>')); continue;
+          }
+          if (!l.trim()) { i += 1; continue; }
+          const parr = []; while (i < lineas.length && lineas[i].trim() && !especial.test(lineas[i]) && !esTabla(lineas[i])) { parr.push(enlinea(lineas[i])); i += 1; }
+          if (!parr.length) { parr.push(enlinea(l)); i += 1; }
+          salida.push('<p>' + parr.join('<br>') + '</p>');
+        }
+        return salida.join('');
       }
 
       function renderizarExtrasDirector(m) {
@@ -318,8 +393,9 @@ const activeSection = 'director-ia';
         const ahora = new Date().toISOString();
         const nodoUsuario = crearNodoMensaje({ rol: 'usuario', contenido: texto, en: ahora });
         els.contenedor.appendChild(nodoUsuario);
-        els.input.value = '';
-        scrollFinal();
+        els.input.value = ''; ajustarAltura();
+        scrollFinal(true);
+        Chats.tocar(texto);
 
         try {
           const res = await enviarConCabeceraSegura(urlConConversacionId(`${API_BASE}/principal`), {
@@ -350,7 +426,12 @@ const activeSection = 'director-ia';
           scrollFinal();
         } catch (err) {
           mostrarAlerta(err instanceof Error ? err.message : 'No se pudo enviar el mensaje.');
-          if (nodoUsuario.parentNode) nodoUsuario.parentNode.removeChild(nodoUsuario);
+          // no se pierde lo escrito: el mensaje queda marcado y se puede reintentar (o se recupera en el campo de escritura)
+          if (nodoUsuario.classList) nodoUsuario.classList.add('director-ia-burbuja--error');
+          const reint = document.createElement('button'); reint.type = 'button'; reint.className = 'btn-secondary btn-sm'; reint.textContent = 'Reintentar';
+          reint.addEventListener('click', () => { if (nodoUsuario.parentNode) nodoUsuario.parentNode.removeChild(nodoUsuario); els.input.value = texto; ajustarAltura(); if (els.form && els.form.requestSubmit) els.form.requestSubmit(); else enviarMensaje({ preventDefault() {} }); });
+          nodoUsuario.appendChild(reint);
+          if (!els.input.value) { els.input.value = texto; ajustarAltura(); }
         } finally {
           enVuelo = false;
           els.btnEnviar.disabled = false;
@@ -390,16 +471,28 @@ const activeSection = 'director-ia';
           .replace(/'/g, '&#039;');
       }
 
-      function scrollFinal() {
-        if (els.contenedor) els.contenedor.scrollTop = els.contenedor.scrollHeight;
+      /** Baja al final solo si se fuerza (lo que acabas de enviar, cambio de chat) o si ya estabas cerca del final; si no, avisa. */
+      function scrollFinal(forzar = false) {
+        if (!els.contenedor) return;
+        const btn = document.getElementById('btnIrAlFinal');
+        if (forzar || cercaDelFinal()) { els.contenedor.scrollTop = els.contenedor.scrollHeight; if (btn) btn.hidden = true; }
+        else if (btn) btn.hidden = false;
       }
+      function ajustarAltura() { const t = els.input; if (!t || !t.style) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight || 0, 192) + 'px'; }
 
       // ── eventos ──
       if (els.form) els.form.addEventListener('submit', enviarMensaje);
+      const btnFinal = document.getElementById('btnIrAlFinal');
+      if (btnFinal) btnFinal.addEventListener('click', () => scrollFinal(true));
+      if (els.contenedor && els.contenedor.addEventListener) els.contenedor.addEventListener('scroll', () => { if (btnFinal && cercaDelFinal()) btnFinal.hidden = true; });
       if (els.input) {
         els.input.addEventListener('input', () => {
           els.btnEnviar.disabled = !els.input.value.trim() || enVuelo;
           mostrarAlerta(null);
+          ajustarAltura();
+        });
+        els.input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!enVuelo && els.input.value.trim()) enviarMensaje({ preventDefault() {} }); }
         });
       }
 
@@ -925,11 +1018,11 @@ const activeSection = 'director-ia';
             mostrarAlertaConversacionId('ID inválido: debe ser cv_ seguido de 16 caracteres hexadecimales.');
             return;
           }
+          els.panelConfiguracion.hidden = true;
+          if (id && Chats.disponible()) { Chats.vincular(id); return; } // se registra como chat (el Director debe conocerla)
           guardarConversacionId(id || null);
           mostrarAlertaConversacionId(id ? `Conversación configurada: ${id}` : 'Conversación limpiada (se creará una nueva).');
           setTimeout(() => mostrarAlertaConversacionId(null), 3000);
-          els.panelConfiguracion.hidden = true;
-          // Recargar la conversación con el nuevo ID
           cargarConversacionPrincipal();
         });
       }
@@ -943,6 +1036,111 @@ const activeSection = 'director-ia';
           cargarConversacionPrincipal();
         });
       }
+
+      // ── CHATS Y PROYECTOS: cada chat es una conversación propia del Director (su historial y su contexto); la principal es la de Telegram ──
+      const Chats = (function () {
+        let chats = []; let proyectos = []; let vista = 'activos'; let filtro = ''; let actualId = null; let abiertoMenu = null; let disponible = false;
+        const lista = document.getElementById('listaChats'); const buscar = document.getElementById('buscarChats'); const barra = document.getElementById('barraChats'); const btnBarra = document.getElementById('btnBarraChats');
+        const actual = () => chats.find((c) => c.id === actualId) || null;
+        async function api(cuerpo) {
+          const r = await enviarConCabeceraSegura(`${API_BASE}/chats`, { method: 'POST', body: JSON.stringify(cuerpo) }); const j = await leerJson(r);
+          if (!j.success) throw new Error(j.message || 'No se pudo completar la operación.');
+          if (Array.isArray(j.chats)) { chats = j.chats; proyectos = j.proyectos || []; }
+          return j;
+        }
+        function grupoFecha(iso) {
+          const d = new Date(iso); const hoy = new Date(); const ini = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+          const dias = Math.round((ini(hoy) - ini(d)) / 86400000);
+          return dias <= 0 ? 'Hoy' : dias === 1 ? 'Ayer' : dias <= 7 ? 'Últimos 7 días' : dias <= 30 ? 'Últimos 30 días' : 'Anteriores';
+        }
+        function visibles() {
+          const f = filtro.toLowerCase();
+          return chats.filter((c) => (vista === 'papelera' ? Boolean(c.eliminadaEn) : !c.eliminadaEn && (vista === 'archivados' ? c.archivada : !c.archivada)))
+            .filter((c) => !f || String(c.titulo).toLowerCase().includes(f) || (proyectos.find((p) => p.id === c.proyectoId) || {}).nombre?.toLowerCase().includes(f));
+        }
+        function cabecera(texto) { const h = document.createElement('div'); h.className = 'director-ia-grupo'; h.textContent = texto; return h; }
+        function item(c) {
+          const fila = document.createElement('div'); fila.className = 'director-ia-chat-item'; fila.setAttribute('role', 'listitem'); if (c.id === actualId) fila.setAttribute('aria-current', 'true');
+          const abrir = document.createElement('button'); abrir.type = 'button'; abrir.className = 'director-ia-chat-abrir'; abrir.textContent = (c.principal ? '📌 ' : '') + c.titulo; abrir.title = c.titulo;
+          abrir.addEventListener('click', () => seleccionar(c.id));
+          const menu = document.createElement('button'); menu.type = 'button'; menu.className = 'director-ia-chat-menu'; menu.textContent = '⋯'; menu.setAttribute('aria-label', `Acciones de «${c.titulo}»`); menu.setAttribute('aria-expanded', String(abiertoMenu === c.id));
+          menu.addEventListener('click', () => { abiertoMenu = abiertoMenu === c.id ? null : c.id; pintar(); });
+          fila.appendChild(abrir); fila.appendChild(menu);
+          const cont = document.createElement('div'); cont.appendChild(fila);
+          if (abiertoMenu === c.id) cont.appendChild(acciones(c));
+          return cont;
+        }
+        function boton(texto, fn, extra) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn-secondary btn-sm'; b.textContent = texto; if (extra) b.setAttribute('aria-label', extra); b.addEventListener('click', fn); return b; }
+        function acciones(c) {
+          const a = document.createElement('div'); a.className = 'director-ia-chat-acciones';
+          const hacer = (cuerpo) => async () => { try { await api({ ...cuerpo, id: c.id }); abiertoMenu = null; pintar(); if (c.id === actualId && (cuerpo.accion === 'eliminar' || cuerpo.accion === 'archivar')) seleccionar(principalId()); } catch (e) { mostrarAlerta(e.message); } };
+          if (c.eliminadaEn) { a.appendChild(boton('Restaurar', hacer({ accion: 'restaurar' }))); return a; }
+          a.appendChild(boton('Renombrar', async () => { const t = window.prompt ? window.prompt('Nuevo título del chat:', c.titulo) : null; if (t && t.trim()) await hacer({ accion: 'renombrar', titulo: t })(); }));
+          const sel = document.createElement('select'); sel.setAttribute('aria-label', 'Mover a proyecto');
+          for (const [v, t] of [['', 'Sin proyecto'], ...proyectos.map((p) => [p.id, p.nombre])]) { const o = document.createElement('option'); o.value = v; o.textContent = t; if ((c.proyectoId || '') === v) o.selected = true; sel.appendChild(o); }
+          sel.addEventListener('change', () => hacer({ accion: 'mover', proyectoId: sel.value || null })());
+          a.appendChild(sel);
+          if (!c.principal) {
+            a.appendChild(boton(c.archivada ? 'Desarchivar' : 'Archivar', hacer({ accion: c.archivada ? 'desarchivar' : 'archivar' })));
+            a.appendChild(boton('Eliminar', async () => { const ok = window.confirm ? window.confirm(`¿Enviar «${c.titulo}» a la papelera? Podrás restaurarlo durante 30 días; el historial del Director no se borra.`) : true; if (ok) await hacer({ accion: 'eliminar' })(); }));
+          }
+          return a;
+        }
+        function pintar() {
+          if (!lista) return; lista.textContent = '';
+          for (const b of document.querySelectorAll ? document.querySelectorAll('.director-ia-vista') : []) b.setAttribute('aria-selected', String(b.dataset.vista === vista));
+          const vs = visibles();
+          if (!vs.length) { const v = document.createElement('div'); v.className = 'director-ia-vacio'; v.textContent = filtro ? 'Ningún chat coincide con la búsqueda.' : vista === 'papelera' ? 'La papelera está vacía.' : vista === 'archivados' ? 'No hay chats archivados.' : 'Aún no hay chats.'; lista.appendChild(v); return; }
+          const fijados = vs.filter((c) => c.principal); if (fijados.length) { lista.appendChild(cabecera('Principal · Telegram')); for (const c of fijados) lista.appendChild(item(c)); }
+          for (const p of proyectos) { const cs = vs.filter((c) => !c.principal && c.proyectoId === p.id); if (!cs.length && (vista !== 'activos' || filtro)) continue;
+            const h = cabecera('📁 ' + p.nombre); h.title = p.instrucciones ? 'Instrucciones del proyecto: ' + p.instrucciones.slice(0, 200) : 'Proyecto'; lista.appendChild(h);
+            if (!cs.length) { const v = document.createElement('div'); v.className = 'director-ia-vacio'; v.textContent = 'Sin chats'; lista.appendChild(v); }
+            for (const c of cs) lista.appendChild(item(c)); }
+          const sueltos = vs.filter((c) => !c.principal && !c.proyectoId); let grupo = null;
+          for (const c of sueltos) { const g = grupoFecha(c.actualizadoEn); if (g !== grupo) { lista.appendChild(cabecera(g)); grupo = g; } lista.appendChild(item(c)); }
+        }
+        const principalId = () => (chats.find((c) => c.principal) || {}).id || null;
+        function seleccionar(id) {
+          if (!id) return;
+          if (typeof VozDirector !== 'undefined' && VozDirector.activa && VozDirector.activa()) VozDirector.finalizar(); // la voz se queda en el chat donde empezó
+          actualId = id; guardarConversacionId(id); abiertoMenu = null; pintar();
+          if (barra && barra.classList) { barra.classList.remove('abierta'); if (btnBarra) btnBarra.setAttribute('aria-expanded', 'false'); }
+          const c = actual(); if (els.titulo && c) els.titulo.textContent = c.titulo;
+          if (els.subtitulo && c) els.subtitulo.textContent = c.principal ? 'Conversación principal compartida con Telegram.' : (proyectos.find((p) => p.id === c.proyectoId) ? `Proyecto: ${proyectos.find((p) => p.id === c.proyectoId).nombre}` : 'Chat independiente: su propio historial y contexto.');
+          cargarConversacionPrincipal();
+        }
+        async function cargar() {
+          try { const r = await fetch(`${API_BASE}/chats`, { headers: { 'cache-control': 'no-store' } }); const j = await leerJson(r); if (!j.success) throw new Error(j.message || 'sin chats'); chats = j.chats || []; proyectos = j.proyectos || []; disponible = true; return true; }
+          catch { disponible = false; return false; }
+        }
+        async function iniciar() {
+          const ok = await cargar();
+          if (!ok) { cargarConversacionPrincipal(); return; } // sin la lista (servidor antiguo): como antes, la conversación principal
+          const guardada = leerConversacionIdGuardada(); const valida = chats.find((c) => c.id === guardada && !c.eliminadaEn);
+          pintar(); seleccionar(valida ? guardada : principalId());
+        }
+        async function nuevo(proyectoId = null) {
+          try { const j = await api({ accion: 'crear', proyectoId }); vista = 'activos'; filtro = ''; if (buscar) buscar.value = ''; seleccionar(j.chat.id); if (els.input) els.input.focus(); }
+          catch (e) { mostrarAlerta(e.message); }
+        }
+        async function nuevoProyecto() {
+          const nombre = window.prompt ? window.prompt('Nombre del proyecto o carpeta:') : null; if (!nombre || !nombre.trim()) return;
+          const instr = window.prompt ? window.prompt('Instrucciones del proyecto (opcional; se guardan con el proyecto):', '') : '';
+          try { await api({ accion: 'crearProyecto', nombre, instrucciones: instr || '' }); pintar(); } catch (e) { mostrarAlerta(e.message); }
+        }
+        async function vincular(id) { try { await api({ accion: 'vincular', id }); seleccionar(id); } catch (e) { mostrarAlertaConversacionId(e.message); } }
+        function tocar(texto) { const c = actual(); if (!c) return; c.actualizadoEn = new Date().toISOString(); if (c.titulo === 'Chat nuevo' && texto) { c.titulo = String(texto).replace(/\s+/g, ' ').trim().slice(0, 60); if (els.titulo) els.titulo.textContent = c.titulo; } chats.sort((a, b) => Number(b.principal) - Number(a.principal) || String(b.actualizadoEn).localeCompare(String(a.actualizadoEn))); pintar(); }
+        if (buscar) buscar.addEventListener('input', () => { filtro = buscar.value.trim(); pintar(); });
+        for (const b of document.querySelectorAll ? document.querySelectorAll('.director-ia-vista') : []) b.addEventListener('click', () => { vista = b.dataset.vista || 'activos'; abiertoMenu = null; pintar(); });
+        const bn = document.getElementById('btnNuevoChat'); if (bn) bn.addEventListener('click', () => nuevo());
+        const bp = document.getElementById('btnNuevoProyecto'); if (bp) bp.addEventListener('click', () => nuevoProyecto());
+        if (btnBarra && barra) btnBarra.addEventListener('click', () => { const abierta = barra.classList.toggle('abierta'); btnBarra.setAttribute('aria-expanded', String(abierta)); });
+        if (document.addEventListener) document.addEventListener('keydown', (e) => {
+          if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { if (buscar) { e.preventDefault(); buscar.focus(); } }
+          else if (e.altKey && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); nuevo(); }
+        });
+        return { iniciar, seleccionar, nuevo, vincular, tocar, actual, disponible: () => disponible, _lista: () => chats.slice(), _vista: (v) => { vista = v; pintar(); } };
+      })();
 
       // iniciar
       // ── confirmaciones pendientes (opción A: reautenticación con contraseña; el token de confirmar NUNCA llega aquí) ──
@@ -980,7 +1178,7 @@ const activeSection = 'director-ia';
       if (els.contenedor && typeof MutationObserver === 'function') new MutationObserver(() => cargarConfirmaciones()).observe(els.contenedor, { childList: true });
 
       comprobarEstado();
-      cargarConversacionPrincipal();
+      Chats.iniciar();
       setInterval(comprobarEstado, 60000);
     })();
   </script>
@@ -1263,6 +1461,40 @@ const activeSection = 'director-ia';
       outline: none;
       border-color: var(--color-primary, #2563eb);
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    }
+    .director-ia-sidebar-acciones { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .director-ia-buscar { width: 100%; margin: 0.5rem 0; padding: 0.4rem 0.6rem; border: 1px solid var(--color-borde, #d0d5dd); border-radius: 8px; background: transparent; color: inherit; }
+    .director-ia-vistas { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
+    .director-ia-vista { flex: 1; font-size: 0.78rem; padding: 0.25rem; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; opacity: 0.75; }
+    .director-ia-vista[aria-selected="true"] { border-color: var(--color-borde, #d0d5dd); opacity: 1; font-weight: 600; }
+    .director-ia-lista { overflow-y: auto; flex: 1; min-height: 0; }
+    .director-ia-grupo { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; margin: 0.7rem 0.2rem 0.25rem; }
+    .director-ia-chat-item { display: flex; align-items: center; gap: 0.2rem; border-radius: 8px; }
+    .director-ia-chat-item[aria-current="true"] { background: rgba(127, 127, 127, 0.14); }
+    .director-ia-chat-item > .director-ia-chat-abrir { flex: 1; min-width: 0; text-align: left; padding: 0.4rem 0.5rem; background: transparent; border: 0; color: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 8px; }
+    .director-ia-chat-item > .director-ia-chat-menu { background: transparent; border: 0; color: inherit; cursor: pointer; padding: 0.3rem 0.45rem; border-radius: 6px; opacity: 0.6; }
+    .director-ia-chat-item:hover > .director-ia-chat-menu, .director-ia-chat-menu:focus { opacity: 1; }
+    .director-ia-chat-acciones { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.3rem 0.4rem 0.5rem; }
+    .director-ia-chat-acciones button, .director-ia-chat-acciones select { font-size: 0.75rem; }
+    .director-ia-mensajes { overflow-y: auto; overscroll-behavior: contain; scroll-behavior: auto; }
+    .director-ia-cargar-anteriores { display: block; margin: 0.4rem auto 0.8rem; font-size: 0.8rem; }
+    .director-ia-burbuja-cuerpo.md p { margin: 0 0 0.5rem; } .director-ia-burbuja-cuerpo.md p:last-child { margin-bottom: 0; }
+    .director-ia-burbuja-cuerpo.md pre { overflow-x: auto; padding: 0.6rem; border-radius: 8px; background: rgba(127, 127, 127, 0.12); font-size: 0.85em; }
+    .director-ia-burbuja-cuerpo.md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+    .director-ia-burbuja-cuerpo.md table { border-collapse: collapse; display: block; overflow-x: auto; margin: 0.4rem 0; }
+    .director-ia-burbuja-cuerpo.md th, .director-ia-burbuja-cuerpo.md td { border: 1px solid var(--color-borde, #d0d5dd); padding: 0.25rem 0.5rem; text-align: left; }
+    .director-ia-burbuja-cuerpo.md ul, .director-ia-burbuja-cuerpo.md ol { margin: 0.2rem 0 0.5rem 1.2rem; }
+    .director-ia-burbuja-acciones { display: flex; gap: 0.3rem; margin-top: 0.35rem; opacity: 0.55; }
+    .director-ia-burbuja:hover .director-ia-burbuja-acciones, .director-ia-burbuja-acciones:focus-within { opacity: 1; }
+    .director-ia-burbuja-acciones button { font-size: 0.72rem; background: transparent; border: 1px solid var(--color-borde, #d0d5dd); border-radius: 6px; padding: 0.1rem 0.45rem; color: inherit; cursor: pointer; }
+    .director-ia-burbuja--error { outline: 1px dashed #d92d20; }
+    #inputMensaje { resize: none; min-height: 2.4rem; max-height: 12rem; overflow-y: auto; line-height: 1.4; font: inherit; flex: 1; padding: 0.55rem 0.7rem; border-radius: 10px; }
+    .director-ia-ir-final { position: sticky; bottom: 0.5rem; margin: 0 auto; display: block; font-size: 0.8rem; border-radius: 999px; padding: 0.25rem 0.8rem; }
+    .director-ia-btn-barra { display: none; background: transparent; border: 1px solid var(--color-borde, #d0d5dd); border-radius: 8px; padding: 0.2rem 0.55rem; color: inherit; cursor: pointer; margin-right: 0.5rem; }
+    @media (max-width: 860px) {
+      .director-ia-btn-barra { display: inline-block; }
+      .director-ia-sidebar { position: fixed; inset: 0 auto 0 0; width: min(85vw, 320px); z-index: 40; transform: translateX(-105%); transition: transform 0.2s ease; overflow-y: auto; }
+      .director-ia-sidebar.abierta { transform: none; box-shadow: 0 0 24px rgba(0, 0, 0, 0.25); }
     }
     .director-ia-modo-voz { font-size: 0.8rem; padding: 0.25rem 0.4rem; border-radius: 6px; border: 1px solid var(--color-borde, #d0d5dd); background: transparent; color: inherit; max-width: 11rem; }
     .director-ia-estado-voz {
