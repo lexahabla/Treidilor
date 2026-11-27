@@ -69,7 +69,7 @@ function montarPanel(manejarFetch, { habladas = true } = {}) {
   class SpeechSynthesisUtterance { constructor(texto) { this.text = texto; } }
   const peticiones = [];
   const fetch = async (url, init = {}) => { peticiones.push({ url: String(url), init }); return manejarFetch(String(url), init); };
-  const almacen = new Map(habladas ? [['directorIA.respuestasHabladas', 'si']] : []); // estas pruebas comprueban la voz: se activa expresamente
+  const almacen = new Map([['directorIA.respuestasHabladas', habladas ? 'si' : 'no']]); // estas pruebas comprueban la voz: se activa expresamente
   const ventana = {
     SpeechRecognition, speechSynthesis, SpeechSynthesisUtterance, fetch, document,
     localStorage: { getItem: (k) => almacen.get(k) ?? null, setItem: (k, v) => almacen.set(k, v), removeItem: (k) => almacen.delete(k) },
@@ -168,7 +168,7 @@ test('voz: una respuesta HTML o de texto se explica al propietario (no «Unexpec
   }
 });
 
-test('RESPUESTAS SOLO POR ESCRITO (por defecto) con «Voz rápida»: tu voz se transcribe y se envía; el navegador NO habla y la escucha sigue', async () => {
+test('RESPUESTAS SOLO POR ESCRITO (altavoz desactivado) con «Voz rápida»: tu voz se transcribe y se envía; el navegador NO habla y la escucha sigue', async () => {
   const p = montarPanel(servidor(async (cuerpo) => respuestaDirector(`Respuesta a «${cuerpo.texto}»`)), { habladas: false });
   await tic(); p.el('btnVoz').click();
   for (let turno = 1; turno <= 2; turno += 1) {

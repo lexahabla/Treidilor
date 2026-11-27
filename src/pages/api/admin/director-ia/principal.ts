@@ -5,6 +5,7 @@
  *                                        principal del Director 00.
  * POST /api/admin/director-ia/principal   envía un mensaje (texto o voz) al
  *                                        Director, identificado como canal panel.
+ *      { muestraVoz: 'alex'|'dora'|'santa' } → muestra corta de una voz local del Director (texto fijo).
  *      { audio (base64), mime, segundos } → turno HABLADO: el Director transcribe,
  *                                        responde y devuelve su voz (la misma que en
  *                                        Telegram) o `vozLocal` si hay datos reales.
@@ -26,7 +27,7 @@ import { requireAdminAuth, getSessionUser } from '../../../../lib/adminAuth';
 import { findUserById } from '../../../../lib/userStore';
 import { sameOrigin } from '../../../../lib/alertsHttp';
 import { listarConversaciones, guardarConversacionPrincipal } from '../../../../lib/directorIaStore';
-import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError } from '../../../../lib/taiPuente';
+import { TaiPuenteClient, resolverConfigPuente, TaiPuenteError, VOCES_DIRECTOR } from '../../../../lib/taiPuente';
 import { chatPermitido, tocarChat, asegurarPrincipal, listarChats } from '../../../../lib/directorIaChats';
 import { obtenerAdjunto, paraDirector, marcarEnviados, LIMITES_ADJUNTOS } from '../../../../lib/directorIaAdjuntos';
 
@@ -197,12 +198,13 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Validar la entrada ANTES de tocar el Director.
-  let body: { texto?: unknown; origen?: unknown; confianza?: unknown; audio?: unknown; mime?: unknown; segundos?: unknown; adjuntos?: unknown; salidaVoz?: unknown };
+  let body: { texto?: unknown; origen?: unknown; confianza?: unknown; audio?: unknown; mime?: unknown; segundos?: unknown; adjuntos?: unknown; salidaVoz?: unknown; muestraVoz?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return json({ success: false, code: 'json_no_valido', message: 'Cuerpo JSON no válido.' }, 400);
   }
+  if (body.muestraVoz !== undefined) return muestraVoz(body.muestraVoz);
   if (body.audio !== undefined) return turnoHablado(request, p.user.id, body);
   const idsAdjuntos = Array.isArray(body.adjuntos) ? body.adjuntos.filter((x): x is string => typeof x === 'string') : [];
   if (Array.isArray(body.adjuntos) && (idsAdjuntos.length !== body.adjuntos.length || idsAdjuntos.length > LIMITES_ADJUNTOS.porMensaje)) return json({ success: false, code: 'adjuntos_no_validos', message: `Hasta ${LIMITES_ADJUNTOS.porMensaje} adjuntos por mensaje.` }, 400);
@@ -292,6 +294,19 @@ function respuestaPanel(respuesta: Awaited<ReturnType<TaiPuenteClient['enviarMen
   };
 }
 
+/** Muestra de voz para el selector del panel: el Director la sintetiza con su voz local (texto fijo; no se registra en ninguna conversación). */
+async function muestraVoz(voz: unknown): Promise<Response> {
+  if (typeof voz !== 'string' || !(VOCES_DIRECTOR as readonly string[]).includes(voz)) return json({ success: false, code: 'voz_no_valida', message: 'Voz no válida.' }, 400);
+  const cliente = clientePuente();
+  if (!cliente) return sinPuente();
+  try {
+    const m = await cliente.muestraVoz(voz);
+    return json({ success: true, voz: m.voz, audio: m.audio });
+  } catch (e) {
+    return errorDePuente(e);
+  }
+}
+
 /** Turno hablado: el audio va al Director por el servidor (el token nunca llega al navegador); vuelve su voz o el texto para la voz local. */
 async function turnoHablado(request: Request, userId: string, body: { audio?: unknown; mime?: unknown; segundos?: unknown; salidaVoz?: unknown }): Promise<Response> {
   const audio = typeof body.audio === 'string' ? body.audio : '';
@@ -323,7 +338,7 @@ async function turnoHablado(request: Request, userId: string, body: { audio?: un
   return json({
     success: true,
     conversacion: { id: principal.conversacion, titulo: 'Director IA', conversacionDirector: principal.conversacion, principal: principal.principal },
-    voz: { estado: r.estado, mensaje: r.mensaje, transcripcion: r.transcripcion, audio: r.audio, vozLocal: r.vozLocal, requiereRepeticion: r.requiereRepeticion, motivoSinVoz: r.motivoSinVoz ?? null, vozDirector: r.vozDirector ?? null },
+    voz: { estado: r.estado, mensaje: r.mensaje, transcripcion: r.transcripcion, audio: r.audio, vozLocal: r.vozLocal, requiereRepeticion: r.requiereRepeticion, motivoSinVoz: r.motivoSinVoz ?? null, vozDirector: r.vozDirector ?? null, motorVoz: r.motorVoz ?? null },
     respuesta: r.respuesta ? respuestaPanel(r.respuesta) : null,
   });
 }

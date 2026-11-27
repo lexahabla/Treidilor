@@ -24,6 +24,7 @@ const srv = http.createServer(async (req, res) => {
   recibidas.push({ ruta: req.url.split('?')[0], auth: req.headers.authorization, cuerpo });
   const r = (st, j) => { res.writeHead(st, { 'content-type': 'application/json' }); res.end(JSON.stringify(j)); };
   if (req.url === '/tai/v1/chat/conversacion') return r(200, { esquema: 'tai-chat/1', conversacion: 'cv_0123456789abcdef', principal: true });
+  if (req.url === '/tai/v1/chat/voz/muestra' && modo !== 'antigua') return r(200, { esquema: 'tai-chat/1', voz: cuerpo.voz, audio: { base64: Buffer.from('RIFF....WAVE').toString('base64'), mime: 'audio/wav' } });
   if (req.url !== '/tai/v1/chat/voz') return r(404, { error: { codigo: 'no_encontrado', mensaje: 'x' } });
   if (modo === 'antigua') return r(404, { error: { codigo: 'no_encontrado', mensaje: 'Ruta no encontrada.' } });
   if (modo === 'sin_voz') return r(503, { error: { codigo: 'voz_no_disponible', mensaje: 'La voz del Director no está activa en el servicio.' } });
@@ -97,7 +98,7 @@ function montarPanel(alVoz, { conMicrofono = true, habladas = true } = {}) {
     if (url.includes('/principal') && init.method === 'POST') return jsonRes(await alVoz(JSON.parse(init.body), peticiones.filter((p) => p.init.method === 'POST').length));
     return jsonRes({ success: false }, 404);
   };
-  const almacen = new Map(); if (habladas) almacen.set('directorIA.respuestasHabladas', 'si'); // la mayoría de estas pruebas comprueban la voz: se activa expresamente
+  const almacen = new Map(); if (habladas !== null) almacen.set('directorIA.respuestasHabladas', habladas ? 'si' : 'no'); // null = sin preferencia guardada (por defecto, activadas)
   const ventana = { MediaRecorder, AudioContext, Blob, Audio, SpeechSynthesisUtterance, SpeechRecognition, navigator, fetch, document, btoa: (s) => Buffer.from(s, 'binary').toString('base64'), Float32Array, Uint8Array,
     speechSynthesis: { speak(u) { sim.locuciones.push(u); }, cancel() {} },
     localStorage: { getItem: (k) => almacen.get(k) ?? null, setItem: (k, v) => almacen.set(k, v), removeItem: (k) => almacen.delete(k) },
@@ -228,8 +229,8 @@ test('MODO RÁPIDO: elegido «Voz rápida», el botón usa el reconocimiento y l
   assert.equal(p.sim.reconocimientos, 1, 'reconocimiento del navegador'); assert.equal(p.sim.grabadores.length, 0, 'no graba audio para el Director');
 });
 
-// ───────── respuestas habladas: preferencia explícita, desactivada por defecto (27/11: la voz robótica del navegador sonaba sin pedirla) ─────────
-test('POR DEFECTO SOLO POR ESCRITO: hablas, tu voz se transcribe y la respuesta llega escrita; no suena nada (ni la voz del Director ni la del navegador)', async () => {
+// ───────── respuestas habladas: ACTIVADAS por defecto desde la voz local sin cupo (1.3.7); si el propietario las desactiva, se respeta ─────────
+test('ALTAVOZ DESACTIVADO POR EL PROPIETARIO: hablas, tu voz se transcribe y la respuesta llega escrita; no suena nada (ni la voz del Director ni la del navegador)', async () => {
   const p = montarPanel(async (c, n) => respuestaVoz(n), { habladas: false });
   await tic(); assert.equal(p.el('btnAltavoz').atributos['aria-pressed'], 'false');
   p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración del micrófono */
@@ -265,7 +266,7 @@ test('SALIDA DE VOZ: cada turno lleva el estado del altavoz, el modo y cómo aca
   const p = montarPanel(async (c, n) => respuestaVoz(n));
   await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); /* calibración */
   await p.pasar(900, 0.2); await p.pasar(1500, 0);
-  assert.deepEqual(cuerpoDe(p.posts()[0]).salidaVoz, { altavoz: 'activado', motor: 'director', ultimaReproduccion: 'ninguna' });
+  assert.deepEqual(cuerpoDe(p.posts()[0]).salidaVoz, { altavoz: 'activado', motor: 'director', ultimaReproduccion: 'ninguna', voz: 'alex' });
   p.sim.audios.at(-1).onended(); await tic();
   await p.pasar(900, 0.2); await p.pasar(1500, 0);
   assert.equal(cuerpoDe(p.posts()[1]).salidaVoz.ultimaReproduccion, 'completada', 'el navegador reprodujo la respuesta anterior hasta el final');
@@ -279,5 +280,42 @@ test('CUPO DE VOZ AGOTADO: el panel lo dice claramente, marca el altavoz y NO us
   await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1500, 0);
   assert.match(p.el('textoEstadoVoz').textContent, /Te respondo por escrito \(mi voz ha agotado su cupo gratuito de hoy\)\. Escuchando…/);
   assert.ok(p.el('btnAltavoz').classList._s ? p.el('btnAltavoz').classList._s.has('sin-cupo') : true, 'el altavoz queda marcado');
-  assert.match(p.el('btnAltavoz').title, /agotado su cupo/); assert.equal(p.sim.locuciones.length, 0, 'sin voz robótica'); assert.equal(p.sim.audios.length, 0);
+  assert.match(p.el('btnAltavoz').title, /voz del Director no está disponible/); assert.equal(p.sim.locuciones.length, 0, 'sin voz robótica'); assert.equal(p.sim.audios.length, 0);
+});
+
+// ───────── VOZ LOCAL DEL DIRECTOR (1.3.7): sin cupo, voz elegible con muestra, altavoz activado por defecto ─────────
+test('endpoint MUESTRA DE VOZ: lista cerrada (sin llegar al Director si no vale), CSRF obligatorio y compatible con el Director 1.3.6', async () => {
+  modo = 'ok'; const antes = recibidas.length;
+  assert.equal((await pedir({ muestraVoz: 'kore' })).status, 400); assert.equal((await pedir({ muestraVoz: 'dora' }, { csrf: false })).status, 403);
+  assert.equal(recibidas.length, antes, 'nada inválido llega al Director');
+  const ok = await pedir({ muestraVoz: 'dora' }); assert.equal(ok.status, 200, ok.t); assert.equal(ok.j.voz, 'dora'); assert.equal(ok.j.audio.mime, 'audio/wav');
+  const env = recibidas.at(-1); assert.equal(env.ruta, '/tai/v1/chat/voz/muestra'); assert.deepEqual(env.cuerpo, { voz: 'dora' }); assert.equal(env.auth, `Bearer ${TOKEN_CHAT}`);
+  modo = 'antigua'; const vieja = await pedir({ muestraVoz: 'alex' }); assert.equal(vieja.j.code, 'voz_no_disponible'); assert.match(vieja.j.message, /actualización del Director/); modo = 'ok';
+});
+
+test('ALTAVOZ ACTIVADO POR DEFECTO: sin preferencia guardada, el Director responde en voz alta (y el turno lo dice)', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n), { habladas: null });
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1500, 0);
+  assert.equal(cuerpoDe(p.posts()[0]).salidaVoz.altavoz, 'activado'); assert.equal(p.sim.audios.length, 1, 'suena la respuesta'); assert.equal(p.sim.locuciones.length, 0, 'nunca la voz robótica');
+});
+
+test('SELECTOR DE VOZ y MUESTRA: la voz elegida viaja con cada turno, se recuerda, la muestra suena y se detiene; en «Voz rápida» el selector se oculta', async () => {
+  const p = montarPanel(async (c, n) => (c.muestraVoz ? { success: true, voz: c.muestraVoz, audio: { base64: 'UklGRg==', mime: 'audio/wav' } } : respuestaVoz(n)));
+  await tic(); assert.equal(p.el('vozElegida').value, 'alex', 'provisional por defecto'); assert.equal(p.el('vozElegida').hidden, false);
+  p.el('vozElegida').value = 'dora'; p.el('vozElegida').dispatch('change');
+  p.el('btnMuestraVoz').click(); await tic();
+  const m = p.posts().at(-1); assert.deepEqual(JSON.parse(m.init.body), { muestraVoz: 'dora' }); assert.equal(m.init.headers['X-Director-IA'], '1');
+  const audio = p.sim.audios.at(-1); assert.match(audio.url, /^data:audio\/wav;base64,/); assert.equal(p.el('btnMuestraVoz').atributos['aria-pressed'], 'true');
+  p.el('btnMuestraVoz').click(); await tic(); assert.equal(audio.pausado, true, 'pulsar otra vez detiene la muestra'); assert.equal(p.el('btnMuestraVoz').atributos['aria-pressed'], 'false');
+  p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1500, 0);
+  assert.equal(cuerpoDe(p.posts().at(-1)).salidaVoz.voz, 'dora', 'el Director responde con la voz elegida');
+  const q = montarPanel(async (c, n) => respuestaVoz(n)); await tic();
+  q.el('modoVoz').value = 'rapida'; q.el('modoVoz').dispatch('change'); assert.equal(q.el('vozElegida').hidden, true); assert.equal(q.el('btnMuestraVoz').hidden, true);
+});
+
+test('VOZ LOCAL QUE FALLA: se dice por escrito y claro (sin voz robótica) y el altavoz queda marcado', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n, { estado: 'respuesta_solo_texto', audio: null, motivoSinVoz: 'fallo_voz_local', vozDirector: 'fallo_voz_local' }));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1500, 0);
+  assert.match(p.el('textoEstadoVoz').textContent, /Te respondo por escrito \(mi voz local no ha respondido; lo intento en la próxima\)/);
+  assert.equal(p.sim.locuciones.length, 0); assert.equal(p.sim.audios.length, 0);
 });

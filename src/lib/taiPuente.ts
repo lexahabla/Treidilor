@@ -253,7 +253,9 @@ export function naturalezaLegible(datos: unknown): Array<{ etiqueta: string; det
  * Estado de la SALIDA de voz del panel (Director 1.3.7): solo claves y valores de una lista cerrada, nunca texto libre.
  * altavoz: respuestas habladas activadas o no · motor: voz del Director o del navegador · ultimaReproduccion: lo que informó el navegador.
  */
-const SALIDA_VOZ: Record<string, readonly string[]> = { altavoz: ['activado', 'desactivado'], motor: ['director', 'rapida'], ultimaReproduccion: ['completada', 'fallida', 'cortada', 'ninguna'] };
+const SALIDA_VOZ: Record<string, readonly string[]> = { altavoz: ['activado', 'desactivado'], motor: ['director', 'rapida'], ultimaReproduccion: ['completada', 'fallida', 'cortada', 'ninguna'], voz: ['alex', 'dora', 'santa'] };
+/** Voces locales del Director (Kokoro en la propia VPS, sin cupo). La primera es la provisional por defecto. */
+export const VOCES_DIRECTOR = ['alex', 'dora', 'santa'] as const;
 export function limpiarSalidaVoz(v: unknown): Record<string, string> | null {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
   const o: Record<string, string> = {}; for (const [k, permitidos] of Object.entries(SALIDA_VOZ)) { const x = (v as Record<string, unknown>)[k]; if (typeof x === 'string' && permitidos.includes(x)) o[k] = x; }
@@ -454,7 +456,7 @@ export class TaiPuenteClient {
    * (memoria, permisos y ledger únicos) y devuelve el audio con la MISMA voz que en Telegram. Si la respuesta lleva datos reales del
    * negocio, el Director no la sintetiza fuera y devuelve `vozLocal` (texto breve) para que la lea el navegador. Alcance chat: no confirma nada.
    */
-  async hablar(audioBase64: string, { conversacion, mime, segundos, id = idMensaje(), privado = false, salidaVoz }: { conversacion: string; mime: string; segundos: number; id?: string; privado?: boolean; salidaVoz?: unknown }): Promise<{ estado: string; mensaje: string | null; transcripcion: string; respuesta: RespuestaDirector | null; audio: { base64: string; mime: string } | null; vozLocal: string | null; requiereRepeticion: boolean }> {
+  async hablar(audioBase64: string, { conversacion, mime, segundos, id = idMensaje(), privado = false, salidaVoz }: { conversacion: string; mime: string; segundos: number; id?: string; privado?: boolean; salidaVoz?: unknown }): Promise<{ estado: string; mensaje: string | null; transcripcion: string; respuesta: RespuestaDirector | null; audio: { base64: string; mime: string } | null; vozLocal: string | null; requiereRepeticion: boolean; motivoSinVoz?: string | null; vozDirector?: string | null; motorVoz?: string | null }> {
     if (!conversacion) throw new TaiPuenteError('conversacion_invalida', 400, 'Se requiere el identificador de la conversación del Director.');
     if (!this.config.token) throw new TaiPuenteError('token_no_configurado', 500, 'No se ha configurado el token de acceso al puente del Director.');
     const idSolicitud = idAleatorio();
@@ -482,9 +484,25 @@ export class TaiPuenteClient {
       audio,
       vozLocal: typeof r?.vozLocal === 'string' && r.vozLocal ? r.vozLocal : null,
       requiereRepeticion: Boolean(r?.requiereRepeticion),
-      motivoSinVoz: ['cuota_agotada', 'fallo_sintesis', 'limite_diario', 'datos_del_negocio'].includes(r?.motivoSinVoz) ? r.motivoSinVoz : null,
-      vozDirector: ['disponible', 'sin_cupo', 'no_disponible'].includes(r?.vozDirector) ? r.vozDirector : null,
+      motivoSinVoz: ['cuota_agotada', 'fallo_sintesis', 'limite_diario', 'datos_del_negocio', 'fallo_voz_local'].includes(r?.motivoSinVoz) ? r.motivoSinVoz : null,
+      vozDirector: ['disponible', 'sin_cupo', 'no_disponible', 'fallo_voz_local'].includes(r?.vozDirector) ? r.vozDirector : null,
+      motorVoz: ['local', 'gemini'].includes(r?.motorVoz) ? r.motorVoz : null,
     };
+  }
+
+  /** Muestra corta de una voz local del Director (texto fijo en el servicio). Un Director sin voz local → `voz_no_disponible`. */
+  async muestraVoz(voz: string): Promise<{ voz: string; audio: { base64: string; mime: string } }> {
+    if (!(VOCES_DIRECTOR as readonly string[]).includes(voz)) throw new TaiPuenteError('voz_no_valida', 400, 'Voz no válida.');
+    if (!this.config.token) throw new TaiPuenteError('token_no_configurado', 500, 'No se ha configurado el token de acceso al puente del Director.');
+    let r: any;
+    try {
+      r = await this.peticion<any>('/tai/v1/chat/voz/muestra', { method: 'POST', headers: this.authHeaders(idAleatorio()), body: JSON.stringify({ voz }) }, Math.max(this.config.timeoutMs, 45_000));
+    } catch (e) {
+      if (e instanceof TaiPuenteError && (e.codigo === 'no_encontrado' || e.status === 404)) throw new TaiPuenteError('voz_no_disponible', 503, 'Las muestras de voz llegarán con la actualización del Director.');
+      throw e;
+    }
+    if (!r?.audio || typeof r.audio.base64 !== 'string' || !/^audio\/[a-z0-9.+-]+$/.test(String(r.audio.mime))) throw new TaiPuenteError('voz_no_disponible', 503, 'La voz no devolvió audio.');
+    return { voz: String(r.voz), audio: { base64: r.audio.base64, mime: r.audio.mime } };
   }
 
   /** Historial conversacional real de una conversación (fuente de verdad del Director). */

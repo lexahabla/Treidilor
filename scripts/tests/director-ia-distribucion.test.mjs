@@ -24,7 +24,8 @@ test('estructura: cabecera fija · hilo con scroll propio · editor fuera del sc
   assert.match(regla('.director-ia-lista'), /overflow-y: auto/);
   assert.match(regla('.director-ia-chat-header'), /flex: none/); assert.match(regla('.director-ia-form'), /flex: none/);
   assert.match(regla('.director-ia-ir-final'), /position: absolute/);
-  assert.match(css, /html\.director-ia-app, html\.director-ia-app body \{ height: 100%; overflow: hidden;/, 'la página no se desplaza: nada de dos barras de scroll');
+  assert.match(css, /html\.director-ia-max, html\.director-ia-max body \{ height: 100%; overflow: hidden;/, 'ampliado, la página no se desplaza: nada de dos barras de scroll');
+  assert.doesNotMatch(css, /html\.director-ia-app, html\.director-ia-app body \{[^}]*overflow: hidden/, 'en la vista normal del panel la página SÍ se desplaza (rueda, panel táctil, dedo)');
 });
 
 test('campo de escritura con tope y scroll interno; 16 px en móvil (iOS no amplía al enfocar)', () => {
@@ -36,7 +37,8 @@ test('campo de escritura con tope y scroll interno; 16 px en móvil (iOS no ampl
 test('altura visible real: visualViewport (teclado) y modo compacto con poca altura', () => {
   assert.match(fuente, /vv\.addEventListener\('resize', pedir\)/);
   assert.match(fuente, /vv \? vv\.offsetTop \+ vv\.height : window\.innerHeight/);
-  assert.match(fuente, /raiz\.classList\.toggle\('director-ia-compacto', visible < 560\)/);
+  assert.match(fuente, /raiz\.classList\.toggle\('director-ia-compacto', max && visible < 560\)/);
+  assert.match(fuente, /pagina\.style\.setProperty\('--di-alto', Math\.max\(420, Math\.floor\(visible - 24\)\) \+ 'px'\)/, 'vista normal: alto de la ventana, independiente del scroll de la página');
   assert.match(css, /html\.director-ia-compacto \.site-header, html\.director-ia-compacto \.admin-section-nav \{ display: none !important; \}/);
 });
 

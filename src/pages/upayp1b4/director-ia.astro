@@ -28,6 +28,7 @@ const activeSection = 'director-ia';
 
 <Layout title="Director IA | Panel Treidilor" description="Conversa con el Director IA de Treidilor (Agente 00). Historial persistente compartido con Telegram.">
   <Fragment slot="header-end">
+    <script is:inline data-director-ia-max>try { document.documentElement.classList.add('director-ia-max'); } catch (e) { /* sin clase: se amplía al cargar */ }</script>
     <AdminUserMenu user={sessionUser} active={activeSection} />
   </Fragment>
   <div class="admin-wrapper">
@@ -104,8 +105,8 @@ const activeSection = 'director-ia';
             <button type="button" id="btnMaximizar" class="director-ia-icono" title="Ampliar la conversación a toda la pantalla" aria-label="Ampliar la conversación a toda la pantalla">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
             </button>
-            <button type="button" id="btnCerrarMax" class="director-ia-icono director-ia-cerrar-max" title="Volver al panel (Esc)" aria-label="Cerrar la pantalla completa y volver al panel" hidden>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <button type="button" id="btnCerrarMax" class="director-ia-icono director-ia-cerrar-max" title="Cerrar y volver al panel de administración (Esc). La conversación sigue igual." aria-label="Cerrar la pantalla completa y volver al panel de administración" hidden>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
           </div>
         </div>
@@ -156,6 +157,15 @@ const activeSection = 'director-ia';
               <option value="director">Voz del Director</option>
               <option value="rapida">Voz rápida (del navegador)</option>
             </select>
+            <select id="vozElegida" class="director-ia-modo-voz director-ia-voz-elegida" title="Voz con la que te responde el Director (local, sin límite diario). Provisional hasta que la escuches y elijas" aria-label="Voz del Director">
+              <option value="alex">Alex (provisional)</option>
+              <option value="dora">Dora</option>
+              <option value="santa">Santa</option>
+            </select>
+            <button type="button" id="btnMuestraVoz" class="director-ia-icono" title="Escuchar una muestra de esta voz" aria-label="Escuchar una muestra de esta voz" aria-pressed="false">
+              <svg class="muestra-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
+              <svg class="muestra-stop" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+            </button>
             <button type="button" id="btnAltavoz" class="director-ia-icono director-ia-altavoz" aria-pressed="false" title="Respuestas solo por escrito. Pulsa para que el Director también las lea en voz alta" aria-label="Respuestas solo por escrito. Pulsa para que el Director también las lea en voz alta">
               <svg class="altavoz-no" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4Z"></path><line x1="22" y1="9" x2="16" y2="15"></line><line x1="16" y1="9" x2="22" y2="15"></line></svg>
               <svg class="altavoz-si" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4Z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M18.5 5.5a9 9 0 0 1 0 13"></path></svg>
@@ -600,11 +610,17 @@ const activeSection = 'director-ia';
           pedido = false;
           const visible = vv ? vv.height : window.innerHeight;
           mantenerFinal(() => {
-            raiz.classList.toggle('director-ia-compacto', visible < 560);
-            // sin teclado, la ventana debe estar arriba (p. ej. tras restaurar una posición antigua)
-            if (window.scrollY && visible >= window.innerHeight * 0.9 && window.scrollTo) window.scrollTo(0, 0);
-            const fondo = vv ? vv.offsetTop + vv.height : window.innerHeight;
-            pagina.style.setProperty('--di-alto', Math.max(200, Math.floor(fondo - pagina.getBoundingClientRect().top)) + 'px');
+            const max = raiz.classList.contains('director-ia-max');
+            raiz.classList.toggle('director-ia-compacto', max && visible < 560);
+            if (max) {
+              // ampliada: la ventana no se desplaza (sin teclado, arriba del todo) y el chat ocupa exactamente la altura visible
+              if (window.scrollY && visible >= window.innerHeight * 0.9 && window.scrollTo) window.scrollTo(0, 0);
+              const fondo = vv ? vv.offsetTop + vv.height : window.innerHeight;
+              pagina.style.setProperty('--di-alto', Math.max(200, Math.floor(fondo - pagina.getBoundingClientRect().top)) + 'px');
+            } else {
+              // vista normal del panel: la PÁGINA se desplaza entera (rueda, panel táctil, dedo); el chat mide la ventana visible y no depende del scroll
+              pagina.style.setProperty('--di-alto', Math.max(420, Math.floor(visible - 24)) + 'px');
+            }
           });
         }
         const pedir = () => { if (pedido) return; pedido = true; (window.requestAnimationFrame || setTimeout)(medir); };
@@ -694,19 +710,23 @@ const activeSection = 'director-ia';
       // funcionando: tu voz se transcribe). Nunca se sustituye la voz natural del Director por la voz sintética del navegador: esa solo suena si
       // la activas Y eliges «Voz rápida (del navegador)». Independiente de Telegram.
       const modoVozActual = () => { try { return localStorage.getItem('directorIA.modoVoz') === 'rapida' ? 'rapida' : 'director'; } catch { return 'director'; } };
+      // Voz local del Director (Kokoro en la propia VPS, sin cupo): lista cerrada; se recuerda en este navegador y se cambia sin redespliegue.
+      const VOCES_DIRECTOR = ['alex', 'dora', 'santa'];
+      const vozElegidaActual = () => { try { const v = localStorage.getItem('directorIA.voz'); return VOCES_DIRECTOR.includes(v) ? v : 'alex'; } catch { return 'alex'; } };
       const Altavoz = (function () {
         const CLAVE = 'directorIA.respuestasHabladas'; const b = document.getElementById('btnAltavoz'); const avisos = [];
-        let activo = false; try { activo = window.localStorage ? localStorage.getItem(CLAVE) === 'si' : false; } catch { activo = false; }
+        // ACTIVADO por defecto desde que el Director tiene voz local sin cupo (1.3.7); si alguna vez lo desactivaste, se respeta tu elección guardada
+        let activo = true; try { const g = window.localStorage ? localStorage.getItem(CLAVE) : null; activo = g === null || g === undefined ? true : g === 'si'; } catch { activo = true; }
         function pintar() {
           if (!b) return;
           b.setAttribute('aria-pressed', String(activo));
-          const t = (activo ? 'Respuestas habladas: activadas. Pulsa para que el Director responda solo por escrito' : 'Respuestas solo por escrito. Pulsa para que el Director también las lea en voz alta') + (sinCupo ? '. Hoy la voz del Director ha agotado su cupo: responde por escrito' : '');
+          const t = (activo ? 'Respuestas habladas: activadas. Pulsa para silenciar al Director (el micrófono sigue funcionando)' : 'Respuestas solo por escrito. Pulsa para que el Director también las lea en voz alta') + (sinCupo ? '. Ahora la voz del Director no está disponible: responde por escrito' : '');
           b.title = t; b.setAttribute('aria-label', t);
           if (b.classList) { if (activo) b.classList.add('activo'); else b.classList.remove('activo'); if (sinCupo) b.classList.add('sin-cupo'); else b.classList.remove('sin-cupo'); }
         }
         // Lo que el panel sabe de la SALIDA (Director 1.3.7): se envía con cada turno hablado para que el Director diagnostique «no te oigo» con hechos.
         let sinCupo = false; let ultimaReproduccion = 'ninguna';
-        const salida = () => ({ altavoz: activo ? 'activado' : 'desactivado', motor: modoVozActual(), ultimaReproduccion });
+        const salida = () => ({ altavoz: activo ? 'activado' : 'desactivado', motor: modoVozActual(), ultimaReproduccion, voz: vozElegidaActual() });
         const reproduccion = (r) => { if (['completada', 'fallida', 'cortada', 'ninguna'].includes(r)) ultimaReproduccion = r; };
         const marcarSinCupo = (v) => { sinCupo = Boolean(v); pintar(); };
         function poner(v) {
@@ -1135,12 +1155,12 @@ const activeSection = 'director-ia';
           scrollFinal(false, estabaAlFinal);
           const met = { en: new Date().toISOString(), esperaFinMs, servidorMs: Date.now() - t0, servidor: j.voz && j.voz.medidas ? j.voz.medidas : null, conVozDirector: Boolean(v.audio), estado: v.estado || null };
           metricas.push(met); if (metricas.length > 50) metricas.shift(); try { console.info('[voz-director]', JSON.stringify(met)); } catch { /* sin consola */ }
-          if (v.vozDirector === 'sin_cupo' || v.motivoSinVoz === 'cuota_agotada') Altavoz.marcarSinCupo(true); else if (v.vozDirector === 'disponible') Altavoz.marcarSinCupo(false);
+          if (v.vozDirector === 'sin_cupo' || v.vozDirector === 'fallo_voz_local' || v.motivoSinVoz === 'cuota_agotada') Altavoz.marcarSinCupo(true); else if (v.vozDirector === 'disponible' || v.audio) Altavoz.marcarSinCupo(false);
           if (mio !== turno || !sesion) return; // la sesión se cerró o llegó otro turno: se muestra, no se lee
           let que;
           if (v.audio && v.audio.base64) que = { url: `data:${v.audio.mime};base64,${v.audio.base64}`, respaldo: resumenHablado(j.respuesta) };
-          else if (v.vozLocal) que = { local: v.vozLocal, nota: 'datos del negocio: no se envían a la voz externa' };
-          else if (j.respuesta) que = { local: resumenHablado(j.respuesta), nota: v.motivoSinVoz === 'cuota_agotada' ? 'mi voz ha agotado su cupo gratuito de hoy' : v.motivoSinVoz === 'limite_diario' ? 'se alcanzó el tope diario de voz' : v.estado === 'respuesta_solo_texto' ? 'voz del Director no disponible ahora' : null };
+          else if (v.vozLocal) que = { local: v.vozLocal, nota: v.motivoSinVoz === 'fallo_voz_local' ? 'mi voz local no ha respondido; lo intento en la próxima' : 'datos del negocio: no se envían a la voz externa' };
+          else if (j.respuesta) que = { local: resumenHablado(j.respuesta), nota: v.motivoSinVoz === 'fallo_voz_local' ? 'mi voz local no ha respondido; lo intento en la próxima' : v.motivoSinVoz === 'cuota_agotada' ? 'mi voz ha agotado su cupo gratuito de hoy' : v.motivoSinVoz === 'limite_diario' ? 'se alcanzó el tope diario de voz' : v.estado === 'respuesta_solo_texto' ? 'voz del Director no disponible ahora' : null };
           else que = { local: v.mensaje || 'No te he entendido. Repítelo, por favor.', aviso: true };
           if (estado === 'grabando') { pendiente = que; return; } // el propietario está hablando: se dice si lo suyo resulta ser solo ruido
           decir(que);
@@ -1219,7 +1239,34 @@ const activeSection = 'director-ia';
       // «rapida» = reconocimiento y voz del navegador (~3 s por turno; el navegador puede enviar el audio a su propio servicio de voz).
       const selModoVoz = document.getElementById('modoVoz');
       const modoVoz = () => { try { return localStorage.getItem('directorIA.modoVoz') === 'rapida' ? 'rapida' : 'director'; } catch { return 'director'; } };
-      if (selModoVoz) { selModoVoz.value = modoVoz(); selModoVoz.addEventListener('change', () => { try { localStorage.setItem('directorIA.modoVoz', selModoVoz.value === 'rapida' ? 'rapida' : 'director'); } catch { /* sin almacenamiento */ } if (VozDirector.activa()) VozDirector.finalizar(); if (Voz.activa && Voz.activa()) Voz.detener(); }); }
+      const selVoz = document.getElementById('vozElegida'); const btnMuestra = document.getElementById('btnMuestraVoz');
+      const pintarSelectorVoz = () => { const director = modoVoz() === 'director'; if (selVoz) selVoz.hidden = !director; if (btnMuestra) btnMuestra.hidden = !director; };
+      if (selModoVoz) { selModoVoz.value = modoVoz(); selModoVoz.addEventListener('change', () => { try { localStorage.setItem('directorIA.modoVoz', selModoVoz.value === 'rapida' ? 'rapida' : 'director'); } catch { /* sin almacenamiento */ } if (VozDirector.activa()) VozDirector.finalizar(); if (Voz.activa && Voz.activa()) Voz.detener(); pintarSelectorVoz(); }); }
+      // MUESTRA DE VOZ: el Director sintetiza una frase fija con la voz elegida (no se guarda en ninguna conversación). Pulsar otra vez la detiene.
+      const Muestra = (function () {
+        let audio = null; let pidiendo = false;
+        const pintar = (sonando) => { if (!btnMuestra) return; btnMuestra.setAttribute('aria-pressed', String(sonando)); if (btnMuestra.classList) { if (sonando) btnMuestra.classList.add('sonando'); else btnMuestra.classList.remove('sonando'); } btnMuestra.title = sonando ? 'Detener la muestra' : 'Escuchar una muestra de esta voz'; };
+        function parar() { const a = audio; audio = null; if (a && typeof a.pause === 'function') { try { a.pause(); } catch { /* nada */ } } pintar(false); }
+        async function sonar() {
+          if (audio) { parar(); return; }
+          if (pidiendo) return; pidiendo = true; pintar(true); mostrarAlerta(null);
+          try {
+            const res = await fetch(`${API_BASE}/principal`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Director-IA': '1' }, body: JSON.stringify({ muestraVoz: vozElegidaActual() }) });
+            const j = await leerJson(res);
+            if (!j || !j.success || !j.audio || !j.audio.base64) { pintar(false); mostrarAlerta((j && j.message) || 'No se pudo obtener la muestra de voz.'); return; }
+            const a = new window.Audio(`data:${j.audio.mime};base64,${j.audio.base64}`); audio = a;
+            a.onended = () => { if (audio === a) { audio = null; pintar(false); } };
+            a.onerror = () => { if (audio === a) { audio = null; pintar(false); mostrarAlerta('Tu navegador no pudo reproducir la muestra.'); } };
+            try { const pr = a.play(); if (pr && typeof pr.catch === 'function') pr.catch(() => { if (audio === a) { audio = null; pintar(false); mostrarAlerta('Tu navegador no dejó reproducir la muestra: pulsa de nuevo.'); } }); } catch { audio = null; pintar(false); }
+          } catch { pintar(false); mostrarAlerta('No se pudo obtener la muestra de voz.'); }
+          finally { pidiendo = false; }
+        }
+        return { sonar, parar };
+      })();
+      if (selVoz) { selVoz.value = vozElegidaActual(); selVoz.addEventListener('change', () => { try { localStorage.setItem('directorIA.voz', VOCES_DIRECTOR.includes(selVoz.value) ? selVoz.value : 'alex'); } catch { /* sin almacenamiento */ } Muestra.parar(); }); }
+      if (btnMuestra) btnMuestra.addEventListener('click', () => Muestra.sonar());
+      Altavoz.alSilenciar(() => Muestra.parar());
+      pintarSelectorVoz();
       if (els.btnVoz) els.btnVoz.addEventListener('click', () => {
         if (VozDirector.activa() || (modoVoz() === 'director' && VozDirector.disponible() && !Voz.silenciado())) { VozDirector.iniciar(); return; }
         if (!Voz.silenciado()) Voz.iniciar();
@@ -1504,7 +1551,7 @@ const activeSection = 'director-ia';
           if (si) raiz.classList.add('director-ia-max'); else raiz.classList.remove('director-ia-max');
           if (bMax) bMax.hidden = si; if (bCerrar) bCerrar.hidden = !si;
           if (typeof plegarAprobaciones === 'function') plegarAprobaciones(null, !si || esMovil() || !(document.getElementById('confirmacionesPendientes') || {}).classList?.contains('con-pendientes'));
-          guardado('sessionStorage', 'directorIA.ampliada', si ? '1' : null);
+          if (!si && window.scrollTo) { try { window.scrollTo(0, 0); } catch { /* nada */ } } // de vuelta al panel: desde arriba, con la cabecera y el menú
           recolocar(); // la altura útil se recalcula con la misma medida (visualViewport) que la vista normal
           if (foco) { const destino = si ? els.input : bMax; try { if (destino && !destino.disabled && destino.focus) destino.focus({ preventScroll: true }); } catch { /* foco opcional */ } }
         }
@@ -1546,7 +1593,15 @@ const activeSection = 'director-ia';
           ampliar(false);
         }, true);
         if (guardado('localStorage', 'directorIA.barraContraida') === '1' && !esMovil()) contraer(true);
-        if (guardado('sessionStorage', 'directorIA.ampliada') === '1') ampliar(true, { foco: false }); // al recargar, se respeta la vista elegida
+        // DIRECTOR IA se abre SIEMPRE a pantalla completa (la clase ya la puso el script de la cabecera, antes de pintar: no se ve una vista reducida)
+        ampliar(true, { foco: false });
+        // pulsar «Director IA» en el menú estando ya aquí vuelve a la pantalla completa SIN recargar (no se pierden borradores, adjuntos ni la voz)
+        try {
+          for (const a of document.querySelectorAll('a[href]')) {
+            let ruta = ''; try { ruta = new URL(a.getAttribute('href'), window.location.href).pathname.replace(/\/+$/, ''); } catch { ruta = ''; }
+            if (ruta === '/upayp1b4/director-ia') a.addEventListener('click', (e) => { if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; e.preventDefault(); ampliar(true); });
+          }
+        } catch { /* sin enlaces */ }
         return { ampliar, contraer, ampliada };
       })();
       void Vista;
@@ -1572,11 +1627,12 @@ const activeSection = 'director-ia';
      * cabecera fija + hilo (ÚNICO scroll) + editor anclado abajo. Todos los contenedores flexibles llevan `min-height: 0`.
      * VISTA AMPLIADA (`html.director-ia-max`): se ocultan la cabecera del sitio, la de la sección y el menú del panel; el chat ocupa toda la ventana.
      */
-    html.director-ia-app, html.director-ia-app body { height: 100%; overflow: hidden; overscroll-behavior: none; }
-    html.director-ia-app .site-footer, html.director-ia-app .back-to-top { display: none !important; }
+    /* la ventana solo se bloquea con el chat AMPLIADO; en la vista normal del panel la página se desplaza entera (rueda, panel táctil y dedo) */
+    html.director-ia-max, html.director-ia-max body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+    html.director-ia-max .site-footer, html.director-ia-max .back-to-top { display: none !important; }
     /* mismo contenedor que el resto del panel (Desarrollo IA): ancho máximo centrado, mismos márgenes y separación entre cabecera, menú y contenido */
     .admin-wrapper { max-width: var(--max-width); margin: 0 auto; padding: 2.5rem 1.25rem 5rem; display: flex; flex-direction: column; gap: 30px; }
-    html.director-ia-app .admin-wrapper { padding-bottom: 0 !important; margin-bottom: 0 !important; }
+    html.director-ia-max .admin-wrapper { padding-bottom: 0 !important; margin-bottom: 0 !important; }
     html.director-ia-compacto .admin-wrapper { padding-top: 0.4rem; gap: 0.4rem; }
     /* teclado abierto o pantalla muy baja: también la cabecera del sitio y el menú del panel */
     html.director-ia-compacto .site-header, html.director-ia-compacto .admin-section-nav { display: none !important; }
@@ -1724,7 +1780,9 @@ const activeSection = 'director-ia';
     .director-ia-chat-header h1 { margin: 0; font-size: 1.125rem; font-weight: 500; line-height: 1.3; color: var(--di-texto); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
     .director-ia-chat-sub { margin: 0; font-size: 0.8rem; color: var(--di-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .director-ia-chat-herr { display: flex; align-items: center; gap: 0.15rem; flex: none; }
-    .director-ia-cerrar-max { color: var(--di-texto); }
+    .director-ia-cerrar-max { width: 44px; height: 44px; margin-left: 0.35rem; border-radius: 12px; color: #fff; background: #dc2626; border: 2px solid #fff; box-shadow: 0 0 0 1px #7f1d1d, 0 2px 8px rgba(0, 0, 0, 0.35); }
+    .director-ia-cerrar-max:hover:not(:disabled) { color: #fff; background: #b91c1c; }
+    .director-ia-cerrar-max:focus-visible { outline: 3px solid #fca5a5; outline-offset: 2px; }
     .director-ia-btn-barra { display: none; }
     .director-ia-page.barra-contraida .director-ia-btn-barra { display: inline-flex; }
 
@@ -1903,6 +1961,11 @@ const activeSection = 'director-ia';
     #inputMensaje:disabled { opacity: 0.6; }
     #btnAdjuntar { order: 1; }
     #modoVoz { order: 2; }
+    #vozElegida { order: 2; max-width: 9.5rem; }
+    #btnMuestraVoz { order: 2; }
+    #btnMuestraVoz .muestra-stop, #btnMuestraVoz.sonando .muestra-play { display: none; }
+    #btnMuestraVoz.sonando .muestra-stop { display: block; }
+    #btnMuestraVoz.sonando { color: var(--di-texto); background: var(--di-activo); }
     #btnAltavoz { order: 2; margin-right: auto; }
     .director-ia-altavoz .altavoz-si { display: none; }
     .director-ia-altavoz.activo .altavoz-si { display: block; }
