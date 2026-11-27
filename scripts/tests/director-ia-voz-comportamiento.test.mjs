@@ -47,7 +47,7 @@ function elemento(id = '') {
 }
 
 /** Monta el panel con un `fetch` dado y devuelve los mandos de la simulación. */
-function montarPanel(manejarFetch) {
+function montarPanel(manejarFetch, { habladas = true } = {}) {
   const elementos = new Map();
   const document = {
     getElementById: (id) => { if (!elementos.has(id)) elementos.set(id, elemento(id)); return elementos.get(id); },
@@ -69,7 +69,7 @@ function montarPanel(manejarFetch) {
   class SpeechSynthesisUtterance { constructor(texto) { this.text = texto; } }
   const peticiones = [];
   const fetch = async (url, init = {}) => { peticiones.push({ url: String(url), init }); return manejarFetch(String(url), init); };
-  const almacen = new Map();
+  const almacen = new Map(habladas ? [['directorIA.respuestasHabladas', 'si']] : []); // estas pruebas comprueban la voz: se activa expresamente
   const ventana = {
     SpeechRecognition, speechSynthesis, SpeechSynthesisUtterance, fetch, document,
     localStorage: { getItem: (k) => almacen.get(k) ?? null, setItem: (k, v) => almacen.set(k, v), removeItem: (k) => almacen.delete(k) },
@@ -166,4 +166,16 @@ test('voz: una respuesta HTML o de texto se explica al propietario (no «Unexpec
     p.el('btnVoz').click();
     await tic();
   }
+});
+
+test('RESPUESTAS SOLO POR ESCRITO (por defecto) con «Voz rápida»: tu voz se transcribe y se envía; el navegador NO habla y la escucha sigue', async () => {
+  const p = montarPanel(servidor(async (cuerpo) => respuestaDirector(`Respuesta a «${cuerpo.texto}»`)), { habladas: false });
+  await tic(); p.el('btnVoz').click();
+  for (let turno = 1; turno <= 2; turno += 1) {
+    p.ultimoReconocimiento().decir(`mensaje ${turno}`); await tic();
+    const cuerpo = JSON.parse(p.peticiones.filter((x) => x.init.method === 'POST').at(-1).init.body);
+    assert.equal(cuerpo.texto, `mensaje ${turno}`); assert.equal(cuerpo.origen, 'voz', 'el micrófono sigue funcionando');
+    assert.equal(p.locuciones.length, 0, 'ninguna voz sintética');
+  }
+  assert.equal(p.el('btnAltavoz').atributos['aria-pressed'], 'false', 'el control indica respuestas solo por escrito');
 });

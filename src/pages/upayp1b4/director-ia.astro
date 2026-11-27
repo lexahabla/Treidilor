@@ -154,8 +154,12 @@ const activeSection = 'director-ia';
             <input type="file" id="inputArchivos" multiple hidden accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.xlsx,.csv,.txt,.md,.json" />
             <select id="modoVoz" class="director-ia-modo-voz" title="Modo de la conversación por voz" aria-label="Modo de voz">
               <option value="director">Voz del Director</option>
-              <option value="rapida">Voz rápida</option>
+              <option value="rapida">Voz rápida (del navegador)</option>
             </select>
+            <button type="button" id="btnAltavoz" class="director-ia-icono director-ia-altavoz" aria-pressed="false" title="Respuestas solo por escrito. Pulsa para que el Director también las lea en voz alta" aria-label="Respuestas solo por escrito. Pulsa para que el Director también las lea en voz alta">
+              <svg class="altavoz-no" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4Z"></path><line x1="22" y1="9" x2="16" y2="15"></line><line x1="16" y1="9" x2="22" y2="15"></line></svg>
+              <svg class="altavoz-si" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4Z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M18.5 5.5a9 9 0 0 1 0 13"></path></svg>
+            </button>
             <button type="button" id="btnDetenerVoz" class="director-ia-icono" title="Interrumpir al Director y volver a escuchar" hidden aria-label="Interrumpir al Director">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>
             </button>
@@ -685,6 +689,29 @@ const activeSection = 'director-ia';
       })();
 
       // ── voz: sesión continua tipo chat (Web Speech API del navegador, gratuita, sin servicios de pago) ──
+      // ── RESPUESTAS HABLADAS: preferencia EXPLÍCITA del propietario, DESACTIVADA por defecto y guardada en este navegador (vale para todos los chats
+      // y sobrevive a la recarga). Desactivada: el Director responde solo por escrito, también en una conversación por voz (el micrófono sigue
+      // funcionando: tu voz se transcribe). Nunca se sustituye la voz natural del Director por la voz sintética del navegador: esa solo suena si
+      // la activas Y eliges «Voz rápida (del navegador)». Independiente de Telegram.
+      const Altavoz = (function () {
+        const CLAVE = 'directorIA.respuestasHabladas'; const b = document.getElementById('btnAltavoz'); const avisos = [];
+        let activo = false; try { activo = window.localStorage ? localStorage.getItem(CLAVE) === 'si' : false; } catch { activo = false; }
+        function pintar() {
+          if (!b) return;
+          b.setAttribute('aria-pressed', String(activo));
+          const t = activo ? 'Respuestas habladas: activadas. Pulsa para que el Director responda solo por escrito' : 'Respuestas solo por escrito. Pulsa para que el Director también las lea en voz alta';
+          b.title = t; b.setAttribute('aria-label', t);
+          if (b.classList) { if (activo) b.classList.add('activo'); else b.classList.remove('activo'); }
+        }
+        function poner(v) {
+          activo = Boolean(v); try { if (window.localStorage) localStorage.setItem(CLAVE, activo ? 'si' : 'no'); } catch { /* sin almacenamiento */ }
+          pintar(); if (!activo) for (const f of avisos) { try { f(); } catch { /* nada */ } } // silenciar corta también lo que esté sonando y su cola
+        }
+        if (b) b.addEventListener('click', () => poner(!activo));
+        pintar();
+        return { activo: () => activo, poner, alSilenciar: (f) => avisos.push(f) };
+      })();
+
       const Voz = (function () {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const SpeechSynthesis = window.speechSynthesis;
@@ -768,8 +795,8 @@ const activeSection = 'director-ia';
         }
 
         function hablarTexto(texto) {
-          if (!SpeechSynthesis || silenciado) {
-            // No hay síntesis o está silenciado: volver a escuchar directamente.
+          if (!SpeechSynthesis || silenciado || !Altavoz.activo()) {
+            // Sin síntesis, silenciado o respuestas solo por escrito: volver a escuchar directamente (la respuesta ya está en el hilo).
             if (sesionActiva) reanudarEscucha();
             return;
           }
@@ -1081,13 +1108,13 @@ const activeSection = 'director-ia';
             if (j && j.success && j.voz && j.voz.estado === 'error_transcripcion' && mio === turno && sesion) { poner('recuperando', 'No te he oído bien; lo intento otra vez…'); j = await enviar(cuerpo); }
           } catch (e) {
             enVuelo -= 1;
-            if (mio === turno && sesion) { const m = e instanceof Error ? e.message : 'No se pudo enviar tu voz.'; mostrarAlerta(m); decir({ local: 'No he podido procesarlo. Vuelve a decírmelo.' }); }
+            if (mio === turno && sesion) { const m = e instanceof Error ? e.message : 'No se pudo enviar tu voz.'; mostrarAlerta(m); decir({ local: 'No he podido procesarlo. Vuelve a decírmelo.', aviso: true }); }
             return;
           }
           enVuelo -= 1;
           if (!j.success) {
             if (j.code === 'voz_no_disponible') { noDisponible = true; finalizar(); mostrarAlerta('La voz del Director no está activa en el servicio: uso la voz del navegador.'); Voz.iniciar(); return; }
-            if (mio === turno && sesion) { mostrarAlerta(j.message || 'No se pudo procesar tu voz.'); decir({ local: 'Ha habido un problema. Vuelve a decírmelo.' }); }
+            if (mio === turno && sesion) { mostrarAlerta(j.message || 'No se pudo procesar tu voz.'); decir({ local: 'Ha habido un problema. Vuelve a decírmelo.', aviso: true }); }
             return;
           }
           const v = j.voz || {};
@@ -1103,23 +1130,29 @@ const activeSection = 'director-ia';
           if (mio !== turno || !sesion) return; // la sesión se cerró o llegó otro turno: se muestra, no se lee
           let que;
           if (v.audio && v.audio.base64) que = { url: `data:${v.audio.mime};base64,${v.audio.base64}`, respaldo: resumenHablado(j.respuesta) };
-          else if (v.vozLocal) que = { local: v.vozLocal, nota: 'datos del negocio' };
+          else if (v.vozLocal) que = { local: v.vozLocal, nota: 'datos del negocio: no se envían a la voz externa' };
           else if (j.respuesta) que = { local: resumenHablado(j.respuesta), nota: v.estado === 'respuesta_solo_texto' ? 'voz del Director no disponible ahora' : null };
-          else que = { local: v.mensaje || 'No te he entendido. Repítelo, por favor.' };
+          else que = { local: v.mensaje || 'No te he entendido. Repítelo, por favor.', aviso: true };
           if (estado === 'grabando') { pendiente = que; return; } // el propietario está hablando: se dice si lo suyo resulta ser solo ruido
           decir(que);
         }
 
         function decir(q) {
           if (!sesion) return;
-          if (q && q.url) return reproducir(q.url, q.respaldo);
-          return hablarLocal(q && q.local, q && q.nota);
+          const escuchandoCon = (texto) => { escuchar(); if (estado === 'escuchando') poner('escuchando', texto); };
+          if (q && q.aviso) { escuchandoCon(`${q.local} · Escuchando…`); return; } // los avisos se muestran; no se leen con voz sintética
+          if (!Altavoz.activo()) { escuchar(); return; } // respuestas solo por escrito: la respuesta ya está en el hilo y se sigue escuchando
+          if (q && q.url) return reproducir(q.url, null);
+          // Sin audio natural (cuota de voz agotada, respuesta con datos del negocio que no salen hacia el proveedor de voz): NO se sustituye por la
+          // voz sintética del navegador. La respuesta queda escrita y se sigue escuchando.
+          escuchandoCon(q && q.nota ? `Te respondo por escrito (${q.nota}). Escuchando…` : 'Te respondo por escrito. Escuchando…');
+          return undefined;
         }
         function reproducir(url, respaldo) {
           poner('hablando', 'El Director responde…'); vozDesde = 0;
           const a = new window.Audio(url); reproduccion = a;
           const fin = () => { if (reproduccion === a) { reproduccion = null; if (estado === 'hablando') escuchar(); } };
-          const fallo = () => { if (reproduccion === a) { reproduccion = null; if (respaldo) hablarLocal(respaldo, 'no se pudo reproducir el audio'); else fin(); } };
+          const fallo = () => { if (reproduccion === a) { reproduccion = null; if (respaldo) hablarLocal(respaldo, 'no se pudo reproducir el audio'); else if (estado === 'hablando') poner('escuchando', 'No se pudo reproducir la voz: te respondo por escrito. Escuchando…'); } };
           a.onended = fin; a.onerror = fallo;
           try { const p = a.play(); if (p && typeof p.catch === 'function') p.catch(fallo); } catch { fallo(); }
         }
@@ -1163,6 +1196,12 @@ const activeSection = 'director-ia';
 
         return { disponible: () => disponible && !noDisponible, activa: () => sesion, estado: () => estado, iniciar, finalizar, interrumpir, metricas: () => metricas.slice(), _vigilar: vigilar };
       })();
+
+      Altavoz.alSilenciar(() => {
+        try { if (VozDirector.activa() && VozDirector.estado() === 'hablando') VozDirector.interrumpir(); } catch { /* nada */ }
+        try { if (window.speechSynthesis && window.speechSynthesis.speaking && Voz.interrumpir) Voz.interrumpir(); } catch { /* nada */ }
+        try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch { /* nada */ }
+      });
 
       // eventos de voz
       // btnVoz: inicia la sesión (inactivo) o la finaliza inequívocamente (activa). Con grabación disponible se usa la voz del Director;
@@ -1854,7 +1893,12 @@ const activeSection = 'director-ia';
     #inputMensaje::placeholder { color: var(--di-suave); }
     #inputMensaje:disabled { opacity: 0.6; }
     #btnAdjuntar { order: 1; }
-    #modoVoz { order: 2; margin-right: auto; }
+    #modoVoz { order: 2; }
+    #btnAltavoz { order: 2; margin-right: auto; }
+    .director-ia-altavoz .altavoz-si { display: none; }
+    .director-ia-altavoz.activo .altavoz-si { display: block; }
+    .director-ia-altavoz.activo .altavoz-no { display: none; }
+    .director-ia-altavoz.activo { color: var(--di-texto); }
     #btnDetenerVoz { order: 3; }
     #btnVoz { order: 4; }
     #btnEnviar { order: 5; }
