@@ -29,6 +29,11 @@ import { findCatalogProduct, getCatalogProducts, productKey } from '../../lib/ca
 import { resolveOfferDestination } from '../../lib/offerRedirect';
 import { trackEvent } from '../../lib/analytics';
 import { buildPurchaseUrl } from '../../lib/purchaseUrl';
+import { clientIpFrom } from '../../lib/analytics';
+import { crearDeduplicador, esAgenteAutomatico, idAnalitica } from '../../lib/analyticsFiltros';
+
+/** Mismo clic repetido (doble pulsación o apertura duplicada) en 10 s: cuenta una vez. */
+const clicRepetido = crearDeduplicador(10_000);
 
 function redirectHeaders(location: string): Headers {
   return new Headers({
@@ -82,7 +87,7 @@ async function forwardClickToWebhook(webhookUrl: string, payload: unknown): Prom
   }
 }
 
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ url, request }) => {
   const key = url.searchParams.get('id') ?? url.searchParams.get('slug');
   const source = (url.searchParams.get('src') ?? '').slice(0, 60);
   const network = (url.searchParams.get('network') ?? '').trim().toLowerCase();
@@ -113,13 +118,24 @@ export const GET: APIRoute = async ({ url }) => {
 
   const destination = offerInfo?.destination || crossMerchantUrl || buildPurchaseUrl(product) || product.affiliateUrl;
 
-  // 1. Registro del clic de salida (cola en memoria, se persiste en segundo plano).
-  trackEvent({
-    type: 'outbound_click',
-    productId: product.id,
-    path: offerInfo ? `/${source || 'ofertas'}/offer:${offerInfo.offer.offerId}` : source ? `/${source}` : undefined,
-    source: 'redirect',
-  });
+  // 1. Registro del clic de salida (cola en memoria, se persiste en segundo plano). Medición corregida (27/11/2026, lib/analyticsFiltros.ts):
+  //    · rastreadores, vistas previas y comprobadores de enlaces no cuentan como clics (la redirección se hace igual);
+  //    · la IP se pasa para respetar ANALYTICS_IGNORE_IPS (antes los clics del propio equipo contaban);
+  //    · el clic lleva la sesión y el visitante si el navegador los aporta (sid/vid): así la conversión es «sesiones con clic / sesiones»;
+  //    · el mismo clic repetido en 10 s cuenta una vez.
+  const ip = request ? clientIpFrom(request) : undefined;
+  const sessionId = idAnalitica(url.searchParams.get('sid')); const visitorId = idAnalitica(url.searchParams.get('vid'));
+  const claveClic = `${sessionId ?? ip ?? '-'}|${product.id}|${offerInfo?.offer.offerId ?? network ?? ''}`;
+  if (!esAgenteAutomatico(request?.headers?.get?.('user-agent')) && !clicRepetido(claveClic)) {
+    trackEvent({
+      type: 'outbound_click',
+      productId: product.id,
+      path: offerInfo ? `/${source || 'ofertas'}/offer:${offerInfo.offer.offerId}` : source ? `/${source}` : undefined,
+      source: 'redirect',
+      ...(sessionId ? { sessionId } : {}),
+      ...(visitorId ? { visitorId } : {}),
+    }, { ip });
+  }
 
   // 2. Telemetría opcional hacia n8n (fire-and-forget, no bloquea la salida).
   const webhookUrl = process.env.N8N_CLICK_WEBHOOK_URL ?? import.meta.env.N8N_CLICK_WEBHOOK_URL;

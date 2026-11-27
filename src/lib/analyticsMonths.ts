@@ -24,6 +24,7 @@ import {
   type AnalyticsEvent,
 } from './analytics';
 import { getCatalogProducts } from './catalog';
+import { cuentaParaTrafico } from './analyticsFiltros';
 
 const MONTHS_PATH = dataFile('analytics-months.json');
 const MESES_ES = [
@@ -188,11 +189,12 @@ export interface ReferrerTop {
  * "Orgánico 40%" muestra "google.com 32, bing.com 8", para auditar de dónde
  * viene el tráfico de verdad y detectar bots o referidos inesperados.
  */
-export function computeTopReferrers(events: AnalyticsEvent[], limite = 8): ReferrerTop[] {
+export function computeTopReferrers(eventsTodos: AnalyticsEvent[], limite = 8): ReferrerTop[] {
+  const events = eventsTodos.filter(cuentaParaTrafico); // sin panel ni vistas duplicadas del servidor (lib/analyticsFiltros.ts)
   const primerHost = new Map<string, string>();
   for (const event of events) {
-    if (event.type !== 'page_view') continue;
-    const key = event.sessionId ?? event.visitorId ?? event.createdAt;
+    if (event.type !== 'page_view' || !event.sessionId) continue;
+    const key = event.sessionId;
     if (primerHost.has(key)) continue;
     primerHost.set(key, extraerHost(event.referrer) || '(directo)');
   }
@@ -272,7 +274,10 @@ function eventosEnRango(events: AnalyticsEvent[], desdeMs: number, hastaMs: numb
 const MAX_DURATION_FOR_AVG_MS = 20 * 60 * 1000;
 
 /** Agrupa un conjunto de eventos en las métricas de un periodo. */
-export function computeMetricas(events: AnalyticsEvent[]): MetricasPeriodo {
+export function computeMetricas(eventsTodos: AnalyticsEvent[]): MetricasPeriodo {
+  // Medición corregida (27/11/2026, lib/analyticsFiltros.ts): fuera el panel y la vista duplicada del servidor; una vista sin sesión ya no
+  // cuenta como sesión; la conversión es «sesiones con clic de salida o compra / sesiones» (antes, clics sin sesión / sesiones → 128 %).
+  const events = eventsTodos.filter(cuentaParaTrafico);
   const sesiones = new Set<string>();
   const visitantes = new Set<string>();
   const paginasPorSesion = new Map<string, number>();
@@ -302,11 +307,11 @@ export function computeMetricas(events: AnalyticsEvent[]): MetricasPeriodo {
       }
     } else if (event.type === 'outbound_click') {
       salidas += 1;
-      conversiones.add(event.sessionId ?? event.visitorId ?? `${event.type}:${event.createdAt}`);
+      if (event.sessionId) conversiones.add(event.sessionId); // solo clics atribuibles a una sesión real
     } else if (event.type === 'cart_add') carritos += 1;
     else if (event.type === 'purchase') {
       compras += 1;
-      conversiones.add(event.sessionId ?? event.visitorId ?? `${event.type}:${event.createdAt}`);
+      if (event.sessionId) conversiones.add(event.sessionId);
       if (typeof event.amount === 'number' && event.amount > 0) {
         ingresos += event.amount;
         pedidosConImporte += 1;
@@ -356,11 +361,13 @@ export function computeMetricas(events: AnalyticsEvent[]): MetricasPeriodo {
 }
 
 /** Fuentes de tráfico (por sesión) de un conjunto de eventos. */
-export function computeFuentes(events: AnalyticsEvent[]): FuenteMes[] {
+export function computeFuentes(eventsTodos: AnalyticsEvent[]): FuenteMes[] {
+  const events = eventsTodos.filter(cuentaParaTrafico);
   const primeraFuente = new Map<string, FuenteId>();
   for (const event of events) {
     if (event.type !== 'page_view') continue;
-    const key = event.sessionId ?? event.visitorId ?? event.createdAt;
+    if (!event.sessionId) continue; // una vista sin sesión no es una sesión
+    const key = event.sessionId;
     if (!primeraFuente.has(key)) primeraFuente.set(key, clasificarFuente(event.referrer));
   }
   const counts = new Map<FuenteId, number>();
@@ -373,7 +380,8 @@ export function computeFuentes(events: AnalyticsEvent[]): FuenteMes[] {
 }
 
 /** Serie diaria de visitas, sesiones, salidas, compras y conversión de un conjunto de eventos. */
-export function computeEvolucion(events: AnalyticsEvent[], limiteDias = 30): PuntoDia[] {
+export function computeEvolucion(eventsTodos: AnalyticsEvent[], limiteDias = 30): PuntoDia[] {
+  const events = eventsTodos.filter(cuentaParaTrafico);
   const porDia = new Map<string, { visitas: number; sesiones: Set<string>; salidas: number; compras: number }>();
   for (const event of events) {
     const fecha = event.createdAt.slice(0, 10);

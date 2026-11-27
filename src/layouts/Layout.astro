@@ -3783,6 +3783,22 @@ const headerCategoryPanelHtml = `
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'hidden') enviarDuracion();
         });
+        // Las salidas a tienda por /api/redirect llevan la sesión y el visitante (sid/vid) para que el servidor pueda atribuir el clic a una
+        // sesión real (conversión = sesiones con clic / sesiones). Se añaden al pulsar, sin cambiar el destino ni el enlace de afiliado.
+        const conSesion = (enlace) => {
+          try {
+            const u = new URL(enlace.getAttribute('href') || '', window.location.origin);
+            if (u.origin !== window.location.origin || u.pathname !== '/api/redirect') return;
+            u.searchParams.set('sid', analyticsSessionId); u.searchParams.set('vid', analyticsVisitorId);
+            enlace.setAttribute('href', u.pathname + u.search + u.hash);
+          } catch { /* enlace ilegible: se deja igual */ }
+        };
+        for (const tipo of ['click', 'auxclick']) {
+          document.addEventListener(tipo, (event) => {
+            const enlace = event.target && event.target.closest ? event.target.closest('a[href*="/api/redirect"]') : null;
+            if (enlace) conSesion(enlace);
+          }, true);
+        }
         // Las salidas a tienda del flujo interno NO se envían desde aquí: las
         // registra /api/redirect (fuente única, sin doble conteo).
         // En cambio, los CTA de salida directa (.exit-cta) SÍ se registran aquí

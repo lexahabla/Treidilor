@@ -391,9 +391,18 @@ const isSoldOut = stockStatus === 'Agotado';
       }, 950);
     };
 
+    // La salida lleva la sesión y el visitante de la analítica (sid/vid) para atribuir el clic a una sesión real.
+    const conSesion = (url: string): string => {
+      try {
+        const u = new URL(url, window.location.origin);
+        const sid = sessionStorage.getItem('tradylor_sid'); const vid = localStorage.getItem('tradylor_vid');
+        if (sid) u.searchParams.set('sid', sid); if (vid) u.searchParams.set('vid', vid);
+        return u.origin === window.location.origin ? u.pathname + u.search + u.hash : url;
+      } catch { return url; }
+    };
     exitBtn?.addEventListener('click', () => {
       const url = exitBtn.dataset.exitUrl;
-      if (url) startExit(url);
+      if (url) startExit(conSesion(url));
     });
 
     // Respetamos el clic nativo del enlace de respaldo (JS deshabilitado / botón medio)
@@ -401,7 +410,7 @@ const isSoldOut = stockStatus === 'Agotado';
       const url = exitFallback.getAttribute('href');
       if (!url) return;
       event.preventDefault();
-      startExit(url);
+      startExit(conSesion(url));
     });
   </script>
 </Layout>

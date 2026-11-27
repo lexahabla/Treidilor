@@ -9,6 +9,7 @@
  */
 import type { APIRoute } from 'astro';
 import { clientIpFrom, trackEvent, type TipoEvento } from '../../../lib/analytics';
+import { esRutaAdmin } from '../../../lib/analyticsFiltros';
 
 export const prerender = false;
 
@@ -60,6 +61,9 @@ export const POST: APIRoute = async ({ request }) => {
       typeof payload.amount === 'number' && Number.isFinite(payload.amount) && payload.amount > 0
         ? Math.round(payload.amount * 100) / 100
         : undefined;
+
+    // Las páginas del panel (/upayp1b4) no son tráfico del sitio: se aceptan sin registrarlas.
+    if (esRutaAdmin(payload.path)) return json({ success: true }, 202);
 
     // Cola en memoria + persistencia diferida: respuesta inmediata.
     trackEvent(

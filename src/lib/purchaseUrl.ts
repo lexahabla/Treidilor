@@ -40,17 +40,60 @@ function amazonProductUrl(affiliateUrl: string): string | null {
   return product.toString();
 }
 
+/**
+ * Parámetros de eBay Partner Network (enlace de campaña) por dominio: rotación (mkrid) y sitio (siteid). Sin dominio conocido se usa solo la
+ * campaña. Fuente: formato de enlace de EPN (mkcid=1 · mkrid · siteid · campid · toolid=10001 · mkevt=1).
+ */
+const EBAY_SITIOS: Record<string, { mkrid: string; siteid: string }> = {
+  'ebay.es': { mkrid: '1185-53479-19255-0', siteid: '186' },
+  'ebay.com': { mkrid: '711-53200-19255-0', siteid: '0' },
+  'ebay.co.uk': { mkrid: '710-53481-19255-0', siteid: '3' },
+  'ebay.de': { mkrid: '707-53477-19255-0', siteid: '77' },
+  'ebay.fr': { mkrid: '709-53476-19255-0', siteid: '71' },
+  'ebay.it': { mkrid: '724-53478-19255-0', siteid: '101' },
+};
+function ebayCampaign(): string {
+  const v = process.env.EBAY_CAMPAIGN_ID ?? import.meta.env?.EBAY_CAMPAIGN_ID;
+  return typeof v === 'string' && /^\d{6,12}$/.test(v.trim()) ? v.trim() : '';
+}
+/** Enlace de eBay con la campaña de afiliado (si hay campaña configurada y el enlace no la trae ya). Otros enlaces, sin cambios. */
+export function withEbayCampaign(value: string): string {
+  const url = parseHttpUrl(value); const campid = ebayCampaign();
+  if (!url || !campid || !/(^|\.)ebay\.[a-z.]{2,6}$/i.test(url.hostname) || url.searchParams.has('campid')) return value;
+  const sitio = EBAY_SITIOS[url.hostname.replace(/^www\./, '')];
+  url.searchParams.set('mkcid', '1'); if (sitio) { url.searchParams.set('mkrid', sitio.mkrid); url.searchParams.set('siteid', sitio.siteid); }
+  url.searchParams.set('campid', campid); url.searchParams.set('toolid', '10001'); url.searchParams.set('mkevt', '1');
+  return url.toString();
+}
+
+/** ¿El enlace lleva seguimiento de afiliado reconocible? (Amazon tag, AliExpress s.click o aff_*, eBay campid, Awin). */
+export function hasAffiliateTracking(value: string): boolean {
+  const url = parseHttpUrl(value); if (!url) return false;
+  const h = url.hostname.toLowerCase(); const q = url.searchParams;
+  if (AMAZON_HOST_RE.test(h)) return q.has('tag') || q.has('AssociateTag');
+  if (/(^|\.)s\.click\.aliexpress\.com$/.test(h)) return true;
+  if (/aliexpress\./.test(h)) return ['aff_fcid', 'aff_trace_key', 'aff_platform', 'aff_short_key', 'sk'].some((k) => q.has(k));
+  if (/(^|\.)ebay\./.test(h)) return q.has('campid');
+  if (/(^|\.)awin1?\.com$/.test(h)) return true;
+  return false;
+}
+
 export function buildPurchaseUrl(product: Pick<Product, 'affiliateUrl' | 'buyNowUrl'>): string {
+  const affiliateUrl = (product.affiliateUrl ?? '').trim();
+  const afiliado = affiliateUrl && parseHttpUrl(affiliateUrl) ? withEbayCampaign(amazonProductUrl(affiliateUrl) ?? affiliateUrl) : affiliateUrl;
+
   const override = product.buyNowUrl?.trim();
   if (override && parseHttpUrl(override)) {
     // Compra directa configurada en el admin: si es de Amazon y no trae el tag de afiliado, se añade (best effort). Un enlace de
-    // CESTA de Amazon (fichas antiguas) se convierte en el de la ficha del producto.
-    return appendAmazonTag(amazonCartToProductUrl(override));
+    // CESTA de Amazon (fichas antiguas) se convierte en el de la ficha del producto. A eBay se le añade la campaña configurada.
+    const directa = withEbayCampaign(appendAmazonTag(amazonCartToProductUrl(override)));
+    // 27/11/2026: las 87 fichas de AliExpress tenían como compra directa la ficha normal del artículo (sin afiliado) y su enlace de afiliado
+    // (s.click) quedaba sin usar: esas compras no podían generar comisión. Si la compra directa NO lleva seguimiento de afiliado y el
+    // enlace de afiliado SÍ, se sale por el de afiliado (mismo producto).
+    if (!hasAffiliateTracking(directa) && afiliado && hasAffiliateTracking(afiliado)) return afiliado;
+    return directa;
   }
 
-  const affiliateUrl = (product.affiliateUrl ?? '').trim();
   if (!affiliateUrl) return '';
-  if (!parseHttpUrl(affiliateUrl)) return affiliateUrl;
-
-  return amazonProductUrl(affiliateUrl) ?? affiliateUrl;
+  return afiliado;
 }
