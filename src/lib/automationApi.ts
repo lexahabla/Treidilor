@@ -23,11 +23,13 @@ import { dataFile } from './paths';
 import { createRateLimiter, type RateLimiter } from './rateLimit';
 import { resolveClientIp } from './clientIp';
 
-export const AUTOMATION_SCOPES = ['catalog:read', 'analytics:read'] as const;
+/** `catalog:write` (Director IA, operaciones de catálogo aprobadas por el propietario) es EXCLUSIVO: un cliente que escribe no puede además leer ni al revés. */
+export const AUTOMATION_SCOPES = ['catalog:read', 'analytics:read', 'catalog:write'] as const;
+export const EXCLUSIVE_SCOPES: readonly string[] = ['catalog:write'];
 export type AutomationScope = (typeof AUTOMATION_SCOPES)[number];
 
-export type AutomationFeature = 'readV2';
-const FEATURE_ENV: Record<AutomationFeature, string> = { readV2: 'AUTOMATION_READ_V2_ENABLED' };
+export type AutomationFeature = 'readV2' | 'write';
+const FEATURE_ENV: Record<AutomationFeature, string> = { readV2: 'AUTOMATION_READ_V2_ENABLED', write: 'AUTOMATION_WRITE_ENABLED' };
 /** Interruptores INDEPENDIENTES (solo el valor exacto «true»; apagados por defecto y siempre subordinados a `AUTOMATION_API_ENABLED`). */
 export function featureEnabled(feature: AutomationFeature): boolean {
   return automationEnabled() && process.env[FEATURE_ENV[feature]] === 'true';
@@ -139,6 +141,7 @@ export function createClient(input: CreateInput, now = new Date()): { ok: true; 
   if (!scopes.length) return fail(400, 'alcances_obligatorios', 'Indica al menos un alcance.');
   const unknown = scopes.filter((s) => !(AUTOMATION_SCOPES as readonly string[]).includes(s));
   if (unknown.length) return fail(400, 'alcance_no_existe', `Alcance(s) inexistente(s): ${unknown.join(', ')}. Alcances disponibles: ${AUTOMATION_SCOPES.join(', ')}.`);
+  if (scopes.length > 1 && scopes.some((s) => EXCLUSIVE_SCOPES.includes(s))) return fail(400, 'alcance_exclusivo', `El alcance ${scopes.filter((s) => EXCLUSIVE_SCOPES.includes(s)).join(', ')} va solo: crea un cliente aparte para leer.`);
   const ttl = input.ttlDays === undefined ? DEFAULT_TTL_DAYS : Number(input.ttlDays);
   if (!Number.isInteger(ttl) || ttl < 1 || ttl > MAX_TTL_DAYS) return fail(400, 'caducidad_no_valida', `La caducidad debe ser de 1 a ${MAX_TTL_DAYS} días.`);
   const rate = input.ratePerMinute === undefined ? DEFAULT_RATE_PER_MINUTE : Number(input.ratePerMinute);

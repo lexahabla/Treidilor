@@ -387,7 +387,7 @@ export class TaiPuenteClient {
       method: 'POST',
       headers: { ...this.authHeaders(), authorization: `Bearer ${this.config.tokenConfirmar}` },
       body: JSON.stringify({ idConfirmacion, decision, administrador, ...(huella !== undefined ? { huella } : {}) }),
-    });
+    }, Math.max(this.config.timeoutMs, 45_000)); // 1.3.9: una operación de tienda aprobada se ejecuta y verifica dentro de esta llamada
     return r?.resultado ?? null;
   }
 

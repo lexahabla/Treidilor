@@ -80,13 +80,13 @@ test('alta: sólo un administrador con CSRF; el token se muestra una vez y en di
   assert.ok(disco.includes(r.client.id));
   const lista = await (await adminReq(undefined, { method: 'GET' })).json();
   assert.ok(!JSON.stringify(lista).includes(secreto) && !JSON.stringify(lista).includes('secretHash'));
-  assert.deepEqual(lista.scopesAvailable, ['catalog:read', 'analytics:read']);
+  assert.deepEqual(lista.scopesAvailable, ['catalog:read', 'analytics:read', 'catalog:write']);
   assert.equal((await adminRoute.ALL({ request: req('/api/admin/automation-clients', { method: 'PUT' }) })).status, 405);
 });
 
 test('alta: validaciones estrictas (alcance inexistente, caducidad, límites, nombre)', async () => {
   for (const [over, code] of [
-    [{ scopes: ['catalog:write'] }, 'alcance_no_existe'], [{ scopes: ['products:write', 'catalog:read'] }, 'alcance_no_existe'], [{ scopes: ['*'] }, 'alcance_no_existe'], [{ scopes: [] }, 'alcances_obligatorios'], [{ scopes: undefined }, 'alcances_obligatorios'],
+    [{ scopes: ['catalog:delete'] }, 'alcance_no_existe'], [{ scopes: ['catalog:read', 'catalog:write'] }, 'alcance_exclusivo'], [{ scopes: ['products:write', 'catalog:read'] }, 'alcance_no_existe'], [{ scopes: ['*'] }, 'alcance_no_existe'], [{ scopes: [] }, 'alcances_obligatorios'], [{ scopes: undefined }, 'alcances_obligatorios'],
     [{ ttlDays: 91 }, 'caducidad_no_valida'], [{ ttlDays: 0 }, 'caducidad_no_valida'], [{ ttlDays: 1.5 }, 'caducidad_no_valida'], [{ ratePerMinute: 0 }, 'limite_no_valido'], [{ ratePerMinute: 121 }, 'limite_no_valido'], [{ dailyQuota: 20001 }, 'cuota_no_valida'],
     [{ name: '' }, 'nombre_no_valido'], [{ name: '<script>' }, 'nombre_no_valido'], [{ name: 'x'.repeat(81) }, 'nombre_no_valido'],
   ]) {
@@ -94,7 +94,8 @@ test('alta: validaciones estrictas (alcance inexistente, caducidad, límites, no
     assert.equal(r.status, 400, JSON.stringify(over));
     assert.equal(r.code, code);
   }
-  assert.deepEqual(A.AUTOMATION_SCOPES, ['catalog:read', 'analytics:read'], 'solo lecturas: no existe ningún alcance de escritura');
+  assert.deepEqual(A.AUTOMATION_SCOPES, ['catalog:read', 'analytics:read', 'catalog:write'], 'lecturas + la escritura acotada del Director (exclusiva, con su propio interruptor)');
+  assert.deepEqual([...A.EXCLUSIVE_SCOPES], ['catalog:write']);
 });
 
 let TOKEN;
@@ -296,7 +297,7 @@ test('almacén dañado: la autenticación falla cerrada, no se crean clientes y 
   assert.equal((await cat('/api/automation/v1/catalog?limit=1', { token: TOKEN })).status, 200, 'recuperado');
   // un cliente con datos incoherentes también invalida el archivo (no se acepta a medias)
   const d = JSON.parse(bueno);
-  d.clients[0].scopes = ['catalog:write'];
+  d.clients[0].scopes = ['products:write'];
   fs.writeFileSync(f('automation-clients.json'), JSON.stringify(d));
   assert.equal((await cat('/api/automation/v1/catalog?limit=1', { token: TOKEN })).status, 401, 'un alcance de escritura en el archivo no se acepta');
   fs.writeFileSync(f('automation-clients.json'), bueno);

@@ -1516,7 +1516,9 @@ const activeSection = 'director-ia';
           const r = await enviarConCabeceraSegura(`${API_BASE}/confirmar`, { method: 'POST', body: JSON.stringify(cuerpo) });
           const jr = await leerJson(r); clave.value = '';
           aviso.hidden = false;
-          if (jr.success) { aviso.textContent = decision === 'confirmar' ? 'Aprobado. El Director lo pone en marcha.' : 'Rechazado. No se hará.'; setTimeout(() => { cargarConfirmaciones(); cargarConversacionPrincipal(); }, 800); return; }
+          // Director 1.3.9: una operación de tienda aprobada vuelve YA ejecutada y verificada → se muestra su resultado real (no un «en marcha» genérico)
+          const resultadoOp = jr.resultado && typeof jr.resultado === 'object' && typeof jr.resultado.mensaje === 'string' ? jr.resultado.mensaje.slice(0, 400) : null;
+          if (jr.success) { aviso.textContent = decision === 'confirmar' ? (resultadoOp || 'Aprobado. El Director lo pone en marcha.') : 'Rechazado. No se hará.'; setTimeout(() => { cargarConfirmaciones(); cargarConversacionPrincipal(); }, resultadoOp ? 4000 : 800); return; }
           if (jr.code === 'reautenticacion_requerida') { clave.hidden = false; clave.focus(); aviso.textContent = jr.message || 'Escribe tu contraseña para aprobarla.'; return; }
           if (jr.code === 'confirmacion_modificada') { aviso.textContent = 'La operación ha cambiado desde que la viste: se ha recargado, revísala de nuevo.'; setTimeout(cargarConfirmaciones, 800); return; }
           aviso.textContent = jr.message || 'No se pudo completar.';

@@ -47,14 +47,15 @@ test('APAGADO POR DEFECTO · sin AUTOMATION_READ_V2_ENABLED las lecturas nuevas 
   process.env.AUTOMATION_API_ENABLED = 'true';
 });
 
-test('ALCANCES · catalog:read no lee analítica y analytics:read no lee catálogo; un cliente puede combinar las dos lecturas; no existe ningún alcance de escritura', async () => {
+test('ALCANCES · catalog:read no lee analítica y analytics:read no lee catálogo; un cliente puede combinar las dos lecturas; la única escritura (catalog:write) es exclusiva', async () => {
   A.resetAutomationLimits();
   assert.equal((await R.ana.GET({ request: req('/api/automation/v1/analytics', { token: T.cat }) })).status, 403);
   assert.equal((await R.cat2.GET({ request: req('/api/automation/v2/catalog?limit=2', { token: T.ana }) })).status, 403);
   assert.equal((await R.cat2.GET({ request: req('/api/automation/v2/catalog?limit=2', { token: T.ambas }) })).status, 200);
   assert.equal((await R.ana.GET({ request: req('/api/automation/v1/analytics', { token: T.ambas }) })).status, 200);
   assert.equal((await R.ana.GET({ request: req('/api/automation/v1/analytics') })).status, 401);
-  for (const s of ['catalog:write', 'analytics:write', 'proposals:create']) assert.equal(A.createClient({ name: 'x', scopes: [s] }).ok, false, s);
+  for (const s of ['analytics:write', 'proposals:create']) assert.equal(A.createClient({ name: 'x', scopes: [s] }).ok, false, s);
+  assert.equal(A.createClient({ name: 'x', scopes: ['catalog:read', 'catalog:write'] }).code, 'alcance_exclusivo', 'la escritura del Director va en un cliente aparte (exclusivo)');
 });
 
 test('CATÁLOGO v2 · aditivo: cada ficha es EXACTAMENTE la del v1 + `history`; lo que no consta se declara no disponible; sin secretos', async () => {
