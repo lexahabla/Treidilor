@@ -1070,15 +1070,19 @@ const activeSection = 'director-ia';
         const AC = window.AudioContext || window.webkitAudioContext;
         const disponible = Boolean(window.MediaRecorder && nav && nav.mediaDevices && typeof nav.mediaDevices.getUserMedia === 'function' && AC);
         // silencioFinMs 1300: en las sesiones del 27/11 una pausa natural de ~1 s partía la intervención en dos turnos (pares a 1–4 s); con 1,3 s se respeta la pausa.
-        const CFG = { umbralMin: 0.012, factorVoz: 3.5, factorSilencio: 2, umbralRespuestaMin: 0.07, factorRespuesta: 6, inicioMs: 120, silencioFinMs: 1100, minMs: 350, maxMs: 30000, interrupcionMs: 300, intervaloMs: 50, timeoutTurnoMs: 35000, maxHablado: 260 };
+        const CFG = { umbralMin: 0.012, factorVoz: 3.5, factorSilencio: 2, umbralRespuestaMin: 0.07, factorRespuesta: 6, inicioMs: 120, silencioFinMs: 1100, prerollMs: 4000, minMs: 350, maxMs: 30000, interrupcionMs: 300, intervaloMs: 50, timeoutTurnoMs: 35000, maxHablado: 260 };
         let sesion = false; let estado = 'inactivo'; let noDisponible = false;
         let stream = null; let ctx = null; let analizador = null; let muestras = null; let reloj = null; let piso = 0.005;
+        // GRABACIÓN PREVIA (28/11: un dictado llegó sin su principio, «llamada accesorios de viaje», porque solo se grababa DESPUÉS de detectar la voz):
+        // mientras se escucha, una grabación ya está en marcha (se renueva cada `prerollMs` sin voz) y, al detectar la voz, se convierte en la del turno.
+        let previo = null; let inicioVoz = 0;
         let grabador = null; let trozos = []; let inicio = 0; let ultimaVoz = 0; let vozDesde = 0; let reproduccion = null; let turno = 0; let procesandoDesde = 0; let pendiente = null; let enVuelo = 0; let calibrandoHasta = 0; let minimoCal = 1; let peticion = null; let ventana = []; let maxGrab = 0;
         const metricas = (window.__vozDirectorMetricas = window.__vozDirectorMetricas || []);
         const elsV = { btn: document.getElementById('btnVoz'), btnDetener: document.getElementById('btnDetenerVoz'), textoBtn: document.getElementById('textoBtnVoz'), estado: document.getElementById('estadoVoz'), textoEstado: document.getElementById('textoEstadoVoz') };
 
         function poner(nuevo, texto) {
           estado = nuevo;
+          if (nuevo === 'hablando' && previo) descartarPrevio(); // en cuanto habla el Director, nada se graba por adelantado (salvo la grabación provisional de una interrupción)
           if (elsV.estado && elsV.textoEstado) {
             elsV.textoEstado.textContent = texto; elsV.estado.hidden = nuevo === 'inactivo';
             const p = elsV.estado.querySelector('.punto-voz'); if (p) p.className = 'punto-voz punto-voz--' + (nuevo === 'grabando' ? 'escuchando' : nuevo === 'recuperando' ? 'procesando' : nuevo);
@@ -1097,6 +1101,14 @@ const activeSection = 'director-ia';
           return '';
         }
 
+        function armarPrevio() {
+          if (!sesion || !stream || previo || typeof window.MediaRecorder !== 'function') return;
+          const tipo = formato(); let rec; try { rec = tipo ? new window.MediaRecorder(stream, { mimeType: tipo }) : new window.MediaRecorder(stream); } catch { return; }
+          const p = { rec, trozos: [], desde: Date.now() }; rec.ondataavailable = (e) => { if (e.data && e.data.size) p.trozos.push(e.data); };
+          try { rec.start(); previo = p; } catch { previo = null; }
+        }
+        function descartarPrevio() { const p = previo; previo = null; if (!p) return; p.rec.ondataavailable = null; p.rec.onstop = null; try { if (p.rec.state !== 'inactive') p.rec.stop(); } catch { /* ya parado */ } }
+
         function vigilar() {
           if (!sesion || !analizador) return;
           if (ctx && ctx.state === 'suspended' && typeof ctx.resume === 'function') { try { ctx.resume(); } catch { /* reintenta en el siguiente ciclo */ } }
@@ -1109,6 +1121,7 @@ const activeSection = 'director-ia';
           // tiempo máximo por turno medido aquí (vale con cualquier reloj y aunque el navegador no cancele la petición)
           if (peticion && ahora - peticion.desde >= CFG.timeoutTurnoMs) { const pt = peticion; peticion = null; pt.caducar(); }
           if (estado === 'escuchando' || estado === 'procesando') {
+            if (!previo) armarPrevio(); else if (!vozDesde && ahora - previo.desde > CFG.prerollMs) { descartarPrevio(); armarPrevio(); } // sin voz: se renueva (nada de silencios largos)
             if (n > umbralVoz()) { vozDesde = vozDesde || ahora; if (ahora - vozDesde >= CFG.inicioMs) grabar(ahora, vozDesde); }
             else { vozDesde = 0; piso = piso * 0.95 + Math.min(n, 0.2) * 0.05; } // el ruido de fondo solo se aprende cuando no se habla
             if (estado === 'procesando' && procesandoDesde) { const s = Math.floor((ahora - procesandoDesde) / 1000); if (s >= 2 && elsV.textoEstado) elsV.textoEstado.textContent = `El Director está pensando… ${s} s`; }
@@ -1123,23 +1136,30 @@ const activeSection = 'director-ia';
             if (ahora - ultimaVoz >= CFG.silencioFinMs || ahora - inicio >= CFG.maxMs) terminar(); return;
           }
           if (estado === 'hablando') {
-            if (n > Math.max(CFG.umbralRespuestaMin, piso * CFG.factorRespuesta)) { vozDesde = vozDesde || ahora; if (ahora - vozDesde >= CFG.interrupcionMs) { const desde = vozDesde; cortarRespuesta(); grabar(ahora, desde); } }
-            else vozDesde = 0;
+            // INTERRUPCIÓN sin perder el principio y sin eco: mientras habla el Director no se graba por adelantado; solo cuando TU voz supera el umbral de
+            // interrupción (que su propia voz por el altavoz no alcanza) se empieza a grabar en provisional; si se confirma (300 ms) es la del turno, si no, se descarta.
+            if (n > Math.max(CFG.umbralRespuestaMin, piso * CFG.factorRespuesta)) {
+              if (!vozDesde) { vozDesde = ahora; descartarPrevio(); armarPrevio(); }
+              if (ahora - vozDesde >= CFG.interrupcionMs) { const desde = vozDesde; cortarRespuesta(); grabar(ahora, desde); }
+            } else { vozDesde = 0; if (previo) descartarPrevio(); }
           }
         }
 
         /** `desde`: cuándo empezó a hablar (la voz ya llevaba unos ms cuando se detecta). */
         function grabar(ahora, desde = ahora) {
-          const misTrozos = []; trozos = misTrozos; inicio = desde; ultimaVoz = ahora; vozDesde = 0; ventana = []; maxGrab = 0;
+          // si ya se estaba grabando por adelantado (escuchando o procesando), esa grabación es la del turno: incluye el principio de la frase
+          const adoptado = previo && (estado === 'escuchando' || estado === 'procesando' || estado === 'hablando') ? previo : null; if (!adoptado) descartarPrevio(); previo = null;
+          const misTrozos = adoptado ? adoptado.trozos : []; trozos = misTrozos; inicio = adoptado ? adoptado.desde : desde; inicioVoz = desde; ultimaVoz = ahora; vozDesde = 0; ventana = []; maxGrab = 0;
           const tipo = formato();
-          try { grabador = tipo ? new window.MediaRecorder(stream, { mimeType: tipo }) : new window.MediaRecorder(stream); } catch { grabador = new window.MediaRecorder(stream); }
+          if (adoptado) grabador = adoptado.rec;
+          else { try { grabador = tipo ? new window.MediaRecorder(stream, { mimeType: tipo }) : new window.MediaRecorder(stream); } catch { grabador = new window.MediaRecorder(stream); } }
           grabador.ondataavailable = (e) => { if (e.data && e.data.size) misTrozos.push(e.data); };
           grabador.onerror = () => { grabador = null; mostrarAlerta('Se interrumpió la grabación: vuelve a hablar.'); escuchar(); };
-          const esta = grabador; grabador.onstop = () => { const f = esta._fin || { duracion: Date.now() - inicio, habla: ultimaVoz - inicio, espera: 0 }; procesarGrabacion(esta, misTrozos, f.duracion, f.habla, f.espera); };
-          grabador.start();
+          const esta = grabador; grabador.onstop = () => { const f = esta._fin || { duracion: Date.now() - inicio, habla: ultimaVoz - inicioVoz, espera: 0 }; procesarGrabacion(esta, misTrozos, f.duracion, f.habla, f.espera); };
+          if (!adoptado) grabador.start();
           poner('grabando', 'Te escucho…');
         }
-        function terminar() { if (grabador && grabador.state !== 'inactive') { const ahora = Date.now(); grabador._fin = { duracion: ahora - inicio, habla: maxGrab > umbralVoz() ? ultimaVoz - inicio : 0, espera: ahora - ultimaVoz /* si solo hubo ruido de fondo, habla=0 y se descarta */ }; procesandoDesde = ahora; poner('procesando', 'Procesando…'); try { grabador.stop(); } catch { /* ya parado */ } } }
+        function terminar() { if (grabador && grabador.state !== 'inactive') { const ahora = Date.now(); grabador._fin = { duracion: ahora - inicio, habla: maxGrab > umbralVoz() ? ultimaVoz - inicioVoz : 0, espera: ahora - ultimaVoz /* si solo hubo ruido de fondo, habla=0 y se descarta */ }; procesandoDesde = ahora; poner('procesando', 'Procesando…'); try { grabador.stop(); } catch { /* ya parado */ } } }
 
         async function aBase64(blob) {
           const b = new Uint8Array(await blob.arrayBuffer()); let s = '';
@@ -1254,9 +1274,11 @@ const activeSection = 'director-ia';
           ctx = c || new AC(); const fuente = ctx.createMediaStreamSource(stream); analizador = ctx.createAnalyser(); analizador.fftSize = 2048; fuente.connect(analizador); muestras = new Float32Array(analizador.fftSize);
           for (const t of stream.getTracks()) t.onended = () => { if (sesion) { finalizar(); mostrarAlerta('Se perdió el micrófono: vuelve a pulsar «Hablar».'); } };
           sesion = true; turno += 1; piso = 0.005; pendiente = null; enVuelo = 0; peticion = null; minimoCal = 1; calibrandoHasta = Date.now() + 600; poner('escuchando', 'Ajustando el micrófono…'); mostrarAlerta(null);
+          armarPrevio(); // se graba ya durante el ajuste: si empiezas a hablar enseguida, el principio de la frase no se pierde
           reloj = setInterval(vigilar, CFG.intervaloMs);
         }
         function finalizar() {
+          descartarPrevio();
           sesion = false; turno += 1; pendiente = null; cortarRespuesta();
           if (reloj) { clearInterval(reloj); reloj = null; }
           const g = grabador; grabador = null; if (g && g.state !== 'inactive') { try { g.stop(); } catch { /* nada */ } }

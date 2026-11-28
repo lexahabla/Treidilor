@@ -351,3 +351,35 @@ test('FIN DE LA INTERVENCIÓN en 1,1 s de silencio (antes 1,3 s): con 1,0 s aún
   await p.pasar(1000, 0); assert.equal(p.posts().length, 0, '1,0 s de silencio: todavía puede seguir hablando');
   await p.pasar(150, 0); assert.equal(p.posts().length, 1);
 });
+
+// ───────── 28/11, PRIMERA ORDEN REAL: «Director, crea una categoría llamada Accesorios de viaje» llegó como «llamada accesorios de viaje» ─────────
+// Causa: solo se empezaba a grabar DESPUÉS de detectar la voz (y no durante el ajuste inicial del micrófono): el principio de la frase se perdía.
+test('NO SE PIERDE EL PRINCIPIO DE LA FRASE: se graba ya mientras escucha (también durante el ajuste) y esa grabación es la del turno', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n));
+  await tic(); p.el('btnVoz').click(); await tic();
+  assert.equal(p.sim.grabadores.length, 1, 'ya graba durante el ajuste del micrófono'); const previo = p.sim.grabadores[0]; assert.equal(previo.state, 'recording');
+  await p.pasar(700, 0); await p.pasar(1500, 0); // ajuste + silencio escuchando
+  assert.equal(p.sim.grabadores.length, 1, 'mientras no pasen 4 s sin voz no se renueva');
+  await p.pasar(900, 0.2); await p.pasar(1300, 0); // habla y termina
+  assert.equal(p.posts().length, 1); assert.equal(previo.state, 'inactive', 'el turno es la grabación que ya estaba en marcha');
+  assert.ok(cuerpoDe(p.posts()[0]).segundos > 3, 'el audio incluye lo anterior a la detección de la voz (el principio de la frase)');
+  assert.equal(p.sim.grabadores.filter((g) => g.state === 'recording').length, 0, 'mientras suena el Director no se graba por adelantado');
+  p.sim.audios.at(-1).onended(); await tic(); await p.pasar(100, 0);
+  assert.equal(p.sim.grabadores.filter((g) => g.state === 'recording').length, 1, 'al volver a escuchar, vuelve a grabar por adelantado');
+  await p.pasar(9000, 0); assert.ok(p.sim.grabadores.length >= 4, 'sin voz se renueva cada 4 s'); assert.equal(p.sim.grabadores.filter((g) => g.state === 'recording').length, 1, 'nunca más de una grabación previa');
+  p.el('btnVoz').click(); await tic(); assert.equal(p.sim.grabadores.filter((g) => g.state === 'recording').length, 0, 'finalizar la sesión la descarta');
+});
+
+test('INTERRUPCIÓN SIN PERDER EL PRINCIPIO NI RECOGER ECO: al hablar encima del Director se graba desde tu primera sílaba; un ruido breve no corta ni deja grabaciones', async () => {
+  const p = montarPanel(async (c, n) => respuestaVoz(n));
+  await tic(); p.el('btnVoz').click(); await tic(); await p.pasar(700, 0); await p.pasar(900, 0.2); await p.pasar(1300, 0);
+  assert.equal(p.sim.audios.length, 1); assert.equal(p.sim.grabadores.filter((g) => g.state === 'recording').length, 0, 'mientras suena el Director, nada graba');
+  await p.pasar(100, 0.3); await p.pasar(100, 0); // golpe breve por encima del umbral: no interrumpe
+  assert.equal(p.sim.audios[0].pausado, false); assert.equal(p.sim.grabadores.filter((g) => g.state === 'recording').length, 0, 'la grabación provisional se descarta');
+  const antes = p.sim.grabadores.length;
+  await p.pasar(700, 0.3); // hablas encima de verdad
+  assert.equal(p.sim.audios[0].pausado, true, 'la interrupción sigue funcionando');
+  const turno = p.sim.grabadores[antes]; assert.ok(turno && turno.state === 'recording', 'el turno es la grabación iniciada en tu PRIMERA sílaba (no 300 ms después)');
+  assert.equal(p.sim.grabadores.filter((g) => g.state === 'recording').length, 1);
+  await p.pasar(1300, 0); assert.equal(p.posts().length, 2); assert.equal(turno.state, 'inactive');
+});
